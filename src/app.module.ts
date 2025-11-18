@@ -5,7 +5,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { databaseConfig } from './config/database.config';
-import { User } from './users/entities/user.entity';
 
 @Module({
   imports: [
@@ -21,7 +20,6 @@ import { User } from './users/entities/user.entity';
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([User]),
     AuthModule,
   ],
   controllers: [AppController],

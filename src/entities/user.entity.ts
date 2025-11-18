@@ -5,9 +5,9 @@ import {
   CreateDateColumn,
   OneToMany,
 } from 'typeorm';
-import { Booking } from '../../bookings/entities/booking.entity';
-import { PaymentMethod } from '../../payments/entities/payment-method.entity';
-import { Feedback } from '../../feedbacks/entities/feedback.entity';
+import { Booking } from './booking.entity';
+import { PaymentMethod } from './payment-method.entity';
+import { Feedback } from './feedback.entity';
 
 export enum UserRole {
   ADMIN = 'admin',
