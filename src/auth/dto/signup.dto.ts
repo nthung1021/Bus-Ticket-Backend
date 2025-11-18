@@ -7,13 +7,11 @@ import {
   IsNotEmpty,
   IsPhoneNumber,
 } from 'class-validator';
-import { IsUnique } from '../../common/decorators/is-unique.decorator';
-import { User } from '../../entities/user.entity';
 
 export class SignUpDto {
   @IsEmail({}, { message: 'Please provide a valid email address' })
   @IsNotEmpty({ message: 'Email is required' })
-  @IsUnique(User, 'email', { message: 'Email is already in use' })
+  // Note: Unique validation should be implemented in the service layer
   email: string;
 
   @IsString({ message: 'Password must be a string' })
@@ -37,7 +35,7 @@ export class SignUpDto {
   @IsPhoneNumber('VN', {
     message: 'Please provide a valid Vietnamese phone number',
   })
-  @IsUnique(User, 'phone', { message: 'Phone number is already registered' })
   @IsNotEmpty({ message: 'Phone number is required' })
+  // Note: Unique validation should be implemented in the service layer
   phone: string;
 }
