@@ -1,4 +1,5 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { User } from '../entities/user.entity';
 import { Operator } from '../entities/operator.entity';
 import { Bus } from '../entities/bus.entity';
@@ -13,13 +14,15 @@ import { SeatStatus } from '../entities/seat-status.entity';
 import { Payment } from '../entities/payment.entity';
 import { Notification } from '../entities/notification.entity';
 
-export const databaseConfig: TypeOrmModuleOptions = {
+export const databaseConfig = (
+  configService: ConfigService,
+): TypeOrmModuleOptions => ({
   type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  username: process.env.DB_USERNAME || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'bus_booking',
+  host: configService.get<string>('DB_HOST', 'localhost'),
+  port: configService.get<number>('DB_PORT', 5432),
+  username: configService.get<string>('DB_USERNAME', 'postgres'),
+  password: configService.get<string>('DB_PASSWORD', 'postgres'),
+  database: configService.get<string>('DB_NAME', 'bus_booking'),
   entities: [
     User,
     Operator,
@@ -35,10 +38,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
     Payment,
     Notification,
   ],
-  synchronize: process.env.NODE_ENV !== 'production',
-  logging: process.env.NODE_ENV === 'development',
+  synchronize:
+    configService.get<string>('NODE_ENV', 'development') !== 'production',
+  logging:
+    configService.get<string>('NODE_ENV', 'development') === 'development',
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
-  cli: {
-    migrationsDir: 'src/migrations',
-  },
-} as TypeOrmModuleOptions;
+});

@@ -14,10 +14,8 @@ import { databaseConfig } from './config/database.config';
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        ...databaseConfig,
-        autoLoadEntities: true,
-      }),
+      useFactory: (configService: ConfigService) =>
+        databaseConfig(configService),
       inject: [ConfigService],
     }),
     AuthModule,
