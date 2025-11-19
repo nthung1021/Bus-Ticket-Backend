@@ -1,19 +1,27 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
+import { JwtConfigService } from '../config/jwt.config.service';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import { SignUpDto } from './dto/signup.dto';
-import { AuthResponse } from './dto/auth-response.dto';
+import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    private jwtService: JwtService,
+    private jwtConfigService: JwtConfigService,
   ) {}
 
-  async signUp(signUpDto: SignUpDto): Promise<AuthResponse> {
+  async signUp(signUpDto: SignUpDto) {
     // Check if user already exists
     const existingUser = await this.usersRepository.findOne({
       where: { email: signUpDto.email },
@@ -50,6 +58,62 @@ export class AuthService {
         createdAt: savedUser.createdAt,
       },
       message: 'registration successful',
+    };
+  }
+
+  async login(loginDto: LoginDto) {
+    const { email, password } = loginDto;
+
+    // Find user by email
+    const user = await this.usersRepository.findOne({ where: { email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Generate tokens
+    const accessToken = this.jwtService.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      {
+        secret: this.jwtConfigService.accessTokenSecret,
+        expiresIn: this.jwtConfigService.getExpirationInSeconds(
+          this.jwtConfigService.accessTokenExpiration,
+        ),
+      },
+    );
+
+    const refreshToken = this.jwtService.sign(
+      { sub: user.id },
+      {
+        secret: this.jwtConfigService.refreshTokenSecret,
+        expiresIn: this.jwtConfigService.getExpirationInSeconds(
+          this.jwtConfigService.refreshTokenExpiration,
+        ),
+      },
+    );
+
+    // Return response in the specified format
+    return {
+      success: true,
+      data: {
+        accessToken,
+        refreshToken,
+        user: {
+          userId: user.id,
+          email: user.email,
+          fullName: user.name,
+          role: user.role,
+        },
+      },
     };
   }
 }
