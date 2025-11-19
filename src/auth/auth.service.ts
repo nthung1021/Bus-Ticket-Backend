@@ -116,4 +116,68 @@ export class AuthService {
       },
     };
   }
+
+  async refreshToken(refreshToken: string) {
+    try {
+      // Verify the refresh token
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.jwtConfigService.refreshTokenSecret,
+      });
+
+      // Find the user
+      const user = await this.usersRepository.findOne({
+        where: { id: payload.sub },
+      });
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      // Generate new access token
+      const newAccessToken = this.jwtService.sign(
+        {
+          sub: user.id,
+          email: user.email,
+          role: user.role,
+        },
+        {
+          secret: this.jwtConfigService.accessTokenSecret,
+          expiresIn: this.jwtConfigService.getExpirationInSeconds(
+            this.jwtConfigService.accessTokenExpiration,
+          ),
+        },
+      );
+
+      // Generate new refresh token (refresh token rotation)
+      const newRefreshToken = this.jwtService.sign(
+        { sub: user.id },
+        {
+          secret: this.jwtConfigService.refreshTokenSecret,
+          expiresIn: this.jwtConfigService.getExpirationInSeconds(
+            this.jwtConfigService.refreshTokenExpiration,
+          ),
+        },
+      );
+
+      // Return the new tokens in the same format as login
+      return {
+        success: true,
+        data: {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+          user: {
+            userId: user.id,
+            email: user.email,
+            fullName: user.name,
+            role: user.role,
+          },
+        },
+      };
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        throw new UnauthorizedException('Refresh token has expired');
+      }
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
 }
