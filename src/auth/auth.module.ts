@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { User } from '../entities/user.entity';
 import { JwtConfigService } from '../config/jwt.config.service';
 
@@ -20,7 +21,7 @@ import { JwtConfigService } from '../config/jwt.config.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtConfigService],
+  providers: [AuthService, JwtStrategy, JwtConfigService, GoogleStrategy],
   exports: [PassportModule, JwtModule, JwtConfigService],
 })
 export class AuthModule {}

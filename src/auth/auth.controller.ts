@@ -9,6 +9,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -26,7 +27,24 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req, @Res() res: Response) {
-    return await this.authService.googleLogin(req.user);
+    const response = await this.authService.googleLogin(req.user);
+
+    if (!response) {
+      return res.redirect('http://localhost:8000');
+    }
+
+    res.cookie('access_token', response.data.accessToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'strict',
+    });
+    res.cookie('refresh_token', response.data.refreshToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'strict',
+    });
+
+    res.redirect(`http://localhost:8000/dashboard`);
   }
 
   @Post('register')

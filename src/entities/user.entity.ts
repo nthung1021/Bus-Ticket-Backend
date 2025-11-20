@@ -20,10 +20,14 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: true, unique: true })
+  @Column({
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
   googleId: string | null;
 
-  @Column({ unique: true })
+  @Column()
   email: string;
 
   @Column()

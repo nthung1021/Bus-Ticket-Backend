@@ -27,10 +27,14 @@ export class AuthService {
       where: { googleId: user.googleId },
     });
     if (!existingUser) {
+      const salt = await bcrypt.genSalt();
+      const passwordHash = await bcrypt.hash(Math.random().toString(), salt);
+
       existingUser = this.usersRepository.create({
         googleId: user.googleId,
         email: user.email,
         name: user.name,
+        passwordHash: passwordHash,
       });
       await this.usersRepository.save(existingUser);
     }
