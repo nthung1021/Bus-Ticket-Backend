@@ -21,6 +21,60 @@ export class AuthService {
     private jwtConfigService: JwtConfigService,
   ) {}
 
+  async googleLogin(user: any) {
+    if (!user || !user.googleId) return null;
+    let existingUser = await this.usersRepository.findOne({
+      where: { googleId: user.googleId },
+    });
+    if (!existingUser) {
+      existingUser = this.usersRepository.create({
+        googleId: user.googleId,
+        email: user.email,
+        name: user.name,
+      });
+      await this.usersRepository.save(existingUser);
+    }
+    // Generate tokens
+    const accessToken = this.jwtService.sign(
+      {
+        sub: existingUser.id,
+        email: existingUser.email,
+        role: existingUser.role,
+      },
+      {
+        secret: this.jwtConfigService.accessTokenSecret,
+        expiresIn: this.jwtConfigService.getExpirationInSeconds(
+          this.jwtConfigService.accessTokenExpiration,
+        ),
+      },
+    );
+
+    const refreshToken = this.jwtService.sign(
+      { sub: existingUser.id },
+      {
+        secret: this.jwtConfigService.refreshTokenSecret,
+        expiresIn: this.jwtConfigService.getExpirationInSeconds(
+          this.jwtConfigService.refreshTokenExpiration,
+        ),
+      },
+    );
+
+    // Return response in the specified format
+    return {
+      success: true,
+      data: {
+        accessToken,
+        refreshToken,
+        user: {
+          userId: existingUser.id,
+          email: existingUser.email,
+          fullName: existingUser.name,
+          role: existingUser.role,
+        },
+      },
+    };
+  }
+
   async signUp(signUpDto: SignUpDto) {
     // Check if user already exists
     const existingUser = await this.usersRepository.findOne({
