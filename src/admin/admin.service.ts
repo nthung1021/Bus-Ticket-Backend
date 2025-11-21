@@ -1,13 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from '../entities/user.entity';
+import { User, UserRole } from '../entities/user.entity';
+import { AuditLog } from 'src/entities/audit-log.entity';
 
 @Injectable()
 export class AdminService {
   constructor(
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
+    @InjectRepository(User) private usersRepository: Repository<User>,
+    @InjectRepository(AuditLog) private auditRepository: Repository<AuditLog>,
   ) {}
 
   async findAllUsers() {
@@ -16,12 +17,29 @@ export class AdminService {
     const sanitized = users.map((u) => ({
       userId: u.id,
       email: u.email,
-      phone: u.phone,
-      fullName: u.name,
+      name: u.name,
       role: u.role,
       createdAt: u.createdAt,
     }));
 
-    return { success: true, data: sanitized };
+    return sanitized;
+  }
+
+  async updateUserRole(userId: string, newRole: string, actorId?: string) {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    user.role = newRole as UserRole;
+    await this.usersRepository.save(user);
+
+    await this.auditRepository.save({
+      actorId,
+      targetUserId: userId,
+      action: 'CHANGE_ROLE',
+      details: `role -> ${newRole}`,
+      metadata: { by: actorId, at: new Date().toISOString() },
+    });
+
+    return { id: user.id, email: user.email, name: user.name, role: user.role };
   }
 }
