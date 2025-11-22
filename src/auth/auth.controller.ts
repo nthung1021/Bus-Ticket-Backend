@@ -53,15 +53,95 @@ export class AuthController {
     return this.authService.signUp(signUpDto);
   }
 
+  @Get('me')
+  @UseGuards(AuthGuard('jwt'))
+  async getCurrentUser(@Req() req) {
+    return {
+      success: true,
+      data: {
+        userId: req.user.userId,
+        email: req.user.email,
+        role: req.user.role,
+      },
+    };
+  }
+
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const response = await this.authService.login(loginDto);
+
+    // Set HTTP-only cookies for both tokens
+    res.cookie('access_token', response.data.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
+
+    res.cookie('refresh_token', response.data.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    // Return user data without tokens
+    return {
+      success: true,
+      data: {
+        user: response.data.user,
+      },
+    };
   }
 
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
-  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
-    return this.authService.refreshToken(refreshTokenDto.refreshToken);
+  async refreshToken(
+    @Body() refreshTokenDto: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const response = await this.authService.refreshToken(
+      refreshTokenDto.refreshToken,
+    );
+
+    // Set new HTTP-only cookies
+    res.cookie('access_token', response.data.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
+
+    res.cookie('refresh_token', response.data.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    // Return user data without tokens
+    return {
+      success: true,
+      data: {
+        user: response.data.user,
+      },
+    };
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Res({ passthrough: true }) res: Response) {
+    // Clear cookies
+    res.clearCookie('access_token');
+    res.clearCookie('refresh_token');
+
+    return {
+      success: true,
+      message: 'Logged out successfully',
+    };
   }
 }
