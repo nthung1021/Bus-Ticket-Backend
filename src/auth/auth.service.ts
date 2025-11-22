@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { JwtConfigService } from '../config/jwt.config.service';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
+import { RefreshToken } from '../entities/refresh-token.entity';
 import * as bcrypt from 'bcrypt';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -17,6 +18,8 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(RefreshToken)
+    private refreshTokenRepository: Repository<RefreshToken>,
     private jwtService: JwtService,
     private jwtConfigService: JwtConfigService,
   ) {}
@@ -39,29 +42,9 @@ export class AuthService {
       await this.usersRepository.save(existingUser);
     }
     // Generate tokens
-    const accessToken = this.jwtService.sign(
-      {
-        sub: existingUser.id,
-        email: existingUser.email,
-        role: existingUser.role,
-      },
-      {
-        secret: this.jwtConfigService.accessTokenSecret,
-        expiresIn: this.jwtConfigService.getExpirationInSeconds(
-          this.jwtConfigService.accessTokenExpiration,
-        ),
-      },
-    );
-
-    const refreshToken = this.jwtService.sign(
-      { sub: existingUser.id },
-      {
-        secret: this.jwtConfigService.refreshTokenSecret,
-        expiresIn: this.jwtConfigService.getExpirationInSeconds(
-          this.jwtConfigService.refreshTokenExpiration,
-        ),
-      },
-    );
+    // Generate and store tokens
+    const { accessToken, refreshToken } =
+      await this.generateAndStoreTokens(existingUser);
 
     // Return response in the specified format
     return {
@@ -135,29 +118,9 @@ export class AuthService {
     }
 
     // Generate tokens
-    const accessToken = this.jwtService.sign(
-      {
-        sub: user.id,
-        email: user.email,
-        role: user.role,
-      },
-      {
-        secret: this.jwtConfigService.accessTokenSecret,
-        expiresIn: this.jwtConfigService.getExpirationInSeconds(
-          this.jwtConfigService.accessTokenExpiration,
-        ),
-      },
-    );
-
-    const refreshToken = this.jwtService.sign(
-      { sub: user.id },
-      {
-        secret: this.jwtConfigService.refreshTokenSecret,
-        expiresIn: this.jwtConfigService.getExpirationInSeconds(
-          this.jwtConfigService.refreshTokenExpiration,
-        ),
-      },
-    );
+    // Generate and store tokens
+    const { accessToken, refreshToken } =
+      await this.generateAndStoreTokens(user);
 
     // Return response in the specified format
     return {
@@ -182,47 +145,39 @@ export class AuthService {
         secret: this.jwtConfigService.refreshTokenSecret,
       });
 
-      // Find the user
-      const user = await this.usersRepository.findOne({
-        where: { id: payload.sub },
+      // Check if token exists in DB
+      const storedToken = await this.refreshTokenRepository.findOne({
+        where: { token: refreshToken },
+        relations: ['user'],
       });
 
+      if (!storedToken) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      // Check if expired
+      if (storedToken.expiresAt < new Date()) {
+        await this.refreshTokenRepository.delete(storedToken.id);
+        throw new UnauthorizedException('Refresh token has expired');
+      }
+
+      const user = storedToken.user;
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
 
-      // Generate new access token
-      const newAccessToken = this.jwtService.sign(
-        {
-          sub: user.id,
-          email: user.email,
-          role: user.role,
-        },
-        {
-          secret: this.jwtConfigService.accessTokenSecret,
-          expiresIn: this.jwtConfigService.getExpirationInSeconds(
-            this.jwtConfigService.accessTokenExpiration,
-          ),
-        },
-      );
+      // Generate new tokens
+      const tokens = await this.generateAndStoreTokens(user);
 
-      // Generate new refresh token (refresh token rotation)
-      const newRefreshToken = this.jwtService.sign(
-        { sub: user.id },
-        {
-          secret: this.jwtConfigService.refreshTokenSecret,
-          expiresIn: this.jwtConfigService.getExpirationInSeconds(
-            this.jwtConfigService.refreshTokenExpiration,
-          ),
-        },
-      );
+      // Delete old refresh token (Rotation)
+      await this.refreshTokenRepository.delete(storedToken.id);
 
       // Return the new tokens in the same format as login
       return {
         success: true,
         data: {
-          accessToken: newAccessToken,
-          refreshToken: newRefreshToken,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
           user: {
             userId: user.id,
             email: user.email,
@@ -235,7 +190,48 @@ export class AuthService {
       if (error.name === 'TokenExpiredError') {
         throw new UnauthorizedException('Refresh token has expired');
       }
-      throw new UnauthorizedException('Invalid refresh token');
+      throw error;
     }
+  }
+
+  private async generateAndStoreTokens(user: User) {
+    const accessToken = this.jwtService.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      {
+        secret: this.jwtConfigService.accessTokenSecret,
+        expiresIn: this.jwtConfigService.getExpirationInSeconds(
+          this.jwtConfigService.accessTokenExpiration,
+        ),
+      },
+    );
+
+    const refreshToken = this.jwtService.sign(
+      { sub: user.id },
+      {
+        secret: this.jwtConfigService.refreshTokenSecret,
+        expiresIn: this.jwtConfigService.getExpirationInSeconds(
+          this.jwtConfigService.refreshTokenExpiration,
+        ),
+      },
+    );
+
+    const expirationInSeconds = this.jwtConfigService.getExpirationInSeconds(
+      this.jwtConfigService.refreshTokenExpiration,
+    );
+    const expiresAt = new Date();
+    expiresAt.setSeconds(expiresAt.getSeconds() + expirationInSeconds);
+
+    const tokenEntity = this.refreshTokenRepository.create({
+      token: refreshToken,
+      userId: user.id,
+      expiresAt,
+    });
+    await this.refreshTokenRepository.save(tokenEntity);
+
+    return { accessToken, refreshToken };
   }
 }

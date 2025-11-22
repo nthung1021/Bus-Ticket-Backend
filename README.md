@@ -23,7 +23,7 @@
 
 ## Introduction
 
-Our team introduce The Bus Ticket Booking System web application which streamlines the process of purchasing bus tickets online. This app enables passengers to search for routes, compare prices, select seats, and make payments digitally by eliminating the need for physical ticket counters or manual reservations. 
+Our team introduce The Bus Ticket Booking System web application which streamlines the process of purchasing bus tickets online. This app enables passengers to search for routes, compare prices, select seats, and make payments digitally by eliminating the need for physical ticket counters or manual reservations.
 
 This repository is the backend code for this system.
 
@@ -104,3 +104,53 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Authentication Architecture
+
+### Access Token + Refresh Token Model
+
+We utilize a dual-token system to balance security and user experience:
+
+1.  **Access Token (Short-lived)**:
+    - **Purpose**: Used to authenticate API requests.
+    - **Format**: JWT (JSON Web Token).
+    - **Lifespan**: Short (e.g., 1 hour).
+    - **Storage**: Client-side memory (recommended) or secure cookie.
+    - **Benefit**: Minimizes the window of opportunity for an attacker if the token is stolen. Since it's stateless, it doesn't require a database lookup for every request, ensuring high performance.
+
+2.  **Refresh Token (Long-lived)**:
+    - **Purpose**: Used _only_ to obtain a new Access Token when the current one expires.
+    - **Format**: JWT.
+    - **Lifespan**: Long (e.g., 7 days).
+    - **Storage**: Secure, HTTP-only cookie (recommended) to prevent XSS attacks.
+    - **Benefit**: Allows users to stay logged in without re-entering credentials frequently.
+
+### Why Store Refresh Tokens in the Database?
+
+While JWTs are typically stateless, we persist **Refresh Tokens** in our database (`refresh_tokens` table) for the following critical security reasons:
+
+1.  **Revocation & Control**:
+    - If a user's device is lost or stolen, or if we detect suspicious activity, we can simply delete the corresponding refresh token from the database.
+    - This immediately prevents the attacker from generating new access tokens, effectively logging them out once their current short-lived access token expires.
+    - Stateless refresh tokens cannot be revoked without changing the signing secret (which logs out _everyone_).
+
+2.  **Token Rotation (Reuse Detection)**:
+    - We implement **Refresh Token Rotation**. Every time a refresh token is used to get a new access token, a _new_ refresh token is also issued, and the old one is invalidated (deleted).
+    - If an attacker steals a refresh token and tries to use it _after_ the legitimate user has already used it (or vice versa), the database lookup will fail.
+    - This significantly limits the lifespan and utility of a stolen refresh token.
+
+    - Storing tokens allows us to track active sessions. We can build features like "Sign out of all devices" or show users a list of their active logins.
+
+### Why we chose Access + Refresh Token?
+
+1.  **Scalability vs Sessions**:
+    - Traditional server-side sessions require looking up the session in the database/cache for _every single API request_.
+    - Access Tokens (JWT) are stateless. The server can verify them mathematically without checking the database. This reduces latency and database load significantly.
+
+2.  **Security vs Single Long-lived JWT**:
+    - If we used a single long-lived JWT (e.g., valid for 7 days), stealing it would give an attacker access for 7 days with no easy way to revoke it (unless we blacklist it, which re-introduces database lookups).
+    - By using a short-lived Access Token (e.g., 1 hour), if it's stolen, the damage is limited. The Refresh Token is more secure (can be kept in HTTP-only cookies) and because we store it in the DB, we _can_ revoke it if needed.
+
+3.  **Best of Both Worlds**:
+    - We get the performance of stateless auth (for most requests).
+    - We get the control/revocability of stateful sessions (via the Refresh Token flow).

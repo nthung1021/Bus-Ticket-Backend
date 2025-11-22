@@ -14,6 +14,7 @@ import { SeatStatus } from '../entities/seat-status.entity';
 import { Payment } from '../entities/payment.entity';
 import { Notification } from '../entities/notification.entity';
 import { AuditLog } from 'src/entities/audit-log.entity';
+import { RefreshToken } from '../entities/refresh-token.entity';
 
 export const databaseConfig = (
   configService: ConfigService,
@@ -38,7 +39,8 @@ export const databaseConfig = (
     SeatStatus,
     Payment,
     Notification,
-    AuditLog
+    AuditLog,
+    RefreshToken,
   ],
   synchronize:
     configService.get<string>('NODE_ENV', 'development') !== 'production',

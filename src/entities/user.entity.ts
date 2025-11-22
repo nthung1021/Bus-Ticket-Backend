@@ -8,6 +8,7 @@ import {
 import { Booking } from './booking.entity';
 import { PaymentMethod } from './payment-method.entity';
 import { Feedback } from './feedback.entity';
+import { RefreshToken } from './refresh-token.entity';
 
 export enum UserRole {
   ADMIN = 'admin',
@@ -58,4 +59,7 @@ export class User {
 
   @OneToMany(() => Feedback, (feedback) => feedback.user)
   feedbacks: Feedback[];
+
+  @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
+  refreshTokens: RefreshToken[];
 }
