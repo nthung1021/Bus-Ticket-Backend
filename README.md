@@ -6,7 +6,7 @@ This repository is the backend code for this system.
 
 This project is still in development.
 
-## Some common command-line code used for project
+## Some common commands used for project
 
 ### Project setup
 
