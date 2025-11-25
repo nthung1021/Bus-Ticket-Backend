@@ -8,8 +8,9 @@ import {
   UseGuards,
   Req,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -101,12 +102,18 @@ export class AuthController {
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
   async refreshToken(
+    @Req() req: Request,
     @Body() refreshTokenDto: RefreshTokenDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const response = await this.authService.refreshToken(
-      refreshTokenDto.refreshToken,
-    );
+    const refreshToken =
+      refreshTokenDto.refreshToken || req.cookies['refresh_token'];
+
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token not found');
+    }
+
+    const response = await this.authService.refreshToken(refreshToken);
 
     // Set new HTTP-only cookies
     res.cookie('access_token', response.data.accessToken, {
