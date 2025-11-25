@@ -55,4 +55,6 @@ $ npm run format
 
 For a detailed explanation of our authentication system, including the Access Token + Refresh Token model and session flow, please refer to [AUTHENTICATION.md](./AUTHENTICATION.md).
 
-More detail about the reason why we using HTTP-only Cookies to enhanced security, please refer to [MIGRATION-TO-COOKIES.md](./MIGRATION-TO-COOKIES.md)
+More detail about the reason why we using HTTP-only Cookies to enhanced security, please refer to [MIGRATION-TO-COOKIES.md](./MIGRATION-TO-COOKIES.md).
+
+We also implemented some unit tests for authentication and authorization (inside `auth` and `admin` module), more information please refer to [UNIT-TESTS.md](./test/UNIT-TESTS.md).
