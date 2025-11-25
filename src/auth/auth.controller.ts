@@ -60,6 +60,7 @@ export class AuthController {
     return {
       success: true,
       data: {
+        fullName: req.user.fullName,
         userId: req.user.userId,
         email: req.user.email,
         role: req.user.role,
