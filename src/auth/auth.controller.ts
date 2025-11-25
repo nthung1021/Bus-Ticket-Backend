@@ -45,7 +45,7 @@ export class AuthController {
       sameSite: 'strict',
     });
 
-    res.redirect(`http://localhost:8000/dashboard`);
+    res.redirect(`http://localhost:8000/`);
   }
 
   @Post('register')
