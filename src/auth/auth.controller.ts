@@ -8,8 +8,9 @@ import {
   UseGuards,
   Req,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -44,7 +45,7 @@ export class AuthController {
       sameSite: 'strict',
     });
 
-    res.redirect(`http://localhost:8000/dashboard`);
+    res.redirect(`http://localhost:8000/`);
   }
 
   @Post('register')
@@ -59,6 +60,7 @@ export class AuthController {
     return {
       success: true,
       data: {
+        fullName: req.user.fullName,
         userId: req.user.userId,
         email: req.user.email,
         role: req.user.role,
@@ -101,12 +103,18 @@ export class AuthController {
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
   async refreshToken(
+    @Req() req: Request,
     @Body() refreshTokenDto: RefreshTokenDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const response = await this.authService.refreshToken(
-      refreshTokenDto.refreshToken,
-    );
+    const refreshToken =
+      refreshTokenDto.refreshToken || req.cookies['refresh_token'];
+    console.log(refreshToken);
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token not found');
+    }
+
+    const response = await this.authService.refreshToken(refreshToken);
 
     // Set new HTTP-only cookies
     res.cookie('access_token', response.data.accessToken, {

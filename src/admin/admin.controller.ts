@@ -1,4 +1,13 @@
-import { Controller, Patch, Get, UseGuards, Param, Body, Req } from '@nestjs/common';
+import {
+  Controller,
+  Patch,
+  Get,
+  UseGuards,
+  Param,
+  Body,
+  Req,
+} from '@nestjs/common';
+import { Request } from 'express';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { Roles } from 'src/auth/roles/roles.decorator';
@@ -12,9 +21,7 @@ export class AdminController {
 
   @Roles('admin')
   @Get('stats')
-  getAdminStats() {
-    
-  }
+  getAdminStats() {}
 
   @Roles('admin')
   @Get('users')
@@ -24,9 +31,17 @@ export class AdminController {
 
   @Roles('admin')
   @Patch('users/:userId/role')
-  async changeUserRole(@Param('userId') userId: string, @Body() body: ChangeRoleDto, @Req() req: any) {
+  async changeUserRole(
+    @Param('userId') userId: string,
+    @Body() body: ChangeRoleDto,
+    @Req() req: Request & { user?: { sub?: string } },
+  ) {
     const actorId = req.user?.sub;
-    const updated = await this.adminService.updateUserRole(userId, body.role, actorId);
+    const updated = await this.adminService.updateUserRole(
+      userId,
+      body.role,
+      actorId,
+    );
     return { ok: true, updated };
   }
 }

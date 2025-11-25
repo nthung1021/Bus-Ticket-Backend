@@ -2,6 +2,8 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -108,13 +110,13 @@ export class AuthService {
     // Find user by email
     const user = await this.usersRepository.findOne({ where: { email } });
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new BadRequestException('Invalid credentials');
     }
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new BadRequestException('Invalid credentials');
     }
 
     // Generate tokens
@@ -152,18 +154,18 @@ export class AuthService {
       });
 
       if (!storedToken) {
-        throw new UnauthorizedException('Invalid refresh token');
+        throw new ForbiddenException('Invalid refresh token');
       }
 
       // Check if expired
       if (storedToken.expiresAt < new Date()) {
         await this.refreshTokenRepository.delete(storedToken.id);
-        throw new UnauthorizedException('Refresh token has expired');
+        throw new ForbiddenException('Refresh token has expired');
       }
 
       const user = storedToken.user;
       if (!user) {
-        throw new UnauthorizedException('User not found');
+        throw new ForbiddenException('User not found');
       }
 
       // Generate new tokens
@@ -188,7 +190,7 @@ export class AuthService {
       };
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
-        throw new UnauthorizedException('Refresh token has expired');
+        throw new ForbiddenException('Refresh token has expired');
       }
       throw error;
     }
@@ -199,6 +201,7 @@ export class AuthService {
       {
         sub: user.id,
         email: user.email,
+        fullName: user.name,
         role: user.role,
       },
       {
