@@ -51,8 +51,16 @@ $ npm run format
 
 (More documents will be updated here in further development)
 
-### Authentication Architecture
+## Public host
+
+Our project is hosted using [Render](https://render.com/), you can check out the link to this project here:
+
+https://bus-ticket-backend-vut1.onrender.com
+
+## Authentication Architecture
 
 For a detailed explanation of our authentication system, including the Access Token + Refresh Token model and session flow, please refer to [AUTHENTICATION.md](./AUTHENTICATION.md).
 
-More detail about the reason why we using HTTP-only Cookies to enhanced security, please refer to [MIGRATION-TO-COOKIES.md](./MIGRATION-TO-COOKIES.md)
+More detail about the reason why we using HTTP-only Cookies to enhanced security, please refer to [MIGRATION-TO-COOKIES.md](./MIGRATION-TO-COOKIES.md).
+
+We also implemented some unit tests for authentication and authorization (inside `auth` and `admin` module), more information please refer to [UNIT-TESTS.md](./test/UNIT-TESTS.md).
