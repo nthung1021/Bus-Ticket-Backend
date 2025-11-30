@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { databaseConfig } from './config/database.config';
 import { AdminModule } from './admin/admin.module';
+import { TripModule } from './trip/trip.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AdminModule } from './admin/admin.module';
     }),
     AuthModule,
     AdminModule,
+    TripModule,
   ],
   controllers: [AppController],
   providers: [AppService],
