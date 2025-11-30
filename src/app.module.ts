@@ -7,6 +7,9 @@ import { AuthModule } from './auth/auth.module';
 import { databaseConfig } from './config/database.config';
 import { AdminModule } from './admin/admin.module';
 import { TripModule } from './trip/trip.module';
+import { BusModule } from './bus/bus.module';
+import { RouteController } from './route/route.controller';
+import { RouteModule } from './route/route.module';
 
 @Module({
   imports: [
@@ -23,8 +26,10 @@ import { TripModule } from './trip/trip.module';
     AuthModule,
     AdminModule,
     TripModule,
+    BusModule,
+    RouteModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, RouteController],
   providers: [AppService],
 })
 export class AppModule {}
