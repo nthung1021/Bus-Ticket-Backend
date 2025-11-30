@@ -1,7 +1,6 @@
 import {
   Injectable,
   ConflictException,
-  UnauthorizedException,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
@@ -15,6 +14,12 @@ import * as bcrypt from 'bcrypt';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 
+type GoogleProfile = {
+  googleId?: string;
+  email?: string;
+  name?: string;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -26,29 +31,34 @@ export class AuthService {
     private jwtConfigService: JwtConfigService,
   ) {}
 
-  async googleLogin(user: any) {
-    if (!user || !user.googleId) return null;
+  /**
+   * Google login handler — typed profile instead of `any`
+   */
+  async googleLogin(profile?: GoogleProfile | null) {
+    if (!profile || !profile.googleId) return null;
+
     let existingUser = await this.usersRepository.findOne({
-      where: { googleId: user.googleId },
+      where: { googleId: profile.googleId },
     });
+
     if (!existingUser) {
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash(Math.random().toString(), salt);
 
+      // create expects a Partial<User>; cast to User for TypeORM API
       existingUser = this.usersRepository.create({
-        googleId: user.googleId,
-        email: user.email,
-        name: user.name,
+        googleId: profile.googleId,
+        email: profile.email,
+        name: profile.name,
         passwordHash: passwordHash,
-      });
+      } as Partial<User> as User);
+
       await this.usersRepository.save(existingUser);
     }
-    // Generate tokens
-    // Generate and store tokens
+
     const { accessToken, refreshToken } =
       await this.generateAndStoreTokens(existingUser);
 
-    // Return response in the specified format
     return {
       success: true,
       data: {
@@ -65,7 +75,6 @@ export class AuthService {
   }
 
   async signUp(signUpDto: SignUpDto) {
-    // Check if user already exists
     const existingUser = await this.usersRepository.findOne({
       where: { email: signUpDto.email },
     });
@@ -74,22 +83,19 @@ export class AuthService {
       throw new ConflictException('Email already in use');
     }
 
-    // Hash password
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(signUpDto.password, salt);
 
-    // Create and save user
     const user = this.usersRepository.create({
       email: signUpDto.email,
       passwordHash: hashedPassword,
       name: signUpDto.fullName,
       phone: signUpDto.phone,
       role: UserRole.CUSTOMER,
-    });
+    } as Partial<User> as User);
 
     const savedUser = await this.usersRepository.save(user);
 
-    // Return user data in the specified format
     return {
       success: true,
       data: {
@@ -107,24 +113,19 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
-    // Find user by email
     const user = await this.usersRepository.findOne({ where: { email } });
     if (!user) {
       throw new BadRequestException('Invalid credentials');
     }
 
-    // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       throw new BadRequestException('Invalid credentials');
     }
 
-    // Generate tokens
-    // Generate and store tokens
     const { accessToken, refreshToken } =
       await this.generateAndStoreTokens(user);
 
-    // Return response in the specified format
     return {
       success: true,
       data: {
@@ -142,12 +143,11 @@ export class AuthService {
 
   async refreshToken(refreshToken: string) {
     try {
-      // Verify the refresh token
-      const payload = this.jwtService.verify(refreshToken, {
+      // verify will throw if token invalid/expired — we don't need the payload variable here
+      this.jwtService.verify(refreshToken, {
         secret: this.jwtConfigService.refreshTokenSecret,
       });
 
-      // Check if token exists in DB
       const storedToken = await this.refreshTokenRepository.findOne({
         where: { token: refreshToken },
         relations: ['user'],
@@ -157,7 +157,6 @@ export class AuthService {
         throw new ForbiddenException('Invalid refresh token');
       }
 
-      // Check if expired
       if (storedToken.expiresAt < new Date()) {
         await this.refreshTokenRepository.delete(storedToken.id);
         throw new ForbiddenException('Refresh token has expired');
@@ -168,13 +167,11 @@ export class AuthService {
         throw new ForbiddenException('User not found');
       }
 
-      // Generate new tokens
       const tokens = await this.generateAndStoreTokens(user);
 
-      // Delete old refresh token (Rotation)
+      // rotate delete old token
       await this.refreshTokenRepository.delete(storedToken.id);
 
-      // Return the new tokens in the same format as login
       return {
         success: true,
         data: {
@@ -188,11 +185,13 @@ export class AuthService {
           },
         },
       };
-    } catch (error) {
-      if (error.name === 'TokenExpiredError') {
+    } catch (err: unknown) {
+      // narrow to check name safely
+      const e = err as { name?: string } | undefined;
+      if (e?.name === 'TokenExpiredError') {
         throw new ForbiddenException('Refresh token has expired');
       }
-      throw error;
+      throw err;
     }
   }
 
@@ -232,7 +231,7 @@ export class AuthService {
       token: refreshToken,
       userId: user.id,
       expiresAt,
-    });
+    } as Partial<RefreshToken> as RefreshToken);
     await this.refreshTokenRepository.save(tokenEntity);
 
     return { accessToken, refreshToken };

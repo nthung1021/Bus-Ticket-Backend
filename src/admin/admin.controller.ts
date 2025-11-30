@@ -9,9 +9,9 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AdminService } from './admin.service';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { Roles } from 'src/auth/roles/roles.decorator';
-import { RolesGuard } from 'src/auth/roles/roles.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles/roles.decorator';
+import { RolesGuard } from '../auth/roles/roles.guard';
 import { ChangeRoleDto } from './dto/change-role.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
