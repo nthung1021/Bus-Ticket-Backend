@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  JoinColumn
 } from 'typeorm';
 import { Operator } from './operator.entity';
 import { Trip } from './trip.entity';
@@ -30,6 +31,7 @@ export class Route {
 
   // Relations
   @ManyToOne(() => Operator, (operator) => operator.routes)
+  @JoinColumn({ name: 'operator_id' })
   operator: Operator;
 
   @OneToMany(() => Trip, (trip) => trip.route)
