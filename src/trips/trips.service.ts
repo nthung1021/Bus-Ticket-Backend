@@ -1,5 +1,5 @@
 // src/trips/trips.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets } from 'typeorm';
 import { Trip } from '../entities/trip.entity';
@@ -24,6 +24,7 @@ export class TripsService {
     }
   }
 
+  // GET /trips/search 
   async search(dto: SearchTripsDto) {
     const page = dto.page || 1;
     const limit = Math.min(dto.limit || 20, 100);
@@ -151,6 +152,119 @@ export class TripsService {
 
     return { data, pagination };
   }
+
+  async getTripById(tripId: string) {
+    const trip = await this.tripRepo.findOne({
+      where: { id: tripId },
+      relations: {
+        route: true,
+        bus: {
+          operator: true,
+        },
+      }
+    });
+
+    if (!trip) {
+      throw new NotFoundException({
+        success: false,
+        error: {
+          code: 'TRIP_001',
+          message: 'trip not found',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Calculate duration
+    const durationMinutes = Math.floor(
+      (trip.arrivalTime.getTime() - trip.departureTime.getTime()) / 60000
+    );
+
+    // TODO: Replace with real seat availability logic
+    const availability = await this.getTripAvailability(trip.id);
+
+    return {
+      tripId: trip.id,
+
+      route: {
+        routeId: trip.route.id,
+        origin: trip.route.origin,
+        destination: trip.route.destination,
+        distanceKm: trip.route.distanceKm,
+        estimatedMinutes: trip.route.estimatedMinutes,
+      },
+
+      operator: {
+        operatorId: trip.bus.operator.id,
+        name: trip.bus.operator.name,
+        // rating: trip.bus.operator.rating ?? null,
+        // logo: trip.bus.operator.logo ?? null,
+      },
+
+      bus: {
+        busId: trip.bus.id,
+        model: trip.bus.model,
+        plateNumber: trip.bus.plateNumber,
+        seatCapacity: trip.bus.seatCapacity,
+        // busType: trip.bus.busType,
+        amenities: trip.bus.amenities || [],
+      },
+
+      schedule: {
+        departureTime: trip.departureTime,
+        arrivalTime: trip.arrivalTime,
+        duration: durationMinutes,
+      },
+
+      pricing: {
+        basePrice: trip.basePrice,
+        serviceFee: 0,
+        currency: 'VND',
+      },
+
+      availability,
+
+      // Trip does not have policies yet
+      /*
+      policies: trip.policies
+        ? {
+            cancellationPolicy: trip.policies.cancellationPolicy,
+            modificationPolicy: trip.policies.modificationPolicy,
+            refundPolicy: trip.policies.refundPolicy,
+          }
+        : null,
+      */ 
+
+      // Trip does not have pick-up and drop-off points yet
+      /*
+      pickupPoints: trip.pickupPoints.map((p) => ({
+        pointId: p.id,
+        name: p.name,
+        address: p.address,
+        time: p.time,
+      })),
+
+      dropoffPoints: trip.dropoffPoints.map((p) => ({
+        pointId: p.id,
+        name: p.name,
+        address: p.address,
+        time: p.time,
+      })),
+      */
+
+      status: trip.status,
+    };
+  }
+
+  async getTripAvailability(tripId: string) {
+    // Example hardcoded for now:
+    return {
+      totalSeats: 45,
+      availableSeats: 12,
+      occupancyRate: 73.33,
+    };
+  }
+
 
   // Example placeholder — implement with real query to bookings/seats table
   private async getAvailableSeats(tripId: string): Promise<number> {
