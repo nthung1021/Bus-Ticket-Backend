@@ -1,5 +1,5 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Query, BadRequestException, Param } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException, Param, NotFoundException } from '@nestjs/common';
 import { TripsService } from './trips.service';
 import { SearchTripsDto } from './dto/search-trips.dto';
 import { validateOrReject } from 'class-validator';
@@ -33,11 +33,19 @@ export class TripsController {
   async getTripById(
     @Param('tripId') tripId: string
   ) {
-    const trip = await this.tripsService.getTripById(tripId);
+    const result = await this.tripsService.getTripById(tripId);
+
+    if (!result) {
+      throw new NotFoundException({
+        success: false,
+        error: { code: 'TRIP_001', message: 'trip not found' },
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     return {
       success: true,
-      data: trip,
+      data: result,
       message: 'trip details retrieved successfully',
       timestamp: new Date().toISOString(),
     };

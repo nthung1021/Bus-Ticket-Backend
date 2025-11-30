@@ -1,8 +1,9 @@
 // src/trips/trips.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets } from 'typeorm';
+import { Repository, Brackets, In } from 'typeorm';
 import { Trip } from '../entities/trip.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 import { SearchTripsDto } from './dto/search-trips.dto';
 
 @Injectable()
@@ -10,6 +11,9 @@ export class TripsService {
   constructor(
     @InjectRepository(Trip)
     private readonly tripRepo: Repository<Trip>,
+    
+    @InjectRepository(SeatStatus)
+    private readonly seatStatusRepo: Repository<SeatStatus>
   ) {}
 
   // helper: convert "morning/afternoon/..." into a range of hours
@@ -22,6 +26,25 @@ export class TripsService {
       case 'night': return { start: '21:00:00', end: '04:59:59' }; // 21:00 - 04:59 (spans midnight)
       default: return null;
     }
+  }
+
+  async getSeats(trip: Trip) {
+    const totalSeats = trip.bus?.seatCapacity ?? 0;
+
+    const bookedSeats = await this.seatStatusRepo.count({
+      where: {
+        tripId: trip.id,
+        state: In([ 'booked', 'reserved', 'locked' ]),
+      },
+    });
+
+    const availableSeats = totalSeats - bookedSeats;
+
+    return {
+      totalSeats,
+      availableSeats,
+      occupancyRate: totalSeats ? Math.round(((totalSeats - availableSeats) / totalSeats) * 10000) / 100 : null,
+    };
   }
 
   // GET /trips/search 
@@ -92,12 +115,7 @@ export class TripsService {
 
     // Map each Trip entity to response shape required by README:
     const data = await Promise.all(items.map(async trip => {
-      // availability calculation: count available seats from seats table OR derive from capacity - booked
-      // This depends on your schema. Example: trip.seats relation or a bookings table.
-      const totalSeats = trip.bus?.seatCapacity ?? null;
-      // example: availableSeats calculation — implement according to your booking model
-      // placeholder: assume a function getAvailableSeats(trip.id)
-      const availableSeats = await this.getAvailableSeats(trip.id);
+      const seats = await this.getSeats(trip);
 
       return {
         tripId: trip.id,
@@ -135,9 +153,9 @@ export class TripsService {
           serviceFee: 0, // not defined in entity
         },
         availability: {
-          totalSeats,
-          availableSeats,
-          occupancyRate: totalSeats ? Math.round(((totalSeats - availableSeats) / totalSeats) * 10000) / 100 : null,
+          totalSeats: seats.totalSeats,
+          availableSeats: seats.availableSeats,
+          occupancyRate: seats.occupancyRate,
         },
         status: trip.status,
       };
@@ -153,6 +171,7 @@ export class TripsService {
     return { data, pagination };
   }
 
+  // GET /trips/{:tripId}
   async getTripById(tripId: string) {
     const trip = await this.tripRepo.findOne({
       where: { id: tripId },
@@ -181,7 +200,7 @@ export class TripsService {
     );
 
     // TODO: Replace with real seat availability logic
-    const availability = await this.getTripAvailability(trip.id);
+    const seats = await this.getSeats(trip);
 
     return {
       tripId: trip.id,
@@ -222,7 +241,11 @@ export class TripsService {
         currency: 'VND',
       },
 
-      availability,
+      availability: {
+        totalSeats: seats.totalSeats,
+        availableSeats: seats.availableSeats,
+        occupancyRate: seats.occupancyRate,
+      },
 
       // Trip does not have policies yet
       /*
@@ -254,26 +277,5 @@ export class TripsService {
 
       status: trip.status,
     };
-  }
-
-  async getTripAvailability(tripId: string) {
-    // Example hardcoded for now:
-    return {
-      totalSeats: 45,
-      availableSeats: 12,
-      occupancyRate: 73.33,
-    };
-  }
-
-
-  // Example placeholder — implement with real query to bookings/seats table
-  private async getAvailableSeats(tripId: string): Promise<number> {
-    // Example logic (pseudo):
-    // const total = await this.someRepo.count({ where: { trip: { id: tripId } }});
-    // const booked = await this.bookingRepo.count({ where: { tripId, status: In(['pending','confirmed']) }});
-    // return Math.max(0, total - booked);
-
-    // For now return a dummy number (replace with real implementation)
-    return 10;
   }
 }
