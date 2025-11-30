@@ -51,7 +51,13 @@ $ npm run format
 
 (More documents will be updated here in further development)
 
-### Authentication Architecture
+## Public host
+
+Our project is hosted using [Render](https://render.com/), you can check out the link to this project here:
+
+https://bus-ticket-backend-vut1.onrender.com
+
+## Authentication Architecture
 
 For a detailed explanation of our authentication system, including the Access Token + Refresh Token model and session flow, please refer to [AUTHENTICATION.md](./AUTHENTICATION.md).
 
