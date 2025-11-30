@@ -10,6 +10,7 @@ import { TripModule } from './trip/trip.module';
 import { BusModule } from './bus/bus.module';
 import { RouteController } from './route/route.controller';
 import { RouteModule } from './route/route.module';
+import { OperatorModule } from './operator/operator.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { RouteModule } from './route/route.module';
     TripModule,
     BusModule,
     RouteModule,
+    OperatorModule,
   ],
   controllers: [AppController, RouteController],
   providers: [AppService],
