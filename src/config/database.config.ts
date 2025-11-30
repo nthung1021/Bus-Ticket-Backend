@@ -47,4 +47,11 @@ export const databaseConfig = (
   logging:
     configService.get<string>('NODE_ENV', 'development') === 'development',
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
+  extra: {
+      ssl: {
+          sslmode: "require",
+          channel_binding: "require",
+          rejectUnauthorized: false, 
+      },
+  },
 });
