@@ -82,6 +82,11 @@ export class SeatLayoutController {
     };
   }
 
+  @Get('template/:type')
+  getTemplateConfig(@Param('type') type: SeatLayoutType) {
+    return this.seatLayoutService.getTemplateConfig(type);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string): Promise<SeatLayout> {
     return this.seatLayoutService.findOne(id);

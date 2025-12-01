@@ -155,7 +155,7 @@ export class SeatLayoutService {
     }
   }
 
-  private getTemplateConfig(layoutType: SeatLayoutType): {
+  getTemplateConfig(layoutType: SeatLayoutType): {
     totalRows: number;
     seatsPerRow: number;
     layoutConfig: SeatLayoutConfig;
