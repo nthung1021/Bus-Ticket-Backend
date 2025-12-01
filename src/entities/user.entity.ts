@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { Booking } from './booking.entity';
 import { PaymentMethod } from './payment-method.entity';
@@ -17,6 +18,7 @@ export enum UserRole {
 }
 
 @Entity('users')
+@Index('idx_users_role_created', ['role', 'createdAt'])
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -26,15 +28,19 @@ export class User {
     nullable: true,
     unique: true,
   })
+  @Index('idx_users_google_id')
   googleId: string | null;
 
   @Column()
+  @Index('idx_users_email') // Email is unique but also needs index for fast lookups
   email: string;
 
   @Column()
+  @Index('idx_users_name')
   name: string;
 
   @Column({ nullable: true })
+  @Index('idx_users_phone')
   phone: string;
 
   @Column({ name: 'password_hash' })
@@ -45,6 +51,7 @@ export class User {
     enum: UserRole,
     default: UserRole.CUSTOMER,
   })
+  @Index('idx_users_role')
   role: UserRole;
 
   @CreateDateColumn({ name: 'created_at' })

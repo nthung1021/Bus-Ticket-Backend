@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { Bus } from './bus.entity';
 
@@ -16,11 +17,14 @@ export enum SeatLayoutType {
 }
 
 @Entity('seat_layouts')
+@Index('idx_seat_layouts_bus_type', ['busId', 'layoutType'])
+@Index('idx_seat_layouts_created_at', ['createdAt'])
 export class SeatLayout {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ name: 'bus_id' })
+  @Index('idx_seat_layouts_bus_id')
   busId: string;
 
   @Column({
@@ -28,6 +32,7 @@ export class SeatLayout {
     enum: SeatLayoutType,
     default: SeatLayoutType.STANDARD_2X2,
   })
+  @Index('idx_seat_layouts_type')
   layoutType: SeatLayoutType;
 
   @Column({ name: 'total_rows' })

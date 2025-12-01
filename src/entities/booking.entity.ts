@@ -6,6 +6,7 @@ import {
   OneToMany,
   JoinColumn,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
 import { User } from './user.entity';
 import { Trip } from './trip.entity';
@@ -22,14 +23,20 @@ export enum BookingStatus {
 }
 
 @Entity('bookings')
+@Index('idx_bookings_user_trip', ['userId', 'tripId'])
+@Index('idx_bookings_trip_status', ['tripId', 'status'])
+@Index('idx_bookings_user_status', ['userId', 'status'])
+@Index('idx_bookings_booked_at', ['bookedAt'])
 export class Booking {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ name: 'user_id' })
+  @Index('idx_bookings_user_id')
   userId: string;
 
   @Column({ name: 'trip_id' })
+  @Index('idx_bookings_trip_id')
   tripId: string;
 
   @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
@@ -40,6 +47,7 @@ export class Booking {
     enum: BookingStatus,
     default: BookingStatus.PENDING,
   })
+  @Index('idx_bookings_status')
   status: BookingStatus;
 
   @CreateDateColumn({ name: 'booked_at' })
