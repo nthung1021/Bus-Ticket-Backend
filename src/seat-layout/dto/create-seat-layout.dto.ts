@@ -40,6 +40,7 @@ export class SeatInfoDto {
   @IsBoolean()
   isAvailable: boolean;
 
+  @IsOptional()
   @IsNumber()
   price?: number;
 }
