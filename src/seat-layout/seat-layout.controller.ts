@@ -71,6 +71,13 @@ export class SeatLayoutController {
           totalSeats: 12,
           preview: 'A1 B1 | A2 B2 | A3 B3 ...',
         },
+        {
+          type: SeatLayoutType.CUSTOM,
+          name: 'Custom Layout',
+          description: 'Custom seat layout with flexible configuration',
+          totalSeats: 0,
+          preview: 'Flexible layout - customize rows and columns',
+        },
       ],
     };
   }
