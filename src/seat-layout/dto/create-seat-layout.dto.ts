@@ -121,12 +121,12 @@ export class CreateSeatLayoutDto {
   layoutType: SeatLayoutType;
 
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @Max(20)
   totalRows: number;
 
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @Max(6)
   seatsPerRow: number;
 
@@ -146,12 +146,12 @@ export class UpdateSeatLayoutDto {
   layoutType?: SeatLayoutType;
 
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @Max(20)
   totalRows?: number;
 
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @Max(6)
   seatsPerRow?: number;
 

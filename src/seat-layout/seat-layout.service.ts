@@ -131,7 +131,7 @@ export class SeatLayoutService {
   }
 
   private validateLayoutConfig(layoutConfig: any): void {
-    const { totalRows, seatsPerRow, layoutConfig: config } = layoutConfig;
+    const { layoutType, totalRows, seatsPerRow, layoutConfig: config } = layoutConfig;
     
     if (!config || !config.seats || !config.dimensions) {
       throw new BadRequestException('Invalid layout configuration');
@@ -141,13 +141,14 @@ export class SeatLayoutService {
     const expectedSeatCount = totalRows * seatsPerRow;
     const actualSeatCount = config.seats.length;
 
-    if (actualSeatCount !== expectedSeatCount) {
+    // For custom layouts, allow empty configuration
+    if (layoutType !== SeatLayoutType.CUSTOM && actualSeatCount !== expectedSeatCount) {
       throw new BadRequestException(
         `Seat count mismatch: expected ${expectedSeatCount} seats, got ${actualSeatCount}`
       );
     }
 
-    // Validate seat positions are within bounds
+    // Validate seat positions are within bounds (only if there are seats)
     for (const seat of config.seats) {
       if (seat.position.row > totalRows || seat.position.position > seatsPerRow) {
         throw new BadRequestException(`Invalid seat position: ${seat.code}`);
