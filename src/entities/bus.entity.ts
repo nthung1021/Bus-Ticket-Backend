@@ -4,11 +4,13 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
 } from 'typeorm';
 import { Operator } from './operator.entity';
 import { Trip } from './trip.entity';
 import { Seat } from './seat.entity';
+import { SeatLayout } from './seat-layout.entity';
 
 @Entity('buses')
 export class Bus {
@@ -40,4 +42,7 @@ export class Bus {
 
   @OneToMany(() => Seat, (seat) => seat.bus)
   seats: Seat[];
+
+  @OneToOne(() => SeatLayout, (seatLayout) => seatLayout.bus)
+  seatLayout: SeatLayout;
 }

@@ -4,6 +4,7 @@ import { User } from '../entities/user.entity';
 import { Operator } from '../entities/operator.entity';
 import { Bus } from '../entities/bus.entity';
 import { Route } from '../entities/route.entity';
+import { RoutePoint } from '../entities/route-point.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { Booking } from '../entities/booking.entity';
@@ -14,6 +15,7 @@ import { SeatStatus } from '../entities/seat-status.entity';
 import { Payment } from '../entities/payment.entity';
 import { Notification } from '../entities/notification.entity';
 import { AuditLog } from 'src/entities/audit-log.entity';
+import { SeatLayout } from '../entities/seat-layout.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
 
 export const databaseConfig = (
@@ -29,7 +31,9 @@ export const databaseConfig = (
     User,
     Operator,
     Bus,
+    SeatLayout,
     Route,
+    RoutePoint,
     Trip,
     Seat,
     Booking,
@@ -44,8 +48,7 @@ export const databaseConfig = (
   ],
   synchronize:
     configService.get<string>('NODE_ENV', 'development') !== 'production',
-  logging:
-    configService.get<string>('NODE_ENV', 'development') === 'development',
+  logging: false,
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   extra: {
       ssl: {

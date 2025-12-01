@@ -29,7 +29,18 @@ export class AuthService {
     private refreshTokenRepository: Repository<RefreshToken>,
     private jwtService: JwtService,
     private jwtConfigService: JwtConfigService,
-  ) {}
+  ) { }
+
+  /**
+   * Helper method to determine user role based on email
+   */
+  private determineUserRole(email: string): UserRole {
+    // Auto-assign admin role to specific email
+    if (email === 'minh@gmail.com') {
+      return UserRole.ADMIN;
+    }
+    return UserRole.CUSTOMER;
+  }
 
   /**
    * Google login handler — typed profile instead of `any`
@@ -45,12 +56,16 @@ export class AuthService {
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash(Math.random().toString(), salt);
 
+      // Determine role based on email
+      const userRole = this.determineUserRole(profile.email || '');
+
       // create expects a Partial<User>; cast to User for TypeORM API
       existingUser = this.usersRepository.create({
         googleId: profile.googleId,
         email: profile.email,
         name: profile.name,
         passwordHash: passwordHash,
+        role: userRole,
       } as Partial<User> as User);
 
       await this.usersRepository.save(existingUser);
@@ -86,12 +101,15 @@ export class AuthService {
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(signUpDto.password, salt);
 
+    // Determine role based on email
+    const userRole = this.determineUserRole(signUpDto.email);
+
     const user = this.usersRepository.create({
       email: signUpDto.email,
       passwordHash: hashedPassword,
       name: signUpDto.fullName,
       phone: signUpDto.phone,
-      role: UserRole.CUSTOMER,
+      role: userRole,
     } as Partial<User> as User);
 
     const savedUser = await this.usersRepository.save(user);
