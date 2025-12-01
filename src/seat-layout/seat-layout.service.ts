@@ -165,6 +165,7 @@ export class SeatLayoutService {
       [SeatLayoutType.STANDARD_2X3]: this.createStandard2x3Template(),
       [SeatLayoutType.VIP_1X2]: this.createVip1x2Template(),
       [SeatLayoutType.SLEEPER_1X2]: this.createSleeper1x2Template(),
+      [SeatLayoutType.CUSTOM]: this.createCustomTemplate(),
     };
 
     return templates[layoutType] || templates[SeatLayoutType.STANDARD_2X2];
@@ -353,6 +354,34 @@ export class SeatLayoutService {
         dimensions: {
           totalWidth: seatsPerRow * seatWidth + aisleWidth,
           totalHeight: rows * (seatHeight + rowSpacing),
+          seatWidth,
+          seatHeight,
+          aisleWidth,
+          rowSpacing,
+        },
+      },
+    };
+  }
+
+  private createCustomTemplate() {
+    const rows = 0;
+    const seatsPerRow = 0;
+    const seatWidth = 40;
+    const seatHeight = 40;
+    const aisleWidth = 40;
+    const rowSpacing = 20;
+
+    const seats: SeatInfo[] = [];
+
+    return {
+      totalRows: rows,
+      seatsPerRow,
+      layoutConfig: {
+        seats,
+        aisles: [],
+        dimensions: {
+          totalWidth: 0,
+          totalHeight: 0,
           seatWidth,
           seatHeight,
           aisleWidth,
