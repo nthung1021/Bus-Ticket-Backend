@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsNumber, IsUUID } from 'class-validator';
+import { IsString, IsEnum, IsNumber, IsUUID } from 'class-validator';
 import { TripStatus } from '../../entities/trip.entity';
 
 export class CreateTripDto {
@@ -8,11 +8,11 @@ export class CreateTripDto {
   @IsUUID()
   busId: string;
 
-  @IsDateString()
-  departureTime: Date;
+  @IsString()
+  departureTime: string;
 
-  @IsDateString()
-  arrivalTime: Date;
+  @IsString()
+  arrivalTime: string;
 
   @IsNumber()
   basePrice: number;

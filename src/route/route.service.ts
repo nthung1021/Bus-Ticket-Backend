@@ -105,10 +105,7 @@ export class RouteService {
   }
 
   async findAll(includePoints: boolean = false): Promise<Route[]> {
-    const relations = ['operator', 'trips'];
-    if (includePoints) {
-      relations.push('points');
-    }
+    const relations = ['operator', 'trips', 'points'];
     
     return await this.routeRepository.find({
       relations,
@@ -125,7 +122,7 @@ export class RouteService {
   }
 
   async findOne(id: string, includePoints: boolean = true): Promise<Route> {
-    const relations = ['operator', 'trips'];
+    const relations = ['operator', 'trips', 'points'];
     if (includePoints) {
       relations.push('points');
     }

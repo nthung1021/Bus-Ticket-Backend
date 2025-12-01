@@ -15,7 +15,7 @@ export class Route {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'operator_id' })
+  @Column({ name: 'operator_id', nullable: true })
   operatorId: string;
 
   @Column()
@@ -40,7 +40,8 @@ export class Route {
   points: RoutePoint[];
 
   // Relations
-  @ManyToOne(() => Operator, (operator) => operator.routes)
+  @ManyToOne(() => Operator, (operator) => operator.routes, { nullable: true })
+  @JoinColumn({ name: 'operator_id' })
   operator: Operator;
 
   @OneToMany(() => Trip, (trip) => trip.route)

@@ -38,10 +38,11 @@ export class CreateRouteDto {
   @ApiProperty({ 
     description: 'List of route points including pickup and dropoff locations',
     type: [CreateRoutePointDto],
-    required: true
+    required: false
   })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateRoutePointDto)
-  points: CreateRoutePointDto[];
+  @IsOptional()
+  points?: CreateRoutePointDto[];
 }
