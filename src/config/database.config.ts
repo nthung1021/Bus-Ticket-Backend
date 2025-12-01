@@ -46,7 +46,6 @@ export const databaseConfig = (
   ],
   synchronize:
     configService.get<string>('NODE_ENV', 'development') !== 'production',
-  logging:
-    configService.get<string>('NODE_ENV', 'development') === 'development',
+  logging: false,
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
 });

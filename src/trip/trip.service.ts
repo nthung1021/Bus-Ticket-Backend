@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, MoreThan, And, Not } from 'typeorm';
+import { Repository, LessThan, MoreThan, LessThanOrEqual, MoreThanOrEqual, And, Not } from 'typeorm';
 import { Trip, TripStatus } from '../entities/trip.entity';
 import { Route } from '../entities/route.entity';
 import { Bus } from '../entities/bus.entity';
@@ -33,20 +33,27 @@ export class TripService {
         {
           busId,
           status: Not(TripStatus.CANCELLED),
-          departureTime: And(LessThan(arrivalTime), MoreThan(departureTime)),
+          departureTime: And(LessThan(arrivalTime), MoreThanOrEqual(departureTime)),
         },
         // Trip that ends during our proposed time
         {
           busId,
           status: Not(TripStatus.CANCELLED),
-          arrivalTime: And(LessThan(arrivalTime), MoreThan(departureTime)),
+          arrivalTime: And(LessThanOrEqual(arrivalTime), MoreThan(departureTime)),
         },
         // Trip that completely encompasses our proposed time
         {
           busId,
           status: Not(TripStatus.CANCELLED),
-          departureTime: LessThan(departureTime),
-          arrivalTime: MoreThan(arrivalTime),
+          departureTime: LessThanOrEqual(departureTime),
+          arrivalTime: MoreThanOrEqual(arrivalTime),
+        },
+        // Our proposed time completely encompasses the trip
+        {
+          busId,
+          status: Not(TripStatus.CANCELLED),
+          departureTime: MoreThanOrEqual(departureTime),
+          arrivalTime: LessThanOrEqual(arrivalTime),
         },
       ],
     });
@@ -129,6 +136,7 @@ export class TripService {
       new Date(departureTime),
       new Date(arrivalTime),
     );
+    // console.log(isBusAvailable)
 
     if (!isBusAvailable) {
       throw new ConflictException('Bus is already scheduled for this time period');
