@@ -4,6 +4,7 @@ import { User } from '../entities/user.entity';
 import { Operator } from '../entities/operator.entity';
 import { Bus } from '../entities/bus.entity';
 import { Route } from '../entities/route.entity';
+import { RoutePoint } from '../entities/route-point.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { Booking } from '../entities/booking.entity';
@@ -30,6 +31,7 @@ export const databaseConfig = (
     Operator,
     Bus,
     Route,
+    RoutePoint,
     Trip,
     Seat,
     Booking,

@@ -4,9 +4,11 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { Operator } from './operator.entity';
 import { Trip } from './trip.entity';
+import { RoutePoint } from './route-point.entity';
 
 @Entity('routes')
 export class Route {
@@ -17,16 +19,25 @@ export class Route {
   operatorId: string;
 
   @Column()
-  origin: string;
+  name: string;
 
   @Column()
-  destination: string;
+  description: string;
 
-  @Column({ name: 'distance_km' })
-  distanceKm: number;
+  @Column({ default: true })
+  isActive: boolean;
 
-  @Column({ name: 'estimated_minutes' })
-  estimatedMinutes: number;
+  @Column({ type: 'json', nullable: true })
+  amenities: string[];
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
+  updatedAt: Date;
+
+  @OneToMany(() => RoutePoint, point => point.route, { cascade: true })
+  points: RoutePoint[];
 
   // Relations
   @ManyToOne(() => Operator, (operator) => operator.routes)
