@@ -15,6 +15,7 @@ import { SeatStatus } from '../entities/seat-status.entity';
 import { Payment } from '../entities/payment.entity';
 import { Notification } from '../entities/notification.entity';
 import { AuditLog } from 'src/entities/audit-log.entity';
+import { SeatLayout } from '../entities/seat-layout.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
 
 export const databaseConfig = (
@@ -30,6 +31,7 @@ export const databaseConfig = (
     User,
     Operator,
     Bus,
+    SeatLayout,
     Route,
     RoutePoint,
     Trip,

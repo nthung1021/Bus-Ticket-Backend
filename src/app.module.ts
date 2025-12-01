@@ -11,6 +11,7 @@ import { BusModule } from './bus/bus.module';
 import { RouteController } from './route/route.controller';
 import { RouteModule } from './route/route.module';
 import { OperatorModule } from './operator/operator.module';
+import { SeatLayoutModule } from './seat-layout/seat-layout.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { OperatorModule } from './operator/operator.module';
     BusModule,
     RouteModule,
     OperatorModule,
+    SeatLayoutModule,
   ],
   controllers: [AppController, RouteController],
   providers: [AppService],
