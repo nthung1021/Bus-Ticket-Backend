@@ -84,7 +84,7 @@ export const databaseConfig = (
     idleTimeoutMillis: configService.get<number>('DB_IDLE_TIMEOUT', 30000),
     
     // Number of milliseconds to wait before timing out when connecting a new client
-    connectionTimeoutMillis: configService.get<number>('DB_CONNECTION_TIMEOUT', 2000),
+    connectionTimeoutMillis: configService.get<number>('DB_CONNECTION_TIMEOUT', 5000),
     
     // How often to run the reaper to check for idle connections (in milliseconds)
     reapIntervalMillis: configService.get<number>('DB_REAP_INTERVAL', 1000),
@@ -114,6 +114,6 @@ export const databaseConfig = (
       // Staging: Require SSL with less strict validation
       sslmode: "require",
       rejectUnauthorized: false,
-    } : false,  // Development: No SSL
+    } : false, 
   },
 });

@@ -1,4 +1,3 @@
-// src/trips/seeds/seed-operators.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../app.module';
 import { DataSource } from 'typeorm';

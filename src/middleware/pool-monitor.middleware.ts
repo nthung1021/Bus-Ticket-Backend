@@ -1,6 +1,6 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { DatabaseService } from '../services/database.service';
+import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class PoolMonitorMiddleware implements NestMiddleware {

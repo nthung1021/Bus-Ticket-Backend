@@ -36,7 +36,7 @@ export class Route {
   @Column({ name: 'estimated_minutes', nullable: true })
   estimatedMinutes: number;
 
-  @Column({ default: true })
+  @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
   @Column({ type: 'json', nullable: true })
