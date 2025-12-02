@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, IsUUID, ValidateNested, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CreateRoutePointDto } from './create-route-point.dto';
 
@@ -11,6 +11,26 @@ export class CreateRouteDto {
   @ApiProperty({ description: 'Name of the route', example: 'HCM to Da Nang Express' })
   @IsString()
   name: string;
+
+  @ApiProperty({ description: 'Starting point of the route', example: 'Ho Chi Minh City' })
+  @IsString()
+  origin: string;
+
+  @ApiProperty({ description: 'Destination of the route', example: 'Da Nang' })
+  @IsString()
+  destination: string;
+
+  @ApiProperty({ description: 'Distance in kilometers', example: 900, required: false })
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  distanceKm?: number;
+
+  @ApiProperty({ description: 'Estimated travel time in minutes', example: 720, required: false })
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  estimatedMinutes?: number;
 
   @ApiProperty({ description: 'Description of the route', example: 'Direct route from Ho Chi Minh City to Da Nang' })
   @IsString()

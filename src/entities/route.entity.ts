@@ -24,6 +24,18 @@ export class Route {
   @Column()
   description: string;
 
+  @Column({ name: 'origin' })
+  origin: string;
+
+  @Column({ name: 'destination' })
+  destination: string;
+
+  @Column({ name: 'distance_km', type: 'decimal', precision: 8, scale: 2, nullable: true })
+  distanceKm: number;
+
+  @Column({ name: 'estimated_minutes', nullable: true })
+  estimatedMinutes: number;
+
   @Column({ default: true })
   isActive: boolean;
 

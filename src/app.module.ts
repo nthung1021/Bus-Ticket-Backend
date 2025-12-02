@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -12,6 +12,9 @@ import { RouteController } from './route/route.controller';
 import { RouteModule } from './route/route.module';
 import { OperatorModule } from './operator/operator.module';
 import { SeatLayoutModule } from './seat-layout/seat-layout.module';
+import { DatabaseModule } from './database/database.module';
+import { HealthModule } from './health/health.module';
+import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
 
 @Module({
   imports: [
@@ -33,7 +36,13 @@ import { SeatLayoutModule } from './seat-layout/seat-layout.module';
     OperatorModule,
     SeatLayoutModule,
   ],
-  controllers: [AppController, RouteController],
+  controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(PoolMonitorMiddleware)
+      .forRoutes('*'); // Apply to all routes
+  }
+}
