@@ -1,0 +1,14 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { SeatLayoutController } from './seat-layout.controller';
+import { SeatLayoutService } from './seat-layout.service';
+import { SeatLayout } from '../entities/seat-layout.entity';
+import { Bus } from '../entities/bus.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([SeatLayout, Bus])],
+  controllers: [SeatLayoutController],
+  providers: [SeatLayoutService],
+  exports: [SeatLayoutService],
+})
+export class SeatLayoutModule {}
