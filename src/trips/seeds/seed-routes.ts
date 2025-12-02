@@ -42,14 +42,14 @@ const ROUTES = [
     operatorName: 'Saigon Express'
   },
   {
-    origin: 'Hanoi',
+    origin: 'Ha Noi',
     destination: 'Hai Phong',
     distanceKm: 120,
     estimatedMinutes: 150,
     operatorName: 'Red River Transport'
   },
   {
-    origin: 'Hanoi',
+    origin: 'Ha Noi',
     destination: 'Ninh Binh',
     distanceKm: 95,
     estimatedMinutes: 120,

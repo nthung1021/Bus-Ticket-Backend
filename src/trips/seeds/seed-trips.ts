@@ -42,7 +42,7 @@ const TRIPS = [
   },
   { 
     routeKey: { 
-      origin: 'Hanoi', 
+      origin: 'Ha Noi', 
       destination: 'Hai Phong' 
     }, 
       busPlate: '29B-11111', 
@@ -114,7 +114,7 @@ const TRIPS = [
   },
   { 
     routeKey: { 
-      origin: 'Hanoi', 
+      origin: 'Ha Noi', 
       destination: 'Ninh Binh' 
     }, 
     busPlate: '29C-77777', 
