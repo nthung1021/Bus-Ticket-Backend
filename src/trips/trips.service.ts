@@ -22,8 +22,8 @@ import { Route } from '../entities/route.entity';
 import { Bus } from '../entities/bus.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { SearchTripsDto } from './dto/search-trips.dto';
-import { CreateTripDto } from '../trip/dto/create-trip.dto';
-import { UpdateTripDto } from '../trip/dto/update-trip.dto';
+import { CreateTripDto } from './dto/create-trip.dto';
+import { UpdateTripDto } from './dto/update-trip.dto';
 
 @Injectable()
 export class TripsService {

@@ -6,7 +6,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { databaseConfig } from './config/database.config';
 import { AdminModule } from './admin/admin.module';
-import { TripModule } from './trip/trip.module';
+import { TripsModule } from './trips/trips.module';
 import { BusModule } from './bus/bus.module';
 import { RouteController } from './route/route.controller';
 import { RouteModule } from './route/route.module';
@@ -30,11 +30,12 @@ import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
     }),
     AuthModule,
     AdminModule,
-    TripModule,
+    TripsModule,
     BusModule,
     RouteModule,
     OperatorModule,
     SeatLayoutModule,
+    DatabaseModule
   ],
   controllers: [AppController],
   providers: [AppService],
