@@ -88,6 +88,7 @@ export class TripsController {
 
   @Put(':id')
   update(@Param('id') id: string, @Body() updateTripDto: UpdateTripDto): Promise<Trip> {
+    // console.log(updateTripDto);
     return this.tripsService.update(id, updateTripDto);
   }
 

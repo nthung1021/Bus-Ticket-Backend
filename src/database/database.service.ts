@@ -200,18 +200,18 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       };
 
       // Log detailed pool statistics in development environment
-      if (process.env.NODE_ENV === 'development') {
-        this.logger.debug('📊 Database pool stats', {
-          // Include all basic stats
-          ...stats,
-          // Add raw PostgreSQL statistics
-          postgresStats: connectionStats,
-          // Include environment information
-          environment: process.env.NODE_ENV,
-          // Add timestamp for correlation with other logs
-          loggedAt: new Date().toISOString()
-        });
-      }
+      // if (process.env.NODE_ENV === 'development') {
+      //   this.logger.debug('📊 Database pool stats', {
+      //     // Include all basic stats
+      //     ...stats,
+      //     // Add raw PostgreSQL statistics
+      //     postgresStats: connectionStats,
+      //     // Include environment information
+      //     environment: process.env.NODE_ENV,
+      //     // Add timestamp for correlation with other logs
+      //     loggedAt: new Date().toISOString()
+      //   });
+      // }
 
       return stats;
     } catch (error) {
