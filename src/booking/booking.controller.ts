@@ -1,13 +1,17 @@
 import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode, Put, Delete } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BookingService } from './booking.service';
+import { BookingSchedulerService } from './booking-scheduler.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
 export class BookingController {
-  constructor(private readonly bookingService: BookingService) {}
+  constructor(
+    private readonly bookingService: BookingService,
+    private readonly bookingSchedulerService: BookingSchedulerService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -109,6 +113,37 @@ export class BookingController {
       return result;
     } catch (error) {
       throw error;
+    }
+  }
+
+  // Admin endpoint - Manual cleanup of expired bookings
+  @Post('admin/cleanup-expired')
+  @HttpCode(HttpStatus.OK)
+  async cleanupExpiredBookings(): Promise<{
+    success: boolean;
+    message: string;
+    data: {
+      processed: number;
+      errors: string[];
+    };
+  }> {
+    try {
+      const result = await this.bookingSchedulerService.triggerManualCleanup();
+      
+      return {
+        success: true,
+        message: `Cleanup completed. Processed ${result.processed} expired bookings.`,
+        data: result,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Cleanup failed: ${error.message}`,
+        data: {
+          processed: 0,
+          errors: [error.message],
+        },
+      };
     }
   }
 }

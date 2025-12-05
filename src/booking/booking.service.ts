@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
@@ -6,11 +6,14 @@ import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
+import { AuditLog } from '../entities/audit-log.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 
 @Injectable()
 export class BookingService {
+  private readonly logger = new Logger(BookingService.name);
+
   constructor(
     @InjectRepository(Booking)
     private bookingRepository: Repository<Booking>,
@@ -22,6 +25,8 @@ export class BookingService {
     private tripRepository: Repository<Trip>,
     @InjectRepository(Seat)
     private seatRepository: Repository<Seat>,
+    @InjectRepository(AuditLog)
+    private auditLogRepository: Repository<AuditLog>,
     private dataSource: DataSource,
   ) {}
 
@@ -352,5 +357,80 @@ export class BookingService {
       .where('booking.status = :status', { status: BookingStatus.PENDING })
       .andWhere('booking.bookedAt < :expiryTime', { expiryTime: fifteenMinutesAgo })
       .getMany();
+  }
+
+  private async createAuditLog(
+    action: string,
+    details?: string,
+    actorId?: string,
+    targetUserId?: string,
+    metadata?: any,
+  ): Promise<void> {
+    try {
+      const auditLog = this.auditLogRepository.create({
+        action,
+        details,
+        actorId,
+        targetUserId,
+        metadata,
+      });
+      await this.auditLogRepository.save(auditLog);
+      this.logger.log(`Audit logged: ${action}`);
+    } catch (error) {
+      this.logger.error(`Failed to create audit log: ${error.message}`);
+    }
+  }
+
+  async processExpiredBookings(): Promise<{ processed: number; errors: string[] }> {
+    const errors: string[] = [];
+    let processed = 0;
+
+    try {
+      this.logger.log('Starting expired bookings cleanup...');
+      
+      const expiredBookings = await this.findExpiredBookings();
+      
+      if (expiredBookings.length === 0) {
+        this.logger.log('No expired bookings found');
+        return { processed: 0, errors: [] };
+      }
+
+      this.logger.log(`Found ${expiredBookings.length} expired bookings`);
+
+      for (const booking of expiredBookings) {
+        try {
+          await this.expireBooking(booking.id);
+          processed++;
+          
+          // Log audit trail
+          await this.createAuditLog(
+            'AUTO_EXPIRED_BOOKING',
+            `Booking ${booking.id} automatically expired due to timeout`,
+            undefined, // no actor for automated process
+            undefined, // no target user
+            {
+              bookingId: booking.id,
+              previousStatus: BookingStatus.PENDING,
+              newStatus: BookingStatus.EXPIRED,
+              expiredAt: new Date(),
+            },
+          );
+          
+          this.logger.log(`Auto-expired booking ${booking.id}`);
+        } catch (error) {
+          const errorMsg = `Failed to expire booking ${booking.id}: ${error.message}`;
+          errors.push(errorMsg);
+          this.logger.error(errorMsg);
+        }
+      }
+
+      this.logger.log(`Expired bookings cleanup completed. Processed: ${processed}, Errors: ${errors.length}`);
+      
+      return { processed, errors };
+    } catch (error) {
+      const errorMsg = `Error during expired bookings cleanup: ${error.message}`;
+      this.logger.error(errorMsg);
+      return { processed, errors: [errorMsg] };
+    }
   }
 }

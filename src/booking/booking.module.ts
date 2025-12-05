@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-// import { ScheduleModule } from '@nestjs/schedule';
+import { ScheduleModule } from '@nestjs/schedule';
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
@@ -9,6 +9,7 @@ import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
+import { AuditLog } from '../entities/audit-log.entity';
 
 @Module({
   imports: [
@@ -18,11 +19,12 @@ import { Seat } from '../entities/seat.entity';
       SeatStatus,
       Trip,
       Seat,
+      AuditLog,
     ]),
-    // ScheduleModule.forRoot(), // Enable when @nestjs/schedule is installed
+    ScheduleModule.forRoot(),
   ],
   controllers: [BookingController],
-  providers: [BookingService, BookingSchedulerService], // BookingSchedulerService placeholder included
-  exports: [BookingService],
+  providers: [BookingService, BookingSchedulerService],
+  exports: [BookingService, BookingSchedulerService],
 })
 export class BookingModule {}

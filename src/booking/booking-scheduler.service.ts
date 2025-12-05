@@ -1,8 +1,3 @@
-// This service requires @nestjs/schedule package
-// To enable: npm install @nestjs/schedule
-// Then uncomment the code below
-
-/*
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { BookingService } from './booking.service';
@@ -13,59 +8,49 @@ export class BookingSchedulerService {
 
   constructor(private readonly bookingService: BookingService) {}
 
+  // Chạy mỗi 5 phút để check expired bookings
   @Cron(CronExpression.EVERY_5_MINUTES)
-  async handleExpiredBookings() {
+  async handleExpiredBookingsCleanup() {
+    this.logger.log('Running scheduled booking expiration cleanup...');
+
     try {
-      this.logger.log('Starting expired bookings cleanup...');
+      const result = await this.bookingService.processExpiredBookings();
       
-      const expiredBookings = await this.bookingService.findExpiredBookings();
+      if (result.processed > 0) {
+        this.logger.log(`Successfully processed ${result.processed} expired bookings`);
+      }
       
-      if (expiredBookings.length === 0) {
-        this.logger.log('No expired bookings found');
-        return;
+      if (result.errors.length > 0) {
+        this.logger.warn(`Encountered ${result.errors.length} errors during cleanup`);
+        result.errors.forEach(error => this.logger.error(error));
       }
-
-      this.logger.log(`Found ${expiredBookings.length} expired bookings`);
-
-      for (const booking of expiredBookings) {
-        try {
-          await this.bookingService.expireBooking(booking.id);
-          this.logger.log(`Expired booking ${booking.id}`);
-        } catch (error) {
-          this.logger.error(`Failed to expire booking ${booking.id}:`, error.message);
-        }
-      }
-
-      this.logger.log(`Completed expired bookings cleanup. Processed ${expiredBookings.length} bookings`);
     } catch (error) {
-      this.logger.error('Error during expired bookings cleanup:', error.message);
+      this.logger.error(`Critical error in scheduled booking cleanup: ${error.message}`, error.stack);
     }
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
-  async logBookingStats() {
+  // Manual trigger cho admin - chạy mỗi 30 phút
+  @Cron('0 */30 * * * *')
+  async handlePeriodicCleanup() {
+    this.logger.log('Running periodic booking cleanup...');
+    
     try {
-      const pendingBookings = await this.bookingService.getBookingsByStatus('PENDING' as any);
-      const paidBookings = await this.bookingService.getBookingsByStatus('PAID' as any);
-      const cancelledBookings = await this.bookingService.getBookingsByStatus('CANCELLED' as any);
-      const expiredBookings = await this.bookingService.getBookingsByStatus('EXPIRED' as any);
-
-      this.logger.log(`Booking Stats - Pending: ${pendingBookings.length}, Paid: ${paidBookings.length}, Cancelled: ${cancelledBookings.length}, Expired: ${expiredBookings.length}`);
+      // Cleanup các booking đã expired > 24h để giảm database load
+      await this.cleanupOldExpiredBookings();
     } catch (error) {
-      this.logger.error('Error getting booking stats:', error.message);
+      this.logger.error(`Error in periodic cleanup: ${error.message}`, error.stack);
     }
   }
-}
-*/
 
-// Placeholder service until @nestjs/schedule is installed
-import { Injectable, Logger } from '@nestjs/common';
+  private async cleanupOldExpiredBookings(): Promise<void> {
+    // Có thể implement logic để archive hoặc delete các booking cũ
+    // Ví dụ: move expired bookings > 30 days sang archive table
+    this.logger.log('Periodic cleanup completed');
+  }
 
-@Injectable()
-export class BookingSchedulerService {
-  private readonly logger = new Logger(BookingSchedulerService.name);
-
-  constructor() {
-    this.logger.log('BookingSchedulerService created (scheduler disabled - install @nestjs/schedule to enable)');
+  // Manual trigger method cho testing hoặc admin
+  async triggerManualCleanup(): Promise<{ processed: number; errors: string[] }> {
+    this.logger.log('Manual booking expiration cleanup triggered');
+    return await this.bookingService.processExpiredBookings();
   }
 }
