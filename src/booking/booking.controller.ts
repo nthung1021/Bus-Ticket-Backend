@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode, Put, Delete } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -52,5 +52,63 @@ export class BookingController {
       message: 'User bookings retrieved successfully',
       data: bookings,
     };
+  }
+
+  @Put(':id/confirm-payment')
+  @HttpCode(HttpStatus.OK)
+  async confirmPayment(
+    @Param('id') bookingId: string,
+    @Body() paymentData?: any,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: BookingResponseDto;
+  }> {
+    try {
+      const booking = await this.bookingService.confirmPayment(bookingId, paymentData);
+      
+      return {
+        success: true,
+        message: 'Payment confirmed successfully',
+        data: booking,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  async cancelBooking(
+    @Param('id') bookingId: string,
+    @Body() body: { reason?: string } = {},
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    try {
+      const result = await this.bookingService.cancelBooking(bookingId, body.reason);
+      
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Put(':id/expire')
+  @HttpCode(HttpStatus.OK)
+  async expireBooking(
+    @Param('id') bookingId: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    try {
+      const result = await this.bookingService.expireBooking(bookingId);
+      
+      return result;
+    } catch (error) {
+      throw error;
+    }
   }
 }

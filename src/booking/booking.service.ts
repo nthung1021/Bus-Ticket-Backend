@@ -178,4 +178,179 @@ export class BookingService {
       order: { bookedAt: 'DESC' },
     });
   }
+
+  async confirmPayment(bookingId: string, paymentData?: any): Promise<BookingResponseDto> {
+    return await this.dataSource.transaction(async manager => {
+      // 1. Find booking
+      const booking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['passengerDetails', 'seatStatuses'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      // 2. Validate booking status
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException(
+          `Cannot confirm payment for booking with status: ${booking.status}`,
+        );
+      }
+
+      // 3. Check if booking has expired (optional business rule)
+      const expirationTime = new Date(booking.bookedAt);
+      expirationTime.setMinutes(expirationTime.getMinutes() + 15);
+      
+      if (new Date() > expirationTime) {
+        // Auto-cancel expired booking
+        await this.cancelBooking(bookingId, 'Booking expired');
+        throw new BadRequestException('Booking has expired and been cancelled');
+      }
+
+      // 4. Update booking status to PAID
+      await manager.update(Booking, bookingId, {
+        status: BookingStatus.PAID,
+      });
+
+      // 5. Get updated booking
+      const updatedBooking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['passengerDetails', 'seatStatuses'],
+      });
+
+      if (!updatedBooking) {
+        throw new NotFoundException('Updated booking not found');
+      }
+
+      // 6. Prepare response
+      const seatStatuses = updatedBooking.seatStatuses || [];
+      
+      return {
+        id: updatedBooking.id,
+        tripId: updatedBooking.tripId,
+        totalAmount: updatedBooking.totalAmount,
+        status: updatedBooking.status,
+        bookedAt: updatedBooking.bookedAt,
+        expirationTimestamp: null, // No expiration for PAID bookings
+        passengers: updatedBooking.passengerDetails.map(passenger => ({
+          id: passenger.id,
+          fullName: passenger.fullName,
+          documentId: passenger.documentId,
+          seatCode: passenger.seatCode,
+        })),
+        seats: seatStatuses.map(status => ({
+          seatId: status.seatId,
+          seatCode: '', // Will be populated if needed
+          status: status.state,
+        })),
+      };
+    });
+  }
+
+  async cancelBooking(bookingId: string, reason?: string): Promise<{ success: boolean; message: string }> {
+    return await this.dataSource.transaction(async manager => {
+      // 1. Find booking
+      const booking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['seatStatuses'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      // 2. Validate booking status
+      if (booking.status === BookingStatus.CANCELLED) {
+        throw new BadRequestException('Booking is already cancelled');
+      }
+
+      if (booking.status === BookingStatus.PAID) {
+        throw new BadRequestException(
+          'Cannot cancel a paid booking. Please contact customer service for refund.',
+        );
+      }
+
+      // 3. Update booking status to CANCELLED
+      await manager.update(Booking, bookingId, {
+        status: BookingStatus.CANCELLED,
+      });
+
+      // 4. Release seats - update seat statuses back to AVAILABLE
+      const seatStatuses = booking.seatStatuses || [];
+      for (const seatStatus of seatStatuses) {
+        await manager.update(SeatStatus, seatStatus.id, {
+          bookingId: null,
+          state: SeatState.AVAILABLE,
+        });
+      }
+
+      return {
+        success: true,
+        message: reason 
+          ? `Booking cancelled: ${reason}`
+          : 'Booking cancelled successfully',
+      };
+    });
+  }
+
+  async expireBooking(bookingId: string): Promise<{ success: boolean; message: string }> {
+    return await this.dataSource.transaction(async manager => {
+      // 1. Find booking
+      const booking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['seatStatuses'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      // 2. Only expire PENDING bookings
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException(
+          `Cannot expire booking with status: ${booking.status}`,
+        );
+      }
+
+      // 3. Update booking status to EXPIRED
+      await manager.update(Booking, bookingId, {
+        status: BookingStatus.EXPIRED,
+      });
+
+      // 4. Release seats
+      const seatStatuses = booking.seatStatuses || [];
+      for (const seatStatus of seatStatuses) {
+        await manager.update(SeatStatus, seatStatus.id, {
+          bookingId: null,
+          state: SeatState.AVAILABLE,
+        });
+      }
+
+      return {
+        success: true,
+        message: 'Booking expired and seats released',
+      };
+    });
+  }
+
+  async getBookingsByStatus(status: BookingStatus): Promise<Booking[]> {
+    return await this.bookingRepository.find({
+      where: { status },
+      relations: ['user', 'trip', 'passengerDetails', 'seatStatuses'],
+      order: { bookedAt: 'DESC' },
+    });
+  }
+
+  async findExpiredBookings(): Promise<Booking[]> {
+    // Find PENDING bookings older than 15 minutes
+    const fifteenMinutesAgo = new Date();
+    fifteenMinutesAgo.setMinutes(fifteenMinutesAgo.getMinutes() - 15);
+
+    return await this.bookingRepository
+      .createQueryBuilder('booking')
+      .where('booking.status = :status', { status: BookingStatus.PENDING })
+      .andWhere('booking.bookedAt < :expiryTime', { expiryTime: fifteenMinutesAgo })
+      .getMany();
+  }
 }

@@ -6,7 +6,7 @@ export class BookingResponseDto {
   totalAmount: number;
   status: BookingStatus;
   bookedAt: Date;
-  expirationTimestamp: Date;
+  expirationTimestamp: Date | null;
   passengers: {
     id: string;
     fullName: string;
