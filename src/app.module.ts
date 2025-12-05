@@ -15,6 +15,7 @@ import { SeatLayoutModule } from './seat-layout/seat-layout.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
+import { DatabaseService } from './database/database.service';
 
 @Module({
   imports: [
@@ -38,7 +39,7 @@ import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
     DatabaseModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, DatabaseService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
