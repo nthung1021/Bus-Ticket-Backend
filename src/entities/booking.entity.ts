@@ -17,9 +17,9 @@ import { Notification } from './notification.entity';
 
 export enum BookingStatus {
   PENDING = 'pending',
-  CONFIRMED = 'confirmed',
-  CANCELLED = 'cancelled',
-  COMPLETED = 'completed',
+  PAID = 'paid',
+  CANCELLED = 'cancelled', 
+  EXPIRED = 'expired',
 }
 
 @Entity('bookings')
