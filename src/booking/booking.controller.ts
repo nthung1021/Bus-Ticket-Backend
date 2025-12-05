@@ -5,6 +5,18 @@ import { BookingSchedulerService } from './booking-scheduler.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 
+// Inline DTO to avoid import issues
+interface PassengerUpdateDto {
+  id: string;
+  fullName: string;
+  documentId: string;
+  seatCode: string;
+}
+
+interface UpdatePassengerDto {
+  passengers: PassengerUpdateDto[];
+}
+
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
 export class BookingController {
@@ -38,13 +50,56 @@ export class BookingController {
   }
 
   @Get(':id')
-  async getBooking(@Param('id') id: string) {
-    const booking = await this.bookingService.findBookingById(id);
-    return {
-      success: true,
-      message: 'Booking retrieved successfully',
-      data: booking,
-    };
+  @HttpCode(HttpStatus.OK)
+  async getBookingDetails(
+    @Param('id') bookingId: string,
+    @Request() req: any,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: any; // Use any for now to avoid type issues
+  }> {
+    try {
+      const booking = await this.bookingService.findBookingById(bookingId);
+      
+      // Check if user owns this booking or is admin
+      if (booking.userId !== req.user.userId) {
+        // TODO: Add admin role check here if needed
+        throw new Error('Access denied');
+      }
+      
+      // Transform booking for response
+      const responseData = {
+        id: booking.id,
+        userId: booking.userId,
+        tripId: booking.tripId,
+        totalAmount: booking.totalAmount,
+        status: booking.status,
+        bookedAt: booking.bookedAt,
+        cancelledAt: booking.cancelledAt,
+        passengers: booking.passengerDetails?.map(p => ({
+          id: p.id,
+          fullName: p.fullName,
+          documentId: p.documentId,
+          seatCode: p.seatCode,
+        })) || [],
+        seats: booking.seatStatuses?.map(s => ({
+          id: s.id,
+          seatCode: s.seat?.seatCode || '',
+          state: s.state,
+        })) || [],
+        expirationTimestamp: booking.status === 'pending' ? 
+          new Date(booking.bookedAt.getTime() + 15 * 60 * 1000) : null,
+      };
+      
+      return {
+        success: true,
+        message: 'Booking details retrieved successfully',
+        data: responseData,
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   @Get()
@@ -56,6 +111,55 @@ export class BookingController {
       message: 'User bookings retrieved successfully',
       data: bookings,
     };
+  }
+
+  @Put(':id/update')
+  @HttpCode(HttpStatus.OK)
+  async updatePassengerInfo(
+    @Param('id') bookingId: string,
+    @Body() updatePassengerDto: UpdatePassengerDto,
+    @Request() req: any,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    try {
+      const updatedBooking = await this.bookingService.updatePassengerInfo(
+        bookingId,
+        updatePassengerDto,
+        req.user.userId,
+      );
+      
+      return {
+        success: true,
+        message: 'Passenger information updated successfully',
+        data: updatedBooking,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Put(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelBookingByUser(
+    @Param('id') bookingId: string,
+    @Request() req: any,
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    try {
+      const result = await this.bookingService.cancelBookingByUser(
+        bookingId,
+        req.user.userId,
+      );
+      
+      return result;
+    } catch (error) {
+      throw error;
+    }
   }
 
   @Put(':id/confirm-payment')

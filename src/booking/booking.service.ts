@@ -359,6 +359,150 @@ export class BookingService {
       .getMany();
   }
 
+  async updatePassengerInfo(
+    bookingId: string,
+    updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId: string; seatCode: string; }> },
+    userId: string,
+  ): Promise<any> {
+    return await this.dataSource.transaction(async (manager) => {
+      // Find and verify booking ownership
+      const booking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['passengerDetails'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.userId !== userId) {
+        throw new BadRequestException('Access denied');
+      }
+
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException('Can only update passenger info for pending bookings');
+      }
+
+      // Update passenger details
+      for (const passengerUpdate of updatePassengerDto.passengers) {
+        const passengerDetail = await manager.findOne(PassengerDetail, {
+          where: { id: passengerUpdate.id, bookingId: bookingId },
+        });
+
+        if (!passengerDetail) {
+          throw new NotFoundException(`Passenger detail with ID ${passengerUpdate.id} not found`);
+        }
+
+        // Update passenger information
+        await manager.update(PassengerDetail, passengerUpdate.id, {
+          fullName: passengerUpdate.fullName,
+          documentId: passengerUpdate.documentId,
+          seatCode: passengerUpdate.seatCode,
+        });
+      }
+
+      // Create audit log
+      await this.createAuditLog(
+        'UPDATE_PASSENGER_INFO',
+        `Updated passenger information for booking ${bookingId}`,
+        userId,
+        undefined,
+        {
+          bookingId,
+          updatedPassengers: updatePassengerDto.passengers.map(p => p.id),
+        },
+      );
+
+      // Return updated booking
+      const updatedBooking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'passengerDetails', 'seatStatuses', 'seatStatuses.seat'],
+      });
+
+      if (!updatedBooking) {
+        throw new NotFoundException('Updated booking not found');
+      }
+
+      // Transform to response format
+      return {
+        id: updatedBooking.id,
+        userId: updatedBooking.userId,
+        tripId: updatedBooking.tripId,
+        totalAmount: updatedBooking.totalAmount,
+        status: updatedBooking.status,
+        bookedAt: updatedBooking.bookedAt,
+        cancelledAt: updatedBooking.cancelledAt,
+        passengers: updatedBooking.passengerDetails?.map(p => ({
+          id: p.id,
+          fullName: p.fullName,
+          documentId: p.documentId,
+          seatCode: p.seatCode,
+        })) || [],
+        seats: updatedBooking.seatStatuses?.map(s => ({
+          id: s.id,
+          seatCode: s.seat?.seatCode || '',
+          state: s.state,
+        })) || [],
+        expirationTimestamp: updatedBooking.status === 'pending' ? 
+          new Date(updatedBooking.bookedAt.getTime() + 15 * 60 * 1000) : null,
+      };
+    });
+  }
+
+  async cancelBookingByUser(bookingId: string, userId: string): Promise<{ success: boolean; message: string; }> {
+    return await this.dataSource.transaction(async (manager) => {
+      // Find and verify booking ownership
+      const booking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['seatStatuses'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.userId !== userId) {
+        throw new BadRequestException('Access denied');
+      }
+
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException('Can only cancel pending bookings');
+      }
+
+      // Update booking status to cancelled
+      await manager.update(Booking, bookingId, {
+        status: BookingStatus.CANCELLED,
+        cancelledAt: new Date(),
+      });
+
+      // Release seats
+      for (const seatStatus of booking.seatStatuses) {
+        await manager.update(SeatStatus, seatStatus.id, {
+          state: SeatState.AVAILABLE,
+        });
+      }
+
+      // Create audit log
+      await this.createAuditLog(
+        'USER_CANCEL_BOOKING',
+        `Booking ${bookingId} cancelled by user`,
+        userId,
+        undefined,
+        {
+          bookingId,
+          previousStatus: BookingStatus.PENDING,
+          newStatus: BookingStatus.CANCELLED,
+          cancelledAt: new Date(),
+        },
+      );
+
+      return {
+        success: true,
+        message: 'Booking cancelled successfully',
+      };
+    });
+  }
+
   private async createAuditLog(
     action: string,
     details?: string,

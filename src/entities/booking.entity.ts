@@ -53,6 +53,9 @@ export class Booking {
   @CreateDateColumn({ name: 'booked_at' })
   bookedAt: Date;
 
+  @Column({ name: 'cancelled_at', type: 'timestamp', nullable: true })
+  cancelledAt?: Date;
+
   // Relations
   @ManyToOne(() => User, (user) => user.bookings)
   @JoinColumn({ name: 'user_id' })
