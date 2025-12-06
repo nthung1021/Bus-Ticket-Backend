@@ -1,14 +1,54 @@
-import { Controller, Get, OnModuleInit } from '@nestjs/common';
+import { Controller, Get, OnModuleInit, Param } from '@nestjs/common';
 import { DatabaseService } from './database.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { DataSource } from 'typeorm';
+import { Seat } from '../entities/seat.entity';
 
 @ApiTags('Database')
 @Controller('database')
 export class DatabaseController implements OnModuleInit {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private dataSource: DataSource
+  ) {}
 
   onModuleInit() {
     console.log('🔗 Database monitoring endpoints initialized');
+  }
+
+  @Get('seats/bus/:busId')
+  @ApiOperation({ summary: 'Debug: Get all seats for a bus' })
+  async getSeatsForBus(@Param('busId') busId: string) {
+    try {
+      const seats = await this.dataSource
+        .getRepository(Seat)
+        .find({ 
+          where: { busId },
+          take: 50, // Limit to first 50 seats
+          relations: ['seatStatuses'] // Include seat status info
+        });
+      
+      return { 
+        success: true, 
+        busId,
+        seatCount: seats.length,
+        seats: seats.map(s => ({
+          id: s.id,
+          seatCode: s.seatCode,
+          seatType: s.seatType,
+          isActive: s.isActive,
+          busId: s.busId,
+          // Include seat status info if available
+          statusCount: s.seatStatuses?.length || 0
+        }))
+      };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.message,
+        busId 
+      };
+    }
   }
 
   @Get('health')

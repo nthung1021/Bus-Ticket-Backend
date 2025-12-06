@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsArray, ValidateNested, IsUUID, ArrayMinSize } from 'class-validator';
+import { IsNotEmpty, IsString, IsArray, ValidateNested, IsUUID, ArrayMinSize, IsOptional, IsEmail, IsIn, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class PassengerDto {
@@ -13,6 +13,20 @@ export class PassengerDto {
   @IsNotEmpty()
   @IsString()
   seatCode: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['id', 'passport', 'license'])
+  documentType?: string;
+
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
+
+  @IsOptional()
+  @ValidateIf((o) => o.email && o.email.trim() !== '')
+  @IsEmail({}, { message: 'Email must be a valid email address' })
+  email?: string;
 }
 
 export class SeatDto {
@@ -51,4 +65,8 @@ export class CreateBookingDto {
 
   @IsNotEmpty()
   totalPrice: number;
+
+  @IsOptional()
+  @IsString()
+  paymentMethod?: string;
 }

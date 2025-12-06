@@ -77,6 +77,28 @@ export class BookingController {
         status: booking.status,
         bookedAt: booking.bookedAt,
         cancelledAt: booking.cancelledAt,
+        trip: booking.trip ? {
+          id: booking.trip.id,
+          departureTime: booking.trip.departureTime,
+          arrivalTime: booking.trip.arrivalTime,
+          basePrice: booking.trip.basePrice,
+          status: booking.trip.status,
+          route: booking.trip.route ? {
+            id: booking.trip.route.id,
+            name: booking.trip.route.name,
+            description: booking.trip.route.description,
+            origin: booking.trip.route.origin,
+            destination: booking.trip.route.destination,
+            distanceKm: booking.trip.route.distanceKm,
+            estimatedMinutes: booking.trip.route.estimatedMinutes,
+          } : null,
+          bus: booking.trip.bus ? {
+            id: booking.trip.bus.id,
+            plateNumber: booking.trip.bus.plateNumber,
+            model: booking.trip.bus.model,
+            seatCapacity: booking.trip.bus.seatCapacity,
+          } : null,
+        } : null,
         passengers: booking.passengerDetails?.map(p => ({
           id: p.id,
           fullName: p.fullName,
@@ -85,8 +107,14 @@ export class BookingController {
         })) || [],
         seats: booking.seatStatuses?.map(s => ({
           id: s.id,
-          seatCode: s.seat?.seatCode || '',
+          seatId: s.seatId,
           state: s.state,
+          seat: s.seat ? {
+            id: s.seat.id,
+            seatCode: s.seat.seatCode,
+            seatType: s.seat.seatType,
+            isActive: s.seat.isActive,
+          } : null,
         })) || [],
         expirationTimestamp: booking.status === 'pending' ? 
           new Date(booking.bookedAt.getTime() + 15 * 60 * 1000) : null,

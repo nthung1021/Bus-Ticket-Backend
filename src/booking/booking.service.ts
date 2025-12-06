@@ -92,12 +92,12 @@ export class BookingService {
         throw new ConflictException(`Seats ${unavailableCodes.join(', ')} are no longer available`);
       }
 
-      // 6. Create booking
+      // 6. Create booking with PAID status since payment is bypassed
       const booking = manager.create(Booking, {
         userId,
         tripId,
         totalAmount: totalPrice,
-        status: BookingStatus.PENDING,
+        status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
       });
 
       const savedBooking = await manager.save(booking);
@@ -136,9 +136,8 @@ export class BookingService {
         }
       }
 
-      // 9. Calculate expiration time (15 minutes for PENDING bookings)
-      const expirationTimestamp = new Date();
-      expirationTimestamp.setMinutes(expirationTimestamp.getMinutes() + 15);
+      // 9. Set expiration time (null for PAID bookings, they don't expire)
+      const expirationTimestamp = null; // PAID bookings don't need expiration
 
       // 10. Prepare response
       return {
@@ -166,7 +165,15 @@ export class BookingService {
   async findBookingById(bookingId: string): Promise<Booking> {
     const booking = await this.bookingRepository.findOne({
       where: { id: bookingId },
-      relations: ['user', 'trip', 'passengerDetails', 'seatStatuses'],
+      relations: [
+        'user', 
+        'trip', 
+        'trip.route',
+        'trip.bus', 
+        'passengerDetails', 
+        'seatStatuses',
+        'seatStatuses.seat'
+      ],
     });
 
     if (!booking) {

@@ -5,6 +5,7 @@ import { seedOperators } from './seed-operators';
 import { seedBuses } from './seed-buses';
 import { seedRoutes } from './seed-routes';
 import { seedTrips } from './seed-trips';
+import { seedSeats } from './seed-seats';
 
 async function runAll() {
   // create and reuse a single DataSource to avoid multiple app contexts
@@ -15,6 +16,7 @@ async function runAll() {
   try {
     await seedOperators(ds);
     await seedBuses(ds);
+    await seedSeats(ds); // Add seat seeding after buses are created
     await seedRoutes(ds);
     await seedTrips(ds);
     console.log('All seeds finished successfully.');
