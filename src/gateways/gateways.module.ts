@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { SeatStatusGateway } from './seat-status.gateway';
+import { SeatStatus } from '../entities/seat-status.entity';
 
 @Module({
-    imports: [ConfigModule],
+    imports: [ConfigModule, TypeOrmModule.forFeature([SeatStatus])],
     providers: [SeatStatusGateway],
     exports: [SeatStatusGateway],
 })
