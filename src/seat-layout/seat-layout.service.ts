@@ -18,7 +18,7 @@ export class SeatLayoutService {
     private readonly seatRepository: Repository<Seat>,
     @InjectRepository(SeatStatus)
     private readonly seatStatusRepository: Repository<SeatStatus>,
-  ) {}
+  ) { }
 
   async create(createSeatLayoutDto: CreateSeatLayoutDto): Promise<SeatLayout> {
     // Verify bus exists
@@ -95,7 +95,7 @@ export class SeatLayoutService {
     }
 
     const templateConfig = this.getTemplateConfig(createFromTemplateDto.layoutType);
-    
+
     // Create seats in database based on template
     const createdSeats: Seat[] = [];
     for (const seatInfo of templateConfig.layoutConfig.seats) {
@@ -171,10 +171,16 @@ export class SeatLayoutService {
       const tempConfig = { ...seatLayout, ...updateSeatLayoutDto };
       this.validateLayoutConfig(tempConfig as any);
 
-      // Handle seat updates
-      await this.updateSeats(seatLayout.busId, seatLayout.layoutConfig?.seats || [], updateSeatLayoutDto.layoutConfig.seats || []);
-    }
+      // Ensure seats array exists to maintain reference
+      if (!updateSeatLayoutDto.layoutConfig.seats) {
+        updateSeatLayoutDto.layoutConfig.seats = [];
+      }
 
+      // Handle seat updates - this will update newSeat.id with database UUIDs
+      // updateSeats modifies the seats array in-place, updating IDs with database UUIDs
+      await this.updateSeats(seatLayout.busId, seatLayout.layoutConfig?.seats || [], updateSeatLayoutDto.layoutConfig.seats);
+    }
+    // console.log(updateSeatLayoutDto.layoutConfig?.seats);
     Object.assign(seatLayout, updateSeatLayoutDto);
     return await this.seatLayoutRepository.save(seatLayout);
   }
@@ -198,17 +204,16 @@ export class SeatLayoutService {
       // Then delete the seats
       await this.seatRepository.delete(seatIdsToDelete);
     }
-
     // Create or update seats
     for (const newSeat of newSeats) {
       const existingSeat = oldSeats.find(seat => seat.code === newSeat.code);
-      
       if (existingSeat) {
         // Update existing seat
         await this.seatRepository.update(existingSeat.id, {
           seatType: this.mapSeatType(newSeat.type),
           isActive: true,
         });
+        newSeat.id = existingSeat.id;
       } else {
         // Create new seat
         const seat = this.seatRepository.create({
@@ -218,6 +223,7 @@ export class SeatLayoutService {
           busId,
         });
         const savedSeat = await this.seatRepository.save(seat);
+        // console.log(savedSeat);
         newSeat.id = savedSeat.id; // Update with actual database ID
       }
     }
@@ -232,7 +238,7 @@ export class SeatLayoutService {
 
   private validateLayoutConfig(layoutConfig: any): void {
     const { layoutType, totalRows, seatsPerRow, layoutConfig: config } = layoutConfig;
-    
+
     if (!config || !config.seats || !config.dimensions) {
       throw new BadRequestException('Invalid layout configuration');
     }
@@ -300,7 +306,7 @@ export class SeatLayoutService {
     const rowSpacing = 10;
 
     const seats: SeatInfo[] = [];
-    
+
     for (let row = 1; row <= rows; row++) {
       for (let pos = 1; pos <= seatsPerRow; pos++) {
         const seat: SeatInfo = {
@@ -348,7 +354,7 @@ export class SeatLayoutService {
     const rowSpacing = 10;
 
     const seats: SeatInfo[] = [];
-    
+
     for (let row = 1; row <= rows; row++) {
       for (let pos = 1; pos <= seatsPerRow; pos++) {
         const seat: SeatInfo = {
@@ -396,7 +402,7 @@ export class SeatLayoutService {
     const rowSpacing = 15;
 
     const seats: SeatInfo[] = [];
-    
+
     for (let row = 1; row <= rows; row++) {
       for (let pos = 1; pos <= seatsPerRow; pos++) {
         const seat: SeatInfo = {
@@ -444,7 +450,7 @@ export class SeatLayoutService {
     const rowSpacing = 20;
 
     const seats: SeatInfo[] = [];
-    
+
     for (let row = 1; row <= rows; row++) {
       for (let pos = 1; pos <= seatsPerRow; pos++) {
         const seat: SeatInfo = {
