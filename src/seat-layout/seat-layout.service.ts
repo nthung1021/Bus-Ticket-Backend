@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SeatLayout, SeatLayoutType, SeatInfo, SeatPosition, SeatLayoutConfig, SeatPricingConfig } from '../entities/seat-layout.entity';
 import { Bus } from '../entities/bus.entity';
+import { Seat, SeatType } from '../entities/seat.entity';
 import { CreateSeatLayoutDto, UpdateSeatLayoutDto, CreateSeatFromTemplateDto } from './dto/create-seat-layout.dto';
 
 @Injectable()
@@ -12,6 +13,8 @@ export class SeatLayoutService {
     private readonly seatLayoutRepository: Repository<SeatLayout>,
     @InjectRepository(Bus)
     private readonly busRepository: Repository<Bus>,
+    @InjectRepository(Seat)
+    private readonly seatRepository: Repository<Seat>,
   ) {}
 
   async create(createSeatLayoutDto: CreateSeatLayoutDto): Promise<SeatLayout> {
@@ -35,6 +38,30 @@ export class SeatLayoutService {
 
     // Validate layout configuration
     this.validateLayoutConfig(createSeatLayoutDto);
+
+    // Create seats in database based on layout config
+    const createdSeats: Seat[] = [];
+    if (createSeatLayoutDto.layoutConfig?.seats) {
+      for (const seatInfo of createSeatLayoutDto.layoutConfig.seats) {
+        const seat = this.seatRepository.create({
+          seatCode: seatInfo.code,
+          seatType: this.mapSeatType(seatInfo.type),
+          isActive: true,
+          busId: createSeatLayoutDto.busId,
+        });
+        const savedSeat = await this.seatRepository.save(seat);
+        createdSeats.push(savedSeat);
+      }
+
+      // Update seat info IDs with actual database IDs
+      const updatedSeats = createSeatLayoutDto.layoutConfig.seats.map((seatInfo, index) => ({
+        ...seatInfo,
+        id: createdSeats[index].id,
+      }));
+
+      // Update layout config with new seat IDs
+      createSeatLayoutDto.layoutConfig.seats = updatedSeats;
+    }
 
     const seatLayout = this.seatLayoutRepository.create({
       busId: createSeatLayoutDto.busId,
@@ -66,12 +93,34 @@ export class SeatLayoutService {
 
     const templateConfig = this.getTemplateConfig(createFromTemplateDto.layoutType);
     
+    // Create seats in database based on template
+    const createdSeats: Seat[] = [];
+    for (const seatInfo of templateConfig.layoutConfig.seats) {
+      const seat = this.seatRepository.create({
+        seatCode: seatInfo.code,
+        seatType: this.mapSeatType(seatInfo.type),
+        isActive: true,
+        busId: createFromTemplateDto.busId,
+      });
+      const savedSeat = await this.seatRepository.save(seat);
+      createdSeats.push(savedSeat);
+    }
+
+    // Update seat info IDs with actual database IDs
+    const updatedSeats = templateConfig.layoutConfig.seats.map((seatInfo, index) => ({
+      ...seatInfo,
+      id: createdSeats[index].id,
+    }));
+
     const seatLayout = this.seatLayoutRepository.create({
       busId: createFromTemplateDto.busId,
       layoutType: createFromTemplateDto.layoutType,
       totalRows: templateConfig.totalRows,
       seatsPerRow: templateConfig.seatsPerRow,
-      layoutConfig: templateConfig.layoutConfig,
+      layoutConfig: {
+        ...templateConfig.layoutConfig,
+        seats: updatedSeats,
+      },
       seatPricing: createFromTemplateDto.seatPricing,
     });
 
@@ -171,6 +220,25 @@ export class SeatLayoutService {
     };
 
     return templates[layoutType] || templates[SeatLayoutType.STANDARD_2X2];
+  }
+
+  /**
+   * Map seat info type to Seat enum
+   * @param type - Seat type from template
+   * @returns SeatType enum value
+   */
+  private mapSeatType(type: string): SeatType {
+    switch (type.toLowerCase()) {
+      case 'vip':
+        return SeatType.VIP;
+      case 'business':
+        return SeatType.BUSINESS;
+      case 'normal':
+      case 'standard':
+      case 'economy':
+      default:
+        return SeatType.NORMAL;
+    }
   }
 
   private createStandard2x2Template() {
