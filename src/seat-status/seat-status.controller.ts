@@ -9,9 +9,11 @@ import {
     HttpCode,
     HttpStatus,
     NotFoundException,
+    BadRequestException,
 } from '@nestjs/common';
 import { SeatStatusService } from './seat-status.service';
 import { SeatStatus } from '../entities/seat-status.entity';
+import { SeatState } from '../entities/seat-status.entity';
 
 @Controller('seat-status')
 export class SeatStatusController {
@@ -64,4 +66,73 @@ export class SeatStatusController {
         
         return seatStatuses;
     }
+
+    /**
+     * Create a new seat status
+     * POST /seat-status
+     */
+    @Post()
+    @HttpCode(HttpStatus.CREATED)
+    async create(@Body() createSeatStatusDto: CreateSeatStatusDto): Promise<SeatStatus> {
+        try {
+            return await this.seatStatusService.create(createSeatStatusDto);
+        } catch (error) {
+            throw new BadRequestException(error.message);
+        }
+    }
+
+    /**
+     * Update seat status
+     * PATCH /seat-status/:id
+     */
+    @Patch(':id')
+    async update(
+        @Param('id') id: string,
+        @Body() updateSeatStatusDto: UpdateSeatStatusDto
+    ): Promise<SeatStatus> {
+        try {
+            const seatStatus = await this.seatStatusService.update(id, updateSeatStatusDto);
+            
+            if (!seatStatus) {
+                throw new NotFoundException(`Seat status not found with ID: ${id}`);
+            }
+            
+            return seatStatus;
+        } catch (error) {
+            throw new BadRequestException(error.message);
+        }
+    }
+
+    /**
+     * Delete seat status
+     * DELETE /seat-status/:id
+     */
+    @Delete(':id')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    async remove(@Param('id') id: string): Promise<void> {
+        try {
+            const result = await this.seatStatusService.remove(id);
+            
+            if (!result) {
+                throw new NotFoundException(`Seat status not found with ID: ${id}`);
+            }
+        } catch (error) {
+            throw new BadRequestException(error.message);
+        }
+    }
+}
+
+// DTOs for request body
+export class CreateSeatStatusDto {
+    tripId: string;
+    seatId: string;
+    state: SeatState;
+    bookingId?: string;
+    lockedUntil?: Date;
+}
+
+export class UpdateSeatStatusDto {
+    state?: SeatState;
+    bookingId?: string;
+    lockedUntil?: Date;
 }

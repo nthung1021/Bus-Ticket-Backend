@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SeatStatus } from '../entities/seat-status.entity';
+import { SeatState } from '../entities/seat-status.entity';
 
 @Injectable()
 export class SeatStatusService {
@@ -46,4 +47,54 @@ export class SeatStatusService {
             relations: ['trip', 'seat', 'booking'],
         });
     }
+
+    /**
+     * Create a new seat status
+     * @param createSeatStatusDto - Data to create seat status
+     * @returns Created seat status
+     */
+    async create(createSeatStatusDto: CreateSeatStatusDto): Promise<SeatStatus> {
+        const seatStatus = this.seatStatusRepository.create(createSeatStatusDto);
+        return await this.seatStatusRepository.save(seatStatus);
+    }
+
+    /**
+     * Update seat status
+     * @param id - ID of the seat status to update
+     * @param updateSeatStatusDto - Data to update
+     * @returns Updated seat status
+     */
+    async update(id: string, updateSeatStatusDto: UpdateSeatStatusDto): Promise<SeatStatus | null> {
+        await this.seatStatusRepository.update(id, updateSeatStatusDto);
+        const seatStatus = await this.seatStatusRepository.findOne({
+            where: { id },
+            relations: ['trip', 'seat', 'booking'],
+        });
+        return seatStatus;
+    }
+
+    /**
+     * Delete seat status
+     * @param id - ID of the seat status to delete
+     * @returns True if deleted, false if not found
+     */
+    async remove(id: string): Promise<boolean> {
+        const result = await this.seatStatusRepository.delete(id);
+        return (result.affected ?? 0) > 0;
+    }
+}
+
+// DTOs for service methods
+export class CreateSeatStatusDto {
+    tripId: string;
+    seatId: string;
+    state: SeatState;
+    bookingId?: string;
+    lockedUntil?: Date;
+}
+
+export class UpdateSeatStatusDto {
+    state?: SeatState;
+    bookingId?: string;
+    lockedUntil?: Date;
 }
