@@ -167,10 +167,53 @@ export class SeatLayoutService {
       // Create a temporary object with the updated config for validation
       const tempConfig = { ...seatLayout, ...updateSeatLayoutDto };
       this.validateLayoutConfig(tempConfig as any);
+
+      // Handle seat updates
+      await this.updateSeats(seatLayout.busId, seatLayout.layoutConfig?.seats || [], updateSeatLayoutDto.layoutConfig.seats || []);
     }
 
     Object.assign(seatLayout, updateSeatLayoutDto);
     return await this.seatLayoutRepository.save(seatLayout);
+  }
+
+  /**
+   * Update seats based on new layout configuration
+   * @param busId - Bus ID
+   * @param oldSeats - Existing seats from layout
+   * @param newSeats - New seats from updated layout
+   */
+  private async updateSeats(busId: string, oldSeats: any[], newSeats: any[]): Promise<void> {
+    const oldSeatCodes = new Set(oldSeats.map(seat => seat.code));
+    const newSeatCodes = new Set(newSeats.map(seat => seat.code));
+
+    // Delete seats that are no longer in the layout
+    const seatsToDelete = oldSeats.filter(seat => !newSeatCodes.has(seat.code));
+    if (seatsToDelete.length > 0) {
+      await this.seatRepository.delete(seatsToDelete.map(seat => seat.id));
+    }
+
+    // Create or update seats
+    for (const newSeat of newSeats) {
+      const existingSeat = oldSeats.find(seat => seat.code === newSeat.code);
+      
+      if (existingSeat) {
+        // Update existing seat
+        await this.seatRepository.update(existingSeat.id, {
+          seatType: this.mapSeatType(newSeat.type),
+          isActive: true,
+        });
+      } else {
+        // Create new seat
+        const seat = this.seatRepository.create({
+          seatCode: newSeat.code,
+          seatType: this.mapSeatType(newSeat.type),
+          isActive: true,
+          busId,
+        });
+        const savedSeat = await this.seatRepository.save(seat);
+        newSeat.id = savedSeat.id; // Update with actual database ID
+      }
+    }
   }
 
   async remove(id: string): Promise<void> {
