@@ -1,9 +1,10 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode, Put, Delete } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode, Put, Delete, Query } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
+import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
 
 // Inline DTO to avoid import issues
 interface PassengerUpdateDto {
@@ -137,6 +138,17 @@ export class BookingController {
       success: true,
       message: 'User bookings retrieved successfully',
       data: bookings,
+    };
+  }
+
+  @Get('guest')
+  async getGuestBooking(@Query() query: GetGuestBookingDto) {
+    const result = await this.bookingService.findBookingByGuest(query);
+    return {
+      success: true,
+      data: result,
+      message: 'guest booking retrieved successfully',
+      timestamp: new Date().toISOString(),
     };
   }
 

@@ -9,6 +9,7 @@ import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
+import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
 
 @Injectable()
 export class BookingService {
@@ -197,6 +198,56 @@ export class BookingService {
       relations: ['trip', 'passengerDetails', 'seatStatuses'],
       order: { bookedAt: 'DESC' },
     });
+  }
+
+  async findBookingByGuest(dto: GetGuestBookingDto) {
+    const { contactEmail, contactPhone } = dto;
+    
+    if (!contactEmail || !contactPhone) {
+      throw new BadRequestException({
+        success: false,
+        error: { message: 'Contact Email and Contact Phone are required'},
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const [booking] = await this.bookingRepository.find({
+      where: { contactEmail, contactPhone },
+      relations: {
+        passengerDetails: true,
+        trip: true,
+      },
+      order: { bookedAt: 'DESC' },
+      take: 1,
+    });
+
+    if (!booking) {
+      throw new NotFoundException({
+        success: false,
+        error: { code: 'BOOK_002', message: 'Booking not found for provided contact info' },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const passengers = (booking.passengerDetails || []).map((p) => ({
+      fullName: p.fullName,
+      documentId: p.documentId,
+      seatCode: p.seatCode,
+    }));
+
+    return {
+      bookingId: booking.id,
+      tripId: booking.tripId,
+      status: booking.status,
+      passengers,
+      pricing: {
+        subtotal: booking.totalAmount,
+        serviceFee: 0,
+        total: booking.totalAmount,
+        currency: 'VND',
+      },
+      createdAt: booking.bookedAt,
+    };
   }
 
   async findBookingsByUserWithDetails(userId: string, status?: BookingStatus): Promise<any[]> {
