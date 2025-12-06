@@ -18,7 +18,6 @@ interface UpdatePassengerDto {
 }
 
 @Controller('bookings')
-@UseGuards(JwtAuthGuard)
 export class BookingController {
   constructor(
     private readonly bookingService: BookingService,
@@ -36,7 +35,7 @@ export class BookingController {
     data: BookingResponseDto;
   }> {
     try {
-      const userId = req.user.userId;
+      const userId = req.user?.userId ?? null;
       const booking = await this.bookingService.createBooking(userId, createBookingDto);
       
       return {

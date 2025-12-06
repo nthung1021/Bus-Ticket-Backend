@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsArray, ValidateNested, IsUUID, ArrayMinSize, IsOptional, IsEmail, IsIn, ValidateIf } from 'class-validator';
+import { IsNotEmpty, IsString, IsArray, ValidateNested, IsUUID, ArrayMinSize, IsOptional, IsEmail, IsIn, ValidateIf, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class PassengerDto {
@@ -69,4 +69,18 @@ export class CreateBookingDto {
   @IsOptional()
   @IsString()
   paymentMethod?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isGuestCheckout?: boolean;
+
+  @IsOptional()
+  @ValidateIf(o => o.isGuestCheckout === true)
+  @IsEmail()
+  contactEmail?: string;
+
+  @IsOptional()
+  @ValidateIf(o => o.isGuestCheckout === true)
+  @IsString()
+  contactPhone?: string;
 }

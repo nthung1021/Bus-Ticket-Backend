@@ -30,8 +30,8 @@ export class BookingService {
     private dataSource: DataSource,
   ) {}
 
-  async createBooking(userId: string, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
-    const { tripId, seats, passengers, totalPrice } = createBookingDto;
+  async createBooking(userId: string | null, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
+    const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
 
     // Start transaction
     return await this.dataSource.transaction(async manager => {
@@ -93,12 +93,20 @@ export class BookingService {
       }
 
       // 6. Create booking with PAID status since payment is bypassed
-      const booking = manager.create(Booking, {
-        userId,
+      const bookingData: any = {
         tripId,
         totalAmount: totalPrice,
         status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
-      });
+      };
+
+      if (!isGuestCheckout && userId) {
+        bookingData.userId = userId;
+      } else {
+        bookingData.contactEmail = contactEmail;
+        bookingData.contactPhone = contactPhone;
+      }
+
+      const booking = manager.create(Booking, bookingData);
 
       const savedBooking = await manager.save(booking);
 
