@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { SeatLayout, SeatLayoutType, SeatInfo, SeatPosition, SeatLayoutConfig, SeatPricingConfig } from '../entities/seat-layout.entity';
 import { Bus } from '../entities/bus.entity';
 import { Seat, SeatType } from '../entities/seat.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 import { CreateSeatLayoutDto, UpdateSeatLayoutDto, CreateSeatFromTemplateDto } from './dto/create-seat-layout.dto';
 
 @Injectable()
@@ -15,6 +16,8 @@ export class SeatLayoutService {
     private readonly busRepository: Repository<Bus>,
     @InjectRepository(Seat)
     private readonly seatRepository: Repository<Seat>,
+    @InjectRepository(SeatStatus)
+    private readonly seatStatusRepository: Repository<SeatStatus>,
   ) {}
 
   async create(createSeatLayoutDto: CreateSeatLayoutDto): Promise<SeatLayout> {
@@ -189,7 +192,11 @@ export class SeatLayoutService {
     // Delete seats that are no longer in the layout
     const seatsToDelete = oldSeats.filter(seat => !newSeatCodes.has(seat.code));
     if (seatsToDelete.length > 0) {
-      await this.seatRepository.delete(seatsToDelete.map(seat => seat.id));
+      // First delete related seat status records to avoid foreign key constraint
+      const seatIdsToDelete = seatsToDelete.map(seat => seat.id);
+      await this.seatStatusRepository.delete({ seatId: In(seatIdsToDelete) });
+      // Then delete the seats
+      await this.seatRepository.delete(seatIdsToDelete);
     }
 
     // Create or update seats

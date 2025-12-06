@@ -5,9 +5,10 @@ import { SeatLayoutController } from './seat-layout.controller';
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { Bus } from '../entities/bus.entity';
 import { Seat } from '../entities/seat.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SeatLayout, Bus, Seat])],
+  imports: [TypeOrmModule.forFeature([SeatLayout, Bus, Seat, SeatStatus])],
   controllers: [SeatLayoutController],
   providers: [SeatLayoutService],
   exports: [SeatLayoutService],
