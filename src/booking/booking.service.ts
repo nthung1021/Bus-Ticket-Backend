@@ -541,19 +541,48 @@ export class BookingService {
       // Find and verify booking ownership
       const booking = await manager.findOne(Booking, {
         where: { id: bookingId },
-        relations: ['seatStatuses'],
+        relations: ['seatStatuses', 'trip'],
       });
 
       if (!booking) {
         throw new NotFoundException('Booking not found');
       }
 
+      console.log(`Cancel booking debug:`, {
+        bookingId,
+        userId,
+        booking: {
+          id: booking.id,
+          userId: booking.userId,
+          status: booking.status,
+          departureTime: booking.trip?.departureTime
+        }
+      });
+
       if (booking.userId !== userId) {
         throw new BadRequestException('Access denied');
       }
 
-      if (booking.status !== BookingStatus.PENDING) {
-        throw new BadRequestException('Can only cancel pending bookings');
+      if (booking.status !== BookingStatus.PENDING && booking.status !== BookingStatus.PAID) {
+        throw new BadRequestException(`Can only cancel pending or paid bookings. Current status: ${booking.status}`);
+      }
+
+      // Check if booking can be cancelled (at least 6 hours before departure)
+      if (booking.trip?.departureTime) {
+        const departureTime = new Date(booking.trip.departureTime);
+        const currentTime = new Date();
+        const timeDifference = departureTime.getTime() - currentTime.getTime();
+        const hoursUntilDeparture = timeDifference / (1000 * 60 * 60); // Convert to hours
+
+        console.log(`Time check:`, {
+          departureTime: departureTime.toISOString(),
+          currentTime: currentTime.toISOString(),
+          hoursUntilDeparture
+        });
+
+        if (hoursUntilDeparture < 6) {
+          throw new BadRequestException(`Cannot cancel booking less than 6 hours before departure. Hours until departure: ${hoursUntilDeparture.toFixed(2)}`);
+        }
       }
 
       // Update booking status to cancelled
