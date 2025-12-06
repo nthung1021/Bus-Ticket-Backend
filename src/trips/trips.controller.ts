@@ -23,7 +23,7 @@ import { AssignBusDto, CheckAvailabilityDto, ScheduleQueryDto } from './dto/assi
 
 @Controller('trips')
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) {}
+  constructor(private readonly tripsService: TripsService) { }
 
   // User - Searching trips and get detail trip info
 

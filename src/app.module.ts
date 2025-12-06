@@ -17,6 +17,7 @@ import { HealthModule } from './health/health.module';
 import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
 import { DatabaseService } from './database/database.service';
 import { GatewaysModule } from './gateways/gateways.module';
+import { SeatStatusModule } from './seat-status/seat-status.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { GatewaysModule } from './gateways/gateways.module';
     SeatLayoutModule,
     DatabaseModule,
     GatewaysModule,
+    SeatStatusModule,
   ],
   controllers: [AppController],
   providers: [AppService, DatabaseService],

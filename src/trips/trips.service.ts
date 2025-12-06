@@ -389,7 +389,7 @@ export class TripsService {
     const limit = Math.min(dto.limit || 20, 100);
     const offset = (page - 1) * limit;
     console.log(dto.date);
- 
+
     const qb = this.tripRepo.createQueryBuilder('trip')
       // join route, bus, operator — adapt relation names to your entities
       .leftJoinAndSelect('trip.route', 'route')
@@ -400,7 +400,7 @@ export class TripsService {
     // trip has departureTime (timestamp)
     qb.andWhere('LOWER(route.origin) = LOWER(:origin)', { origin: dto.origin.trim() });
     qb.andWhere('LOWER(route.destination) = LOWER(:destination)', { destination: dto.destination.trim() });
-    
+
     // date filter: trips whose departure date = dto.date (timezone note: store timestamps in UTC)
     // We compare date part by bounding between start and end of the day in UTC or DB timezone.
     const startDate = new Date(dto.date);
@@ -413,7 +413,7 @@ export class TripsService {
     // console.log(endOfDay);
     qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
 
-    
+
 
     // optional filters
     if (dto.busType) {
