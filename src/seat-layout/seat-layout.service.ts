@@ -102,6 +102,7 @@ export class SeatLayoutService {
       where: { busId },
       relations: ['bus'],
     });
+    // console.log(seatLayout?.layoutConfig.seats);
 
     if (!seatLayout) {
       throw new NotFoundException(`Seat layout for bus ${busId} not found`);

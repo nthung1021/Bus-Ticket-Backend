@@ -18,6 +18,7 @@ import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
 import { DatabaseService } from './database/database.service';
 import { GatewaysModule } from './gateways/gateways.module';
 import { SeatStatusModule } from './seat-status/seat-status.module';
+import { SeatModule } from './seat/seat.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { SeatStatusModule } from './seat-status/seat-status.module';
     DatabaseModule,
     GatewaysModule,
     SeatStatusModule,
+    SeatModule,
   ],
   controllers: [AppController],
   providers: [AppService, DatabaseService],
