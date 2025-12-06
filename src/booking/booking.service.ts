@@ -184,6 +184,86 @@ export class BookingService {
     });
   }
 
+  async findBookingsByUserWithDetails(userId: string, status?: BookingStatus): Promise<any[]> {
+    // Build the query with proper joins
+    const queryBuilder = this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.trip', 'trip')
+      .leftJoinAndSelect('trip.route', 'route')
+      .leftJoinAndSelect('trip.bus', 'bus')
+      .leftJoinAndSelect('booking.passengerDetails', 'passengerDetails')
+      .leftJoinAndSelect('booking.seatStatuses', 'seatStatuses')
+      .leftJoinAndSelect('seatStatuses.seat', 'seat')
+      .where('booking.userId = :userId', { userId })
+      .orderBy('booking.bookedAt', 'DESC');
+
+    // Add status filter if provided
+    if (status) {
+      queryBuilder.andWhere('booking.status = :status', { status });
+    }
+
+    const bookings = await queryBuilder.getMany();
+
+    // Transform the data to include all necessary information
+    return bookings.map(booking => ({
+      id: booking.id,
+      userId: booking.userId,
+      tripId: booking.tripId,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+      bookedAt: booking.bookedAt,
+      cancelledAt: booking.cancelledAt,
+      expiresAt: booking.status === BookingStatus.PENDING ? 
+        new Date(booking.bookedAt.getTime() + 15 * 60 * 1000) : null,
+      
+      // Trip details
+      trip: booking.trip ? {
+        id: booking.trip.id,
+        departureTime: booking.trip.departureTime,
+        arrivalTime: booking.trip.arrivalTime,
+        basePrice: booking.trip.basePrice,
+        status: booking.trip.status,
+        route: booking.trip.route ? {
+          id: booking.trip.route.id,
+          name: booking.trip.route.name,
+          description: booking.trip.route.description,
+          origin: booking.trip.route.origin,
+          destination: booking.trip.route.destination,
+          distanceKm: booking.trip.route.distanceKm,
+          estimatedMinutes: booking.trip.route.estimatedMinutes,
+        } : null,
+        bus: booking.trip.bus ? {
+          id: booking.trip.bus.id,
+          plateNumber: booking.trip.bus.plateNumber,
+          model: booking.trip.bus.model,
+          seatCapacity: booking.trip.bus.seatCapacity,
+        } : null,
+      } : null,
+      
+      // Passenger details
+      passengers: booking.passengerDetails?.map(passenger => ({
+        id: passenger.id,
+        fullName: passenger.fullName,
+        documentId: passenger.documentId,
+        seatCode: passenger.seatCode,
+      })) || [],
+      
+      // Seat details
+      seats: booking.seatStatuses?.map(seatStatus => ({
+        id: seatStatus.id,
+        seatId: seatStatus.seatId,
+        state: seatStatus.state,
+        lockedUntil: seatStatus.lockedUntil,
+        seat: seatStatus.seat ? {
+          id: seatStatus.seat.id,
+          seatCode: seatStatus.seat.seatCode,
+          seatType: seatStatus.seat.seatType,
+          isActive: seatStatus.seat.isActive,
+        } : null,
+      })) || [],
+    }));
+  }
+
   async confirmPayment(bookingId: string, paymentData?: any): Promise<BookingResponseDto> {
     return await this.dataSource.transaction(async manager => {
       // 1. Find booking

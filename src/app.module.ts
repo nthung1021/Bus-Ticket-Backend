@@ -15,6 +15,7 @@ import { SeatLayoutModule } from './seat-layout/seat-layout.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { BookingModule } from './booking/booking.module';
+import { UserModule } from './user/user.module';
 import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
 
 @Module({
@@ -38,6 +39,7 @@ import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
     SeatLayoutModule,
     DatabaseModule,
     BookingModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService],
