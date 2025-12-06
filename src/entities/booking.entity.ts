@@ -31,6 +31,9 @@ export class Booking {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ name: 'booking_reference', unique: true })
+  bookingReference: string;
+
   @Column({ name: 'user_id', nullable: true })
   @Index('idx_bookings_user_id')
   userId?: string;

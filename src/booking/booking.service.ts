@@ -31,6 +31,41 @@ export class BookingService {
     private dataSource: DataSource,
   ) {}
 
+  private async generateBookingReference(): Promise<string> {
+    const prefix = 'BK';
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const datePart = `${year}${month}${day}`;
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+    const randomPart = () =>
+      Array.from({ length: 6 })
+        .map(
+          () => chars[Math.floor(Math.random() * chars.length)],
+        )
+        .join('');
+
+    // Try a few times to avoid collision; DB unique constraint will also protect
+    for (let i = 0; i < 10; i++) {
+      const code = `${prefix}${datePart}-${randomPart()}`;
+
+      const existing = await this.bookingRepository.findOne({
+        where: { bookingReference: code },
+      });
+
+      if (!existing) {
+        return code;
+      }
+    }
+
+    // Fallback: still return something; extremely unlikely to collide 10 times
+    return `${prefix}${datePart}-${randomPart()}`;
+  }
+
   async createBooking(userId: string | null, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
     const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
 
@@ -94,7 +129,9 @@ export class BookingService {
       }
 
       // 6. Create booking with PAID status since payment is bypassed
+      const bookingReference = await this.generateBookingReference();
       const bookingData: any = {
+        bookingReference,
         tripId,
         totalAmount: totalPrice,
         status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
@@ -151,6 +188,7 @@ export class BookingService {
       // 10. Prepare response
       return {
         id: savedBooking.id,
+        bookingReference: savedBooking.bookingReference,
         tripId: savedBooking.tripId,
         totalAmount: savedBooking.totalAmount,
         status: savedBooking.status,
@@ -229,25 +267,7 @@ export class BookingService {
       });
     }
 
-    const passengers = (booking.passengerDetails || []).map((p) => ({
-      fullName: p.fullName,
-      documentId: p.documentId,
-      seatCode: p.seatCode,
-    }));
-
-    return {
-      bookingId: booking.id,
-      tripId: booking.tripId,
-      status: booking.status,
-      passengers,
-      pricing: {
-        subtotal: booking.totalAmount,
-        serviceFee: 0,
-        total: booking.totalAmount,
-        currency: 'VND',
-      },
-      createdAt: booking.bookedAt,
-    };
+    return booking;
   }
 
   async findBookingsByUserWithDetails(userId: string, status?: BookingStatus): Promise<any[]> {
