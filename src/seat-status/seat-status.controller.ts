@@ -15,6 +15,21 @@ import { SeatStatusService } from './seat-status.service';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { SeatState } from '../entities/seat-status.entity';
 
+// DTOs for request body - moved to top to fix hoisting issue
+export class CreateSeatStatusDto {
+    tripId: string;
+    seatId: string;
+    state: SeatState;
+    bookingId?: string;
+    lockedUntil?: Date;
+}
+
+export class UpdateSeatStatusDto {
+    state?: SeatState;
+    bookingId?: string;
+    lockedUntil?: Date;
+}
+
 @Controller('seat-status')
 export class SeatStatusController {
     constructor(private readonly seatStatusService: SeatStatusService) {}
@@ -120,19 +135,4 @@ export class SeatStatusController {
             throw new BadRequestException(error.message);
         }
     }
-}
-
-// DTOs for request body
-export class CreateSeatStatusDto {
-    tripId: string;
-    seatId: string;
-    state: SeatState;
-    bookingId?: string;
-    lockedUntil?: Date;
-}
-
-export class UpdateSeatStatusDto {
-    state?: SeatState;
-    bookingId?: string;
-    lockedUntil?: Date;
 }

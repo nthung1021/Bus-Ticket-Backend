@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { SeatState } from '../entities/seat-status.entity';
+import { CreateSeatStatusDto, UpdateSeatStatusDto } from './seat-status.controller';
 
 @Injectable()
 export class SeatStatusService {
@@ -82,19 +83,4 @@ export class SeatStatusService {
         const result = await this.seatStatusRepository.delete(id);
         return (result.affected ?? 0) > 0;
     }
-}
-
-// DTOs for service methods
-export class CreateSeatStatusDto {
-    tripId: string;
-    seatId: string;
-    state: SeatState;
-    bookingId?: string;
-    lockedUntil?: Date;
-}
-
-export class UpdateSeatStatusDto {
-    state?: SeatState;
-    bookingId?: string;
-    lockedUntil?: Date;
 }
