@@ -135,4 +135,43 @@ export class SeatStatusController {
             throw new BadRequestException(error.message);
         }
     }
+
+    /**
+     * Get locked seats for a trip
+     * GET /seat-status/trip/:tripId/locked
+     */
+    @Get('trip/:tripId/locked')
+    async getLockedSeats(@Param('tripId') tripId: string): Promise<SeatStatus[]> {
+        try {
+            return await this.seatStatusService.getLockedSeats(tripId);
+        } catch (error) {
+            throw new BadRequestException(error.message);
+        }
+    }
+
+    /**
+     * Get booked seats for a trip
+     * GET /seat-status/trip/:tripId/booked
+     */
+    @Get('trip/:tripId/booked')
+    async getBookedSeats(@Param('tripId') tripId: string): Promise<SeatStatus[]> {
+        try {
+            return await this.seatStatusService.getBookedSeats(tripId);
+        } catch (error) {
+            throw new BadRequestException(error.message);
+        }
+    }
+
+    /**
+     * Get available seats for a trip
+     * GET /seat-status/trip/:tripId/available
+     */
+    @Get('trip/:tripId/available')
+    async getAvailableSeats(@Param('tripId') tripId: string): Promise<SeatStatus[]> {
+        try {
+            return await this.seatStatusService.getAvailableSeats(tripId);
+        } catch (error) {
+            throw new BadRequestException(error.message);
+        }
+    }
 }

@@ -83,4 +83,49 @@ export class SeatStatusService {
         const result = await this.seatStatusRepository.delete(id);
         return (result.affected ?? 0) > 0;
     }
+
+    /**
+     * Get locked seats for a trip
+     * @param tripId - ID of the trip
+     * @returns Array of locked seat statuses
+     */
+    async getLockedSeats(tripId: string): Promise<SeatStatus[]> {
+        return await this.seatStatusRepository.find({
+            where: {
+                tripId,
+                state: SeatState.LOCKED,
+            },
+            relations: ['trip', 'seat', 'booking'],
+        });
+    }
+
+    /**
+     * Get booked seats for a trip
+     * @param tripId - ID of the trip
+     * @returns Array of booked seat statuses
+     */
+    async getBookedSeats(tripId: string): Promise<SeatStatus[]> {
+        return await this.seatStatusRepository.find({
+            where: {
+                tripId,
+                state: SeatState.BOOKED,
+            },
+            relations: ['trip', 'seat', 'booking'],
+        });
+    }
+
+    /**
+     * Get available seats for a trip
+     * @param tripId - ID of the trip
+     * @returns Array of available seat statuses
+     */
+    async getAvailableSeats(tripId: string): Promise<SeatStatus[]> {
+        return await this.seatStatusRepository.find({
+            where: {
+                tripId,
+                state: SeatState.AVAILABLE,
+            },
+            relations: ['trip', 'seat', 'booking'],
+        });
+    }
 }
