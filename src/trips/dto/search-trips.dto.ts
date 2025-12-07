@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn, IsInt, Min, Max, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsInt, Min, Max, IsISO8601 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class SearchTripsDto {
@@ -8,8 +8,9 @@ export class SearchTripsDto {
   @IsString()
   destination: string;
 
-  @IsDateString()
-  date: string; // YYYY-MM-DD
+  @IsISO8601()
+  @Transform(({ value }) => new Date(value).toISOString())
+  date: string; // ISO 8601 format (e.g., 2025-12-05T17:00:00.000Z)
 
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))

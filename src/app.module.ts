@@ -17,6 +17,10 @@ import { HealthModule } from './health/health.module';
 import { BookingModule } from './booking/booking.module';
 import { UserModule } from './user/user.module';
 import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
+import { DatabaseService } from './database/database.service';
+import { GatewaysModule } from './gateways/gateways.module';
+import { SeatStatusModule } from './seat-status/seat-status.module';
+import { SeatModule } from './seat/seat.module';
 
 @Module({
   imports: [
@@ -40,9 +44,12 @@ import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
     DatabaseModule,
     BookingModule,
     UserModule,
+    GatewaysModule,
+    SeatStatusModule,
+    SeatModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, DatabaseService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
