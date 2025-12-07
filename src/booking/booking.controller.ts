@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode, Put, Delete, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode, Put, Delete, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
@@ -257,6 +258,21 @@ export class BookingController {
     } catch (error) {
       throw error;
     }
+  }
+
+  @Get(':bookingId/eticket')
+  async downloadEticket(
+    @Param('bookingId') bookingId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.bookingService.generateEticketFile(bookingId);
+
+    res
+      .set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      })
+      .send(buffer);
   }
 
   // Admin endpoint - Manual cleanup of expired bookings

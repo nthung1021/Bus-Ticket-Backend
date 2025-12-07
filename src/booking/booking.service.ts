@@ -10,6 +10,7 @@ import { AuditLog } from '../entities/audit-log.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
+import PDFDocument from 'pdfkit';
 
 @Injectable()
 export class BookingService {
@@ -771,5 +772,122 @@ export class BookingService {
       this.logger.error(errorMsg);
       return { processed, errors: [errorMsg] };
     }
+  }
+
+  private async getBookingForEticket(bookingId: string) {
+    const booking = await this.bookingRepository.findOne({
+      where: { id: bookingId },
+      relations: {
+        trip: {
+          route: true,
+          bus: true,
+        },
+        passengerDetails: true,
+      },
+    });
+
+    if (booking) {
+      return { type: 'user' as const, booking: booking };
+    }
+
+    const guestBooking = await this.bookingRepository.findOne({
+      where: { id: bookingId },
+      relations: {
+        trip: {
+          route: true,
+          bus: true,
+        },
+        passengerDetails: true,
+      },
+    });
+
+    if (guestBooking) {
+      return { type: 'guest' as const, booking: guestBooking };
+    }
+
+    throw new NotFoundException({
+      success: false,
+      error: { code: 'BOOK_002', message: 'booking not found' },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async generateEticketFile(bookingId: string): Promise<{ buffer: Buffer; filename: string }> {
+    const { booking } = await this.getBookingForEticket(bookingId);
+
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks: Buffer[] = [];
+
+    return await new Promise((resolve, reject) => {
+      doc.on('data', (chunk) => chunks.push(chunk as Buffer));
+      doc.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        const filename = `${booking.bookingReference || 'ticket'}.pdf`;
+        resolve({ buffer, filename });
+      });
+      doc.on('error', (err) => reject(err));
+
+      // Header
+      doc
+        .fontSize(20)
+        .text('Bus Ticket E-Ticket', { align: 'center' })
+        .moveDown();
+
+      // Booking info
+      doc
+        .fontSize(12)
+        .text(`Booking Reference: ${booking.bookingReference}`, { continued: false })
+        .text(`Booking ID: ${booking.id}`)
+        .moveDown();
+
+      if (booking.trip) {
+        const trip = booking.trip as any;
+        const route = trip.route || {};
+        const bus = trip.bus || {};
+
+        doc
+          .fontSize(14)
+          .text('Trip Details', { underline: true })
+          .moveDown(0.5);
+
+        doc
+          .fontSize(12)
+          .text(`Route: ${route.origin || ''} -> ${route.destination || ''}`)
+          .text(`Departure: ${trip.departureTime}`)
+          .text(`Arrival: ${trip.arrivalTime}`)
+          .text(`Bus: ${bus.model || ''} (${bus.plateNumber || ''})`)
+          .moveDown();
+      }
+
+      // Passengers
+      doc.fontSize(14).text('Passengers', { underline: true }).moveDown(0.5);
+
+      (booking.passengerDetails || []).forEach((p, index) => {
+        doc
+          .fontSize(12)
+          .text(
+            `${index + 1}. ${p.fullName} - Doc: ${p.documentId} - Seat: ${p.seatCode}`,
+          );
+      });
+
+      doc.moveDown();
+
+      // Pricing
+      doc.fontSize(14).text('Pricing', { underline: true }).moveDown(0.5);
+      doc
+        .fontSize(12)
+        .text(`Total Amount: ${booking.totalAmount} VND`)
+        .moveDown();
+
+      // Footer
+      doc
+        .fontSize(10)
+        .text(
+          'Please arrive at the station at least 30 minutes before departure. This e-ticket must be presented when boarding.',
+          { align: 'left' },
+        );
+
+      doc.end();
+    });
   }
 }
