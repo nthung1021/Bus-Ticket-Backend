@@ -50,6 +50,17 @@ export class BookingController {
     }
   }
 
+  @Get('guest')
+  async getGuestBooking(@Query() query: GetGuestBookingDto) {
+    const result = await this.bookingService.findBookingByGuest(query);
+    return {
+      success: true,
+      data: result,
+      message: 'guest booking retrieved successfully',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   async getBookingDetails(
@@ -139,17 +150,6 @@ export class BookingController {
       success: true,
       message: 'User bookings retrieved successfully',
       data: bookings,
-    };
-  }
-
-  @Get('guest')
-  async getGuestBooking(@Query() query: GetGuestBookingDto) {
-    const result = await this.bookingService.findBookingByGuest(query);
-    return {
-      success: true,
-      data: result,
-      message: 'guest booking retrieved successfully',
-      timestamp: new Date().toISOString(),
     };
   }
 
