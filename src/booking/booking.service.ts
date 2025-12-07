@@ -10,6 +10,7 @@ import { AuditLog } from '../entities/audit-log.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
+import { EmailService } from './email.service';
 import PDFDocument from 'pdfkit';
 
 @Injectable()
@@ -30,6 +31,7 @@ export class BookingService {
     @InjectRepository(AuditLog)
     private auditLogRepository: Repository<AuditLog>,
     private dataSource: DataSource,
+    private readonly emailService: EmailService,
   ) {}
 
   private async generateBookingReference(): Promise<string> {
@@ -889,5 +891,34 @@ export class BookingService {
 
       doc.end();
     });
+  }
+
+  async sendEticketEmail(bookingId: string, overrideEmail?: string): Promise<{ success: boolean }> {
+    const { booking } = await this.getBookingForEticket(bookingId);
+
+    const to =
+      overrideEmail ||
+      booking.user?.email ||
+      booking.contactEmail;
+
+    if (!to) {
+      throw new BadRequestException('No email available for this booking');
+    }
+
+    const { buffer, filename } = await this.generateEticketFile(bookingId);
+
+    await this.emailService.sendEmail({
+      to,
+      subject: `Your e-ticket ${booking.bookingReference}`,
+      text: `Dear customer,\n\nPlease find attached your e-ticket for booking ${booking.bookingReference}.`,
+      attachments: [
+        {
+          filename,
+          content: buffer,
+        },
+      ],
+    });
+
+    return { success: true };
   }
 }

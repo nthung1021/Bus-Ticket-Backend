@@ -275,6 +275,20 @@ export class BookingController {
       .send(buffer);
   }
 
+  @Post(':bookingId/eticket/email')
+  @HttpCode(HttpStatus.OK)
+  async sendEticketEmail(
+    @Param('bookingId') bookingId: string,
+    @Body() body: { email?: string } = {},
+  ): Promise<{ success: boolean; message: string }> {
+    const result = await this.bookingService.sendEticketEmail(bookingId, body.email);
+
+    return {
+      success: result.success,
+      message: 'e-ticket email sent successfully',
+    };
+  }
+
   // Admin endpoint - Manual cleanup of expired bookings
   @Post('admin/cleanup-expired')
   @HttpCode(HttpStatus.OK)
