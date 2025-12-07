@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { SeatLayout, SeatLayoutType, SeatInfo, SeatPosition, SeatLayoutConfig, SeatPricingConfig } from '../entities/seat-layout.entity';
 import { Bus } from '../entities/bus.entity';
+import { Seat, SeatType } from '../entities/seat.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 import { CreateSeatLayoutDto, UpdateSeatLayoutDto, CreateSeatFromTemplateDto } from './dto/create-seat-layout.dto';
 
 @Injectable()
@@ -12,7 +14,11 @@ export class SeatLayoutService {
     private readonly seatLayoutRepository: Repository<SeatLayout>,
     @InjectRepository(Bus)
     private readonly busRepository: Repository<Bus>,
-  ) {}
+    @InjectRepository(Seat)
+    private readonly seatRepository: Repository<Seat>,
+    @InjectRepository(SeatStatus)
+    private readonly seatStatusRepository: Repository<SeatStatus>,
+  ) { }
 
   async create(createSeatLayoutDto: CreateSeatLayoutDto): Promise<SeatLayout> {
     // Verify bus exists
@@ -35,6 +41,30 @@ export class SeatLayoutService {
 
     // Validate layout configuration
     this.validateLayoutConfig(createSeatLayoutDto);
+
+    // Create seats in database based on layout config
+    const createdSeats: Seat[] = [];
+    if (createSeatLayoutDto.layoutConfig?.seats) {
+      for (const seatInfo of createSeatLayoutDto.layoutConfig.seats) {
+        const seat = this.seatRepository.create({
+          seatCode: seatInfo.code,
+          seatType: this.mapSeatType(seatInfo.type),
+          isActive: true,
+          busId: createSeatLayoutDto.busId,
+        });
+        const savedSeat = await this.seatRepository.save(seat);
+        createdSeats.push(savedSeat);
+      }
+
+      // Update seat info IDs with actual database IDs
+      const updatedSeats = createSeatLayoutDto.layoutConfig.seats.map((seatInfo, index) => ({
+        ...seatInfo,
+        id: createdSeats[index].id,
+      }));
+
+      // Update layout config with new seat IDs
+      createSeatLayoutDto.layoutConfig.seats = updatedSeats;
+    }
 
     const seatLayout = this.seatLayoutRepository.create({
       busId: createSeatLayoutDto.busId,
@@ -65,13 +95,35 @@ export class SeatLayoutService {
     }
 
     const templateConfig = this.getTemplateConfig(createFromTemplateDto.layoutType);
-    
+
+    // Create seats in database based on template
+    const createdSeats: Seat[] = [];
+    for (const seatInfo of templateConfig.layoutConfig.seats) {
+      const seat = this.seatRepository.create({
+        seatCode: seatInfo.code,
+        seatType: this.mapSeatType(seatInfo.type),
+        isActive: true,
+        busId: createFromTemplateDto.busId,
+      });
+      const savedSeat = await this.seatRepository.save(seat);
+      createdSeats.push(savedSeat);
+    }
+
+    // Update seat info IDs with actual database IDs
+    const updatedSeats = templateConfig.layoutConfig.seats.map((seatInfo, index) => ({
+      ...seatInfo,
+      id: createdSeats[index].id,
+    }));
+
     const seatLayout = this.seatLayoutRepository.create({
       busId: createFromTemplateDto.busId,
       layoutType: createFromTemplateDto.layoutType,
       totalRows: templateConfig.totalRows,
       seatsPerRow: templateConfig.seatsPerRow,
-      layoutConfig: templateConfig.layoutConfig,
+      layoutConfig: {
+        ...templateConfig.layoutConfig,
+        seats: updatedSeats,
+      },
       seatPricing: createFromTemplateDto.seatPricing,
     });
 
@@ -102,6 +154,7 @@ export class SeatLayoutService {
       where: { busId },
       relations: ['bus'],
     });
+    // console.log(seatLayout?.layoutConfig.seats);
 
     if (!seatLayout) {
       throw new NotFoundException(`Seat layout for bus ${busId} not found`);
@@ -117,10 +170,63 @@ export class SeatLayoutService {
       // Create a temporary object with the updated config for validation
       const tempConfig = { ...seatLayout, ...updateSeatLayoutDto };
       this.validateLayoutConfig(tempConfig as any);
-    }
 
+      // Ensure seats array exists to maintain reference
+      if (!updateSeatLayoutDto.layoutConfig.seats) {
+        updateSeatLayoutDto.layoutConfig.seats = [];
+      }
+
+      // Handle seat updates - this will update newSeat.id with database UUIDs
+      // updateSeats modifies the seats array in-place, updating IDs with database UUIDs
+      await this.updateSeats(seatLayout.busId, seatLayout.layoutConfig?.seats || [], updateSeatLayoutDto.layoutConfig.seats);
+    }
+    // console.log(updateSeatLayoutDto.layoutConfig?.seats);
     Object.assign(seatLayout, updateSeatLayoutDto);
     return await this.seatLayoutRepository.save(seatLayout);
+  }
+
+  /**
+   * Update seats based on new layout configuration
+   * @param busId - Bus ID
+   * @param oldSeats - Existing seats from layout
+   * @param newSeats - New seats from updated layout
+   */
+  private async updateSeats(busId: string, oldSeats: any[], newSeats: any[]): Promise<void> {
+    const oldSeatCodes = new Set(oldSeats.map(seat => seat.code));
+    const newSeatCodes = new Set(newSeats.map(seat => seat.code));
+
+    // Delete seats that are no longer in the layout
+    const seatsToDelete = oldSeats.filter(seat => !newSeatCodes.has(seat.code));
+    if (seatsToDelete.length > 0) {
+      // First delete related seat status records to avoid foreign key constraint
+      const seatIdsToDelete = seatsToDelete.map(seat => seat.id);
+      await this.seatStatusRepository.delete({ seatId: In(seatIdsToDelete) });
+      // Then delete the seats
+      await this.seatRepository.delete(seatIdsToDelete);
+    }
+    // Create or update seats
+    for (const newSeat of newSeats) {
+      const existingSeat = oldSeats.find(seat => seat.code === newSeat.code);
+      if (existingSeat) {
+        // Update existing seat
+        await this.seatRepository.update(existingSeat.id, {
+          seatType: this.mapSeatType(newSeat.type),
+          isActive: true,
+        });
+        newSeat.id = existingSeat.id;
+      } else {
+        // Create new seat
+        const seat = this.seatRepository.create({
+          seatCode: newSeat.code,
+          seatType: this.mapSeatType(newSeat.type),
+          isActive: true,
+          busId,
+        });
+        const savedSeat = await this.seatRepository.save(seat);
+        // console.log(savedSeat);
+        newSeat.id = savedSeat.id; // Update with actual database ID
+      }
+    }
   }
 
   async remove(id: string): Promise<void> {
@@ -132,7 +238,7 @@ export class SeatLayoutService {
 
   private validateLayoutConfig(layoutConfig: any): void {
     const { layoutType, totalRows, seatsPerRow, layoutConfig: config } = layoutConfig;
-    
+
     if (!config || !config.seats || !config.dimensions) {
       throw new BadRequestException('Invalid layout configuration');
     }
@@ -172,6 +278,25 @@ export class SeatLayoutService {
     return templates[layoutType] || templates[SeatLayoutType.STANDARD_2X2];
   }
 
+  /**
+   * Map seat info type to Seat enum
+   * @param type - Seat type from template
+   * @returns SeatType enum value
+   */
+  private mapSeatType(type: string): SeatType {
+    switch (type.toLowerCase()) {
+      case 'vip':
+        return SeatType.VIP;
+      case 'business':
+        return SeatType.BUSINESS;
+      case 'normal':
+      case 'standard':
+      case 'economy':
+      default:
+        return SeatType.NORMAL;
+    }
+  }
+
   private createStandard2x2Template() {
     const rows = 12;
     const seatsPerRow = 2;
@@ -181,7 +306,7 @@ export class SeatLayoutService {
     const rowSpacing = 10;
 
     const seats: SeatInfo[] = [];
-    
+
     for (let row = 1; row <= rows; row++) {
       for (let pos = 1; pos <= seatsPerRow; pos++) {
         const seat: SeatInfo = {
@@ -229,7 +354,7 @@ export class SeatLayoutService {
     const rowSpacing = 10;
 
     const seats: SeatInfo[] = [];
-    
+
     for (let row = 1; row <= rows; row++) {
       for (let pos = 1; pos <= seatsPerRow; pos++) {
         const seat: SeatInfo = {
@@ -277,7 +402,7 @@ export class SeatLayoutService {
     const rowSpacing = 15;
 
     const seats: SeatInfo[] = [];
-    
+
     for (let row = 1; row <= rows; row++) {
       for (let pos = 1; pos <= seatsPerRow; pos++) {
         const seat: SeatInfo = {
@@ -325,7 +450,7 @@ export class SeatLayoutService {
     const rowSpacing = 20;
 
     const seats: SeatInfo[] = [];
-    
+
     for (let row = 1; row <= rows; row++) {
       for (let pos = 1; pos <= seatsPerRow; pos++) {
         const seat: SeatInfo = {

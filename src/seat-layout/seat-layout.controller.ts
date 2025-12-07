@@ -19,27 +19,31 @@ import { Roles } from '../auth/roles/roles.decorator';
 import { SeatLayoutType, SeatLayout } from '../entities/seat-layout.entity';
 
 @Controller('seat-layouts')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
 export class SeatLayoutController {
-  constructor(private readonly seatLayoutService: SeatLayoutService) {}
+  constructor(private readonly seatLayoutService: SeatLayoutService) { }
 
   @Post()
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   create(@Body() createSeatLayoutDto: CreateSeatLayoutDto): Promise<SeatLayout> {
     return this.seatLayoutService.create(createSeatLayoutDto);
   }
 
   @Post('from-template')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   createFromTemplate(@Body() createFromTemplateDto: CreateSeatFromTemplateDto): Promise<SeatLayout> {
     return this.seatLayoutService.createFromTemplate(createFromTemplateDto);
   }
 
   @Get()
+  @Roles() // Allow any authenticated user (override class-level 'admin' role)
   findAll(): Promise<SeatLayout[]> {
     return this.seatLayoutService.findAll();
   }
 
   @Get('templates')
+  @Roles() // Allow any authenticated user
   getTemplates(): TemplatesResponse {
     return {
       templates: [
@@ -83,26 +87,33 @@ export class SeatLayoutController {
   }
 
   @Get('template/:type')
+  @Roles() // Allow any authenticated user
   getTemplateConfig(@Param('type') type: SeatLayoutType) {
     return this.seatLayoutService.getTemplateConfig(type);
   }
 
   @Get(':id')
+  @Roles() // Allow any authenticated user
   findOne(@Param('id') id: string): Promise<SeatLayout> {
     return this.seatLayoutService.findOne(id);
   }
 
   @Get('bus/:busId')
+  @Roles() // Allow any authenticated user
   findByBusId(@Param('busId') busId: string): Promise<SeatLayout> {
     return this.seatLayoutService.findByBusId(busId);
   }
 
   @Patch(':id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   update(@Param('id') id: string, @Body() updateSeatLayoutDto: UpdateSeatLayoutDto): Promise<SeatLayout> {
     return this.seatLayoutService.update(id, updateSeatLayoutDto);
   }
 
   @Delete(':id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string): Promise<void> {
     return this.seatLayoutService.remove(id);

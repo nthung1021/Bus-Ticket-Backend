@@ -17,9 +17,9 @@ import { Notification } from './notification.entity';
 
 export enum BookingStatus {
   PENDING = 'pending',
-  CONFIRMED = 'confirmed',
-  CANCELLED = 'cancelled',
-  COMPLETED = 'completed',
+  PAID = 'paid',
+  CANCELLED = 'cancelled', 
+  EXPIRED = 'expired',
 }
 
 @Entity('bookings')
@@ -31,9 +31,12 @@ export class Booking {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'user_id' })
+  @Column({ name: 'booking_reference', unique: true })
+  bookingReference: string;
+
+  @Column({ name: 'user_id', nullable: true })
   @Index('idx_bookings_user_id')
-  userId: string;
+  userId?: string;
 
   @Column({ name: 'trip_id' })
   @Index('idx_bookings_trip_id')
@@ -50,8 +53,17 @@ export class Booking {
   @Index('idx_bookings_status')
   status: BookingStatus;
 
+  @Column({ name: 'contact_email', nullable: true })
+  contactEmail?: string;
+
+  @Column({ name: 'contact_phone', nullable: true })
+  contactPhone?: string;
+
   @CreateDateColumn({ name: 'booked_at' })
   bookedAt: Date;
+
+  @Column({ name: 'cancelled_at', type: 'timestamp', nullable: true })
+  cancelledAt?: Date;
 
   // Relations
   @ManyToOne(() => User, (user) => user.bookings)

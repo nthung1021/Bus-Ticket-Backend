@@ -24,6 +24,7 @@ import { SeatStatus } from '../entities/seat-status.entity';
 import { SearchTripsDto } from './dto/search-trips.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
+import { start } from 'repl';
 
 @Injectable()
 export class TripsService {
@@ -387,6 +388,7 @@ export class TripsService {
     const page = dto.page || 1;
     const limit = Math.min(dto.limit || 20, 100);
     const offset = (page - 1) * limit;
+    console.log(dto.date);
 
     const qb = this.tripRepo.createQueryBuilder('trip')
       // join route, bus, operator — adapt relation names to your entities
@@ -401,9 +403,17 @@ export class TripsService {
 
     // date filter: trips whose departure date = dto.date (timezone note: store timestamps in UTC)
     // We compare date part by bounding between start and end of the day in UTC or DB timezone.
-    const startOfDay = `${dto.date}T00:00:00.000Z`;
-    const endOfDay = `${dto.date}T23:59:59.999Z`;
+    const startDate = new Date(dto.date);
+    startDate.setUTCHours(0, 0, 0, 0);
+    const startOfDay = startDate.toISOString();
+    // console.log(startOfDay);
+    const endDate = new Date(dto.date);
+    endDate.setUTCHours(23, 59, 59, 999);
+    const endOfDay = endDate.toISOString();
+    // console.log(endOfDay);
     qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
+
+
 
     // optional filters
     if (dto.busType) {
