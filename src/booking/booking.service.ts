@@ -12,6 +12,8 @@ import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
 import { EmailService } from './email.service';
 import PDFDocument from 'pdfkit';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class BookingService {
@@ -828,6 +830,9 @@ export class BookingService {
         resolve({ buffer, filename });
       });
       doc.on('error', (err) => reject(err));
+
+      // Use PDFKit's built-in fonts that support Unicode
+      doc.font('Helvetica');
 
       // Header
       doc
