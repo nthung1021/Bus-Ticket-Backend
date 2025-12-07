@@ -14,6 +14,8 @@ import { OperatorModule } from './operator/operator.module';
 import { SeatLayoutModule } from './seat-layout/seat-layout.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { BookingModule } from './booking/booking.module';
+import { UserModule } from './user/user.module';
 import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
 import { DatabaseService } from './database/database.service';
 import { GatewaysModule } from './gateways/gateways.module';
@@ -40,6 +42,8 @@ import { SeatModule } from './seat/seat.module';
     OperatorModule,
     SeatLayoutModule,
     DatabaseModule,
+    BookingModule,
+    UserModule,
     GatewaysModule,
     SeatStatusModule,
     SeatModule,
