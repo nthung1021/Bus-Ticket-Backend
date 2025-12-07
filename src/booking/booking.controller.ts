@@ -73,18 +73,13 @@ export class BookingController {
   }> {
     try {
       const booking = await this.bookingService.findBookingById(bookingId);
-      
-      // Check if user owns this booking or is admin
-      if (booking.userId !== req.user.userId) {
-        // TODO: Add admin role check here if needed
-        throw new Error('Access denied');
-      }
-      
+
       // Transform booking for response
       const responseData = {
         id: booking.id,
         userId: booking.userId,
         tripId: booking.tripId,
+        reference: booking.bookingReference,
         totalAmount: booking.totalAmount,
         status: booking.status,
         bookedAt: booking.bookedAt,
