@@ -120,7 +120,7 @@ export class BookingService {
 
       // Check if any seats are already booked or locked
       const unavailableSeats = seatStatuses.filter(
-        status => status.state === SeatState.BOOKED || status.state === SeatState.LOCKED
+        status => status.state === SeatState.BOOKED
       );
 
       if (unavailableSeats.length > 0) {
