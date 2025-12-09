@@ -310,6 +310,153 @@ export class SeatStatusGateway
     }
 
     /**
+     * Handles seat booking requests
+     * Converts seat locks to booked status and removes locks
+     * Only users who hold the lock can book the seat
+     */
+    @SubscribeMessage('bookSeat')
+    async handleBookSeat(
+        @MessageBody() data: { tripId: string; seatId: string; userId?: string },
+        @ConnectedSocket() client: Socket,
+    ) {
+        const { tripId, seatId, userId } = data;
+        const lockKey = `${tripId}:${seatId}`;
+
+        // Check if seat is locked by this client
+        const lock = this.seatLocks.get(lockKey);
+        if (!lock) {
+            return { success: false, message: 'Seat is not locked' };
+        }
+
+        if (lock.socketId !== client.id) {
+            return { success: false, message: 'You do not hold the lock for this seat' };
+        }
+
+        // Check if lock has expired
+        if (lock.expiresAt <= new Date()) {
+            this.seatLocks.delete(lockKey);
+            return { success: false, message: 'Lock has expired' };
+        }
+
+        // Remove the lock and update seat status to booked
+        this.seatLocks.delete(lockKey);
+
+        // Update seat status in database
+        try {
+            await this.saveSeatStatus(tripId, seatId, SeatState.BOOKED, null);
+        } catch (error) {
+            this.logger.error(`Failed to update seat status in database: ${error.message}`);
+            // Continue with booking even if database update fails
+        }
+
+        // Notify all clients in the trip room that the seat is now booked
+        this.server.to(`trip:${tripId}`).emit('seatBooked', {
+            tripId,
+            seatId,
+            userId: userId || lock.userId,
+        });
+
+        this.logger.log(`Seat ${seatId} booked for trip ${tripId} by ${userId || lock.userId}`);
+
+        return { success: true, seatId, userId: userId || lock.userId };
+    }
+
+    /**
+     * Handles bulk seat booking requests
+     * Books multiple seats at once for a trip
+     * User must hold locks for all requested seats
+     */
+    @SubscribeMessage('bookSeats')
+    async handleBookSeats(
+        @MessageBody() data: { tripId: string; seatIds: string[]; userId?: string },
+        @ConnectedSocket() client: Socket,
+    ) {
+        const { tripId, seatIds, userId } = data;
+        const bookedSeats: string[] = [];
+        const failedSeats: Array<{ seatId: string; reason: string }> = [];
+
+        // Validate each seat
+        for (const seatId of seatIds) {
+            const lockKey = `${tripId}:${seatId}`;
+            const lock = this.seatLocks.get(lockKey);
+
+            if (!lock) {
+                failedSeats.push({ seatId, reason: 'Seat is not locked' });
+                continue;
+            }
+
+            if (lock.socketId !== client.id) {
+                failedSeats.push({ seatId, reason: 'You do not hold the lock for this seat' });
+                continue;
+            }
+
+            if (lock.expiresAt <= new Date()) {
+                this.seatLocks.delete(lockKey);
+                failedSeats.push({ seatId, reason: 'Lock has expired' });
+                continue;
+            }
+
+            // All checks passed, proceed with booking
+            this.seatLocks.delete(lockKey);
+            bookedSeats.push(seatId);
+
+            // Update seat status in database
+            try {
+                await this.saveSeatStatus(tripId, seatId, SeatState.BOOKED, null);
+            } catch (error) {
+                this.logger.error(`Failed to update seat status in database for seat ${seatId}: ${error.message}`);
+                // Continue with booking even if database update fails
+            }
+
+            // Notify all clients that this seat is now booked
+            this.server.to(`trip:${tripId}`).emit('seatBooked', {
+                tripId,
+                seatId,
+                userId: userId || lock.userId,
+            });
+        }
+
+        this.logger.log(`Bulk booking completed for trip ${tripId}: ${bookedSeats.length} successful, ${failedSeats.length} failed`);
+
+        return {
+            success: bookedSeats.length > 0,
+            bookedSeats,
+            failedSeats,
+        };
+    }
+
+    /**
+     * Handles seat cancellation requests
+     * Converts booked seats back to available status
+     */
+    @SubscribeMessage('cancelSeat')
+    async handleCancelSeat(
+        @MessageBody() data: { tripId: string; seatId: string; userId?: string },
+        @ConnectedSocket() client: Socket,
+    ) {
+        const { tripId, seatId, userId } = data;
+
+        // Update seat status in database to available
+        try {
+            await this.saveSeatStatus(tripId, seatId, SeatState.AVAILABLE, null);
+        } catch (error) {
+            this.logger.error(`Failed to update seat status in database: ${error.message}`);
+            return { success: false, message: 'Failed to update seat status' };
+        }
+
+        // Notify all clients in the trip room that the seat is now available
+        this.server.to(`trip:${tripId}`).emit('seatAvailable', {
+            tripId,
+            seatId,
+            userId,
+        });
+
+        this.logger.log(`Seat ${seatId} cancelled for trip ${tripId} by ${userId || client.id}`);
+
+        return { success: true, seatId };
+    }
+
+    /**
      * Called when seats are successfully booked
      * Removes locks and notifies all clients that seats are now booked
      * @param tripId - The trip ID
