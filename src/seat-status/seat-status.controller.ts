@@ -11,6 +11,8 @@ import {
     NotFoundException,
     BadRequestException,
 } from '@nestjs/common';
+import { IsOptional, IsString, IsDate, IsEnum } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 import { SeatStatusService } from './seat-status.service';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { SeatState } from '../entities/seat-status.entity';
@@ -25,8 +27,19 @@ export class CreateSeatStatusDto {
 }
 
 export class UpdateSeatStatusDto {
+    @ApiProperty({ required: false, enum: SeatState })
+    @IsOptional()
+    @IsEnum(SeatState)
     state?: SeatState;
+
+    @ApiProperty({ required: false })
+    @IsOptional()
+    @IsString()
     bookingId?: string;
+
+    @ApiProperty({ required: false })
+    @IsOptional()
+    @IsDate()
     lockedUntil?: Date;
 }
 
