@@ -25,7 +25,7 @@ export class PaymentMethod {
   @Column({ name: 'is_default', default: false })
   isDefault: boolean;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
   createdAt: Date;
 
   // Relations

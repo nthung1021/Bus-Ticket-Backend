@@ -33,7 +33,7 @@ export class Operator {
   @Index('idx_operators_status')
   status: OperatorStatus;
 
-  @Column({ name: 'approved_at', nullable: true })
+  @Column({ name: 'approved_at', nullable: true, type: 'timestamp with time zone' })
   approvedAt: Date;
 
   // Relations

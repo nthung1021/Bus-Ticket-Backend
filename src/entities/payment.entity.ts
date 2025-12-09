@@ -40,7 +40,7 @@ export class Payment {
   })
   status: PaymentStatus;
 
-  @CreateDateColumn({ name: 'processed_at' })
+  @CreateDateColumn({ name: 'processed_at', type: 'timestamp with time zone' })
   processedAt: Date;
 
   // Relations

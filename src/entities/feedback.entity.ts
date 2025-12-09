@@ -26,7 +26,7 @@ export class Feedback {
   @Column({ type: 'text', nullable: true })
   comment: string | null;
 
-  @CreateDateColumn({ name: 'submitted_at' })
+  @CreateDateColumn({ name: 'submitted_at', type: 'timestamp with time zone' })
   submittedAt: Date;
 
   // Relations
