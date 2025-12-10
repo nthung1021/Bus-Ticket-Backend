@@ -42,7 +42,7 @@ export class Booking {
   @Index('idx_bookings_trip_id')
   tripId: string;
 
-  @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
+  @Column({ name: 'total_amount' })
   totalAmount: number;
 
   @Column({

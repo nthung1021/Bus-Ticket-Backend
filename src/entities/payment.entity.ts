@@ -30,7 +30,7 @@ export class Payment {
   @Column({ name: 'transaction_ref' })
   transactionRef: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column()
   amount: number;
 
   @Column({
