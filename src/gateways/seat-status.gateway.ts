@@ -723,26 +723,36 @@ export class SeatStatusGateway
         state: SeatState,
         lockedUntil: Date | null,
     ): Promise<void> {
-        // Check if seat status already exists for this trip/seat combination
-        const existingStatus = await this.seatStatusRepository.findOne({
-            where: { tripId, seatId },
-        });
-
-        if (existingStatus) {
-            // Update existing status
-            await this.seatStatusRepository.update(existingStatus.id, {
-                state,
-                lockedUntil,
+        try {
+            // Check if seat status already exists for this trip/seat combination
+            const existingStatus = await this.seatStatusRepository.findOne({
+                where: { tripId, seatId },
             });
-        } else {
-            // Create new status
-            const newStatus = this.seatStatusRepository.create({
+            if (existingStatus) {
+                // Update existing status
+                await this.seatStatusRepository.update(existingStatus.id, {
+                    state,
+                    lockedUntil,
+                });
+            } else {
+                // Create new status
+                const newStatus = this.seatStatusRepository.create({
+                    tripId,
+                    seatId,
+                    state,
+                    lockedUntil,
+                });
+                const savedStatus = await this.seatStatusRepository.save(newStatus);
+            }
+        } catch (error) {
+            console.error('Error saving seat status:', {
                 tripId,
                 seatId,
                 state,
                 lockedUntil,
+                error: error instanceof Error ? error.message : error
             });
-            await this.seatStatusRepository.save(newStatus);
+            throw new Error(`Failed to save seat status: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 }
