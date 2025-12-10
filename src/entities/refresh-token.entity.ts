@@ -23,9 +23,9 @@ export class RefreshToken {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
+  @CreateDateColumn({ type: 'timestamp with time zone' })
   expiresAt: Date;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAt: Date;
 }
