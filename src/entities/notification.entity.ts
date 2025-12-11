@@ -48,7 +48,7 @@ export class Notification {
   })
   status: NotificationStatus;
 
-  @CreateDateColumn({ name: 'sent_at' })
+  @CreateDateColumn({ name: 'sent_at', type: 'timestamp with time zone' })
   sentAt: Date;
 
   // Relations

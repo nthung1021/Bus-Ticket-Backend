@@ -42,7 +42,7 @@ export class Booking {
   @Index('idx_bookings_trip_id')
   tripId: string;
 
-  @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
+  @Column({ name: 'total_amount' })
   totalAmount: number;
 
   @Column({
@@ -59,10 +59,10 @@ export class Booking {
   @Column({ name: 'contact_phone', nullable: true })
   contactPhone?: string;
 
-  @CreateDateColumn({ name: 'booked_at' })
+  @CreateDateColumn({ name: 'booked_at', type: 'timestamp with time zone' })
   bookedAt: Date;
 
-  @Column({ name: 'cancelled_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'cancelled_at', type: 'timestamp with time zone', nullable: true })
   cancelledAt?: Date;
 
   // Relations

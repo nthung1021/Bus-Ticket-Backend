@@ -30,7 +30,7 @@ export class Payment {
   @Column({ name: 'transaction_ref' })
   transactionRef: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column()
   amount: number;
 
   @Column({
@@ -40,7 +40,7 @@ export class Payment {
   })
   status: PaymentStatus;
 
-  @CreateDateColumn({ name: 'processed_at' })
+  @CreateDateColumn({ name: 'processed_at', type: 'timestamp with time zone' })
   processedAt: Date;
 
   // Relations

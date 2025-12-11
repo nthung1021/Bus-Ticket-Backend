@@ -45,7 +45,7 @@ export class Trip {
   @Index('idx_trips_arrival_time')
   arrivalTime: Date;
 
-  @Column({ name: 'base_price', type: 'decimal', precision: 10, scale: 2 })
+  @Column({ name: 'base_price' })
   basePrice: number;
 
   @Column({

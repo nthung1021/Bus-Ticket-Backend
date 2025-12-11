@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode, Put, Delete, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -27,6 +28,7 @@ export class BookingController {
   ) {}
 
   @Post()
+  @UseGuards(OptionalJwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
   async createBooking(
     @Request() req: any,
