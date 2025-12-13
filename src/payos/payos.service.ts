@@ -48,7 +48,14 @@ export class PayosService {
           createPaymentDto.cancelUrl ||
           this.configService.get<string>('PAYOS_CANCEL_URL') ||
           'http://localhost:8000/payment/cancel',
-        items: createPaymentDto.items || [],
+        items:
+          createPaymentDto.items?.map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            unit: item.unit,
+            taxPercentage: item.taxPercentage as any,
+          })) || [],
       };
 
       const paymentLink = (await this.payos.paymentRequests.create(

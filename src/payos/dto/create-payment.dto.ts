@@ -1,7 +1,48 @@
-import { IsNumber, IsString, IsOptional, IsArray } from 'class-validator';
+import {
+  IsNumber,
+  IsString,
+  IsOptional,
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsInt,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
+class PaymentItemDto {
+  @IsString()
+  name: string;
+
+  @IsInt()
+  quantity: number;
+
+  @IsNumber()
+  price: number;
+
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
+  @IsNumber()
+  @IsOptional()
+  taxPercentage?: number;
+}
+
+class InvoiceDto {
+  @IsBoolean()
+  @IsOptional()
+  buyerNotGetInvoice?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  taxPercentage?: number;
+}
+
 export class CreatePaymentDto {
+  @IsNumber()
+  @Type(() => Number)
+  orderCode: number;
+
   @IsNumber()
   @Type(() => Number)
   amount: number;
@@ -11,25 +52,47 @@ export class CreatePaymentDto {
 
   @IsString()
   @IsOptional()
-  returnUrl?: string;
+  buyerName?: string;
 
   @IsString()
   @IsOptional()
-  cancelUrl?: string;
+  buyerCompanyName?: string;
 
   @IsString()
   @IsOptional()
-  signature?: string;
+  buyerTaxCode?: string;
 
   @IsString()
   @IsOptional()
-  orderCode?: string;
+  buyerAddress?: string;
+
+  @IsEmail()
+  @IsOptional()
+  buyerEmail?: string;
+
+  @IsString()
+  @IsOptional()
+  buyerPhone?: string;
 
   @IsArray()
   @IsOptional()
-  items?: Array<{
-    name: string;
-    quantity: number;
-    price: number;
-  }>;
+  @Type(() => PaymentItemDto)
+  items?: PaymentItemDto[];
+
+  @IsString()
+  cancelUrl: string;
+
+  @IsString()
+  returnUrl: string;
+
+  @IsOptional()
+  invoice?: InvoiceDto;
+
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  expiredAt?: number;
+
+  @IsString()
+  signature: string;
 }
