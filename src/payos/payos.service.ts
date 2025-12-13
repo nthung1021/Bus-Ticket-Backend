@@ -1,0 +1,177 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PayOS } from '@payos/node';
+import { CreatePaymentDto } from './dto/create-payment.dto';
+import {
+  PaymentResponseDto,
+  WebhookResponseDto,
+} from './dto/payment-response.dto';
+
+@Injectable()
+export class PayosService {
+  private readonly logger = new Logger(PayosService.name);
+  private readonly payos: PayOS;
+
+  constructor(private configService: ConfigService) {
+    const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
+    const apiKey = this.configService.get<string>('PAYOS_API_KEY');
+    const checksumKey = this.configService.get<string>('PAYOS_CHECKSUM_KEY');
+
+    if (!clientId || !apiKey || !checksumKey) {
+      throw new Error(
+        'PayOS configuration is missing. Please check environment variables.',
+      );
+    }
+
+    this.payos = new PayOS({
+      clientId,
+      apiKey,
+      checksumKey,
+    });
+  }
+
+  async createPaymentLink(
+    createPaymentDto: CreatePaymentDto,
+  ): Promise<PaymentResponseDto> {
+    try {
+      const orderCode = this.generateOrderCode();
+
+      const paymentData = {
+        orderCode,
+        amount: createPaymentDto.amount,
+        description: createPaymentDto.description,
+        returnUrl:
+          createPaymentDto.returnUrl ||
+          this.configService.get<string>('PAYOS_RETURN_URL') ||
+          'http://localhost:8000/payment/success',
+        cancelUrl:
+          createPaymentDto.cancelUrl ||
+          this.configService.get<string>('PAYOS_CANCEL_URL') ||
+          'http://localhost:8000/payment/cancel',
+        items: createPaymentDto.items || [],
+      };
+
+      const paymentLink = (await this.payos.paymentRequests.create(
+        paymentData,
+      )) as any;
+
+      this.logger.log(
+        `Payment link created successfully for order ${orderCode}`,
+      );
+
+      return {
+        checkoutUrl: paymentLink.checkoutUrl || '',
+        orderCode: paymentLink.orderCode,
+        accountNumber: paymentLink.accountNumber || '',
+        accountName: paymentLink.accountName || '',
+        amount: paymentLink.amount,
+        description: paymentLink.description || '',
+        transactionId:
+          paymentLink.transactionId || paymentLink.id?.toString() || '',
+        status: paymentLink.status || 'PENDING',
+      };
+    } catch (error) {
+      this.logger.error('Failed to create payment link', error);
+      throw error;
+    }
+  }
+
+  async getPaymentInformation(orderCode: number): Promise<PaymentResponseDto> {
+    try {
+      const paymentInfo = (await this.payos.paymentRequests.get(
+        orderCode,
+      )) as any;
+
+      return {
+        checkoutUrl: paymentInfo.checkoutUrl || '',
+        orderCode: paymentInfo.orderCode,
+        accountNumber: paymentInfo.accountNumber || '',
+        accountName: paymentInfo.accountName || '',
+        amount: paymentInfo.amount,
+        description: paymentInfo.description || '',
+        transactionId:
+          paymentInfo.transactionId || paymentInfo.id?.toString() || '',
+        status: paymentInfo.status || 'UNKNOWN',
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to get payment information for order ${orderCode}`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async cancelPayment(orderCode: number): Promise<PaymentResponseDto> {
+    try {
+      const cancelledPayment = (await this.payos.paymentRequests.cancel(
+        orderCode,
+      )) as any;
+
+      this.logger.log(`Payment cancelled successfully for order ${orderCode}`);
+
+      return {
+        checkoutUrl: cancelledPayment.checkoutUrl || '',
+        orderCode: cancelledPayment.orderCode,
+        accountNumber: cancelledPayment.accountNumber || '',
+        accountName: cancelledPayment.accountName || '',
+        amount: cancelledPayment.amount,
+        description: cancelledPayment.description || '',
+        transactionId:
+          cancelledPayment.transactionId ||
+          cancelledPayment.id?.toString() ||
+          '',
+        status: cancelledPayment.status || 'CANCELLED',
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to cancel payment for order ${orderCode}`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  verifyWebhookData(webhookData: any): any {
+    try {
+      // Verify webhook signature using PayOS method
+      const verifiedData = this.payos.webhooks.verify(webhookData);
+
+      this.logger.log('Webhook data verified successfully');
+      return verifiedData;
+    } catch (error) {
+      this.logger.error('Error verifying webhook data', error);
+      throw error;
+    }
+  }
+
+  async handleWebhook(webhookData: any): Promise<WebhookResponseDto> {
+    try {
+      const { orderCode, status, transactionId } = webhookData;
+
+      this.logger.log(
+        `Webhook received for order ${orderCode} with status ${status}`,
+      );
+
+      // Here you can implement business logic based on payment status
+      // For example: update booking status, send confirmation email, etc.
+
+      return {
+        success: true,
+        message: 'Webhook processed successfully',
+      };
+    } catch (error) {
+      this.logger.error('Error processing webhook', error);
+      return {
+        success: false,
+        message: 'Failed to process webhook',
+      };
+    }
+  }
+
+  private generateOrderCode(): number {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    return parseInt(`${timestamp}${random}`);
+  }
+}

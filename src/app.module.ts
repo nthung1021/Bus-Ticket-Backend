@@ -21,6 +21,7 @@ import { DatabaseService } from './database/database.service';
 import { GatewaysModule } from './gateways/gateways.module';
 import { SeatStatusModule } from './seat-status/seat-status.module';
 import { SeatModule } from './seat/seat.module';
+import { PayosModule } from './payos/payos.module';
 
 @Module({
   imports: [
@@ -47,14 +48,13 @@ import { SeatModule } from './seat/seat.module';
     GatewaysModule,
     SeatStatusModule,
     SeatModule,
+    PayosModule,
   ],
   controllers: [AppController],
   providers: [AppService, DatabaseService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(PoolMonitorMiddleware)
-      .forRoutes('*'); // Apply to all routes
+    consumer.apply(PoolMonitorMiddleware).forRoutes('*'); // Apply to all routes
   }
 }
