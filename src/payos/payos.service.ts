@@ -143,6 +143,16 @@ export class PayosService {
 
       this.logger.log(`Payment cancelled successfully for order ${orderCode}`);
 
+      // Update payment status in database
+      await this.paymentRepository.update(
+        { payosOrderCode: orderCode },
+        { status: PaymentStatus.CANCELLED },
+      );
+
+      this.logger.log(
+        `Payment status updated to CANCELLED in database for order ${orderCode}`,
+      );
+
       // The cancel response has different structure, so we need to construct the response
       // with available data and defaults for missing properties
       return {
