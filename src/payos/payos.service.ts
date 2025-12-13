@@ -6,6 +6,7 @@ import {
   CreatePaymentLinkResponse,
   PaymentLinkStatus,
   PaymentLink,
+  Webhook,
 } from '@payos/node';
 import { Repository } from 'typeorm';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -187,7 +188,7 @@ export class PayosService {
     }
   }
 
-  async handleWebhook(webhookData: any): Promise<WebhookResponseDto> {
+  async handleWebhook(webhookData: Webhook): Promise<WebhookResponseDto> {
     try {
       const {
         code,
@@ -200,7 +201,21 @@ export class PayosService {
         `Webhook received for order ${orderCode} with status ${success}`,
       );
 
-      // Here you can implement business logic based on payment status
+      // Update payment status in database based on webhook success status
+      const paymentStatus = success
+        ? PaymentStatus.COMPLETED
+        : PaymentStatus.FAILED;
+
+      await this.paymentRepository.update(
+        { payosOrderCode: orderCode },
+        { status: paymentStatus },
+      );
+
+      this.logger.log(
+        `Payment status updated to ${paymentStatus} in database for order ${orderCode}`,
+      );
+
+      // Here you can implement additional business logic based on payment status
       // For example: update booking status, send confirmation email, etc.
 
       return {
