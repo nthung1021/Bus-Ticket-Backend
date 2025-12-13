@@ -89,17 +89,7 @@ export class PayosService {
         orderCode,
       )) as any;
 
-      return {
-        checkoutUrl: paymentInfo.checkoutUrl || '',
-        orderCode: paymentInfo.orderCode,
-        accountNumber: paymentInfo.accountNumber || '',
-        accountName: paymentInfo.accountName || '',
-        amount: paymentInfo.amount,
-        description: paymentInfo.description || '',
-        transactionId:
-          paymentInfo.transactionId || paymentInfo.id?.toString() || '',
-        status: paymentInfo.status || 'UNKNOWN',
-      };
+      return paymentInfo;
     } catch (error) {
       this.logger.error(
         `Failed to get payment information for order ${orderCode}`,
@@ -117,19 +107,7 @@ export class PayosService {
 
       this.logger.log(`Payment cancelled successfully for order ${orderCode}`);
 
-      return {
-        checkoutUrl: cancelledPayment.checkoutUrl || '',
-        orderCode: cancelledPayment.orderCode,
-        accountNumber: cancelledPayment.accountNumber || '',
-        accountName: cancelledPayment.accountName || '',
-        amount: cancelledPayment.amount,
-        description: cancelledPayment.description || '',
-        transactionId:
-          cancelledPayment.transactionId ||
-          cancelledPayment.id?.toString() ||
-          '',
-        status: cancelledPayment.status || 'CANCELLED',
-      };
+      return cancelledPayment;
     } catch (error) {
       this.logger.error(
         `Failed to cancel payment for order ${orderCode}`,
@@ -154,10 +132,15 @@ export class PayosService {
 
   async handleWebhook(webhookData: any): Promise<WebhookResponseDto> {
     try {
-      const { orderCode, status, transactionId } = webhookData;
+      const {
+        code,
+        desc,
+        success,
+        data: { orderCode },
+      } = webhookData;
 
       this.logger.log(
-        `Webhook received for order ${orderCode} with status ${status}`,
+        `Webhook received for order ${orderCode} with status ${success}`,
       );
 
       // Here you can implement business logic based on payment status
