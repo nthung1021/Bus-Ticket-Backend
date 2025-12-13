@@ -49,7 +49,8 @@ export class PayosService {
   ): Promise<PaymentResponseDto> {
     try {
       const orderCode = this.generateOrderCode();
-
+      // console.log(orderCode);
+      // 2147483647
       const paymentData = {
         orderCode,
         amount: createPaymentDto.amount,
@@ -84,7 +85,7 @@ export class PayosService {
       const payment = this.paymentRepository.create({
         bookingId: createPaymentDto.bookingId,
         provider: 'PAYOS',
-        transactionRef: paymentLink.paymentLinkId || '',
+        transactionRef: (paymentLink.paymentLinkId as string) || '',
         payosOrderCode: orderCode,
         amount: createPaymentDto.amount,
         status: PaymentStatus.PENDING,
@@ -232,8 +233,17 @@ export class PayosService {
   }
 
   private generateOrderCode(): number {
+    // Generate a timestamp-based code that fits within PostgreSQL integer range (max: 2,147,483,647)
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 1000);
-    return parseInt(`${timestamp}${random}`);
+
+    // Take last 5 digits of timestamp + 3 digits random to stay within integer range
+    const timestampPart = timestamp % 100000; // Last 5 digits
+    const orderCode = parseInt(
+      `${timestampPart}${random.toString().padStart(3, '0')}`,
+    );
+    // console.log(orderCode);
+    // Ensure it's within integer range
+    return Math.min(orderCode, 2147483647);
   }
 }

@@ -40,11 +40,13 @@ class InvoiceDto {
 
 export class CreatePaymentDto {
   @IsString()
-  bookingId: string;
+  @IsOptional()
+  bookingId?: string;
 
   @IsNumber()
+  @IsOptional()
   @Type(() => Number)
-  orderCode: number;
+  orderCode?: number;
 
   @IsNumber()
   @Type(() => Number)
@@ -83,10 +85,12 @@ export class CreatePaymentDto {
   items?: PaymentItemDto[];
 
   @IsString()
-  cancelUrl: string;
+  @IsOptional()
+  cancelUrl?: string;
 
   @IsString()
-  returnUrl: string;
+  @IsOptional()
+  returnUrl?: string;
 
   @IsOptional()
   invoice?: InvoiceDto;
@@ -97,5 +101,6 @@ export class CreatePaymentDto {
   expiredAt?: number;
 
   @IsString()
-  signature: string;
+  @IsOptional()
+  signature?: string;
 }
