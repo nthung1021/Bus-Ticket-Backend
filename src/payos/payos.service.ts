@@ -1,18 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
 import { PayOS } from '@payos/node';
+import { Repository } from 'typeorm';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+
 import {
   PaymentResponseDto,
   WebhookResponseDto,
 } from './dto/payment-response.dto';
+import { Payment, PaymentStatus } from '../entities/payment.entity';
 
 @Injectable()
 export class PayosService {
   private readonly logger = new Logger(PayosService.name);
   private readonly payos: PayOS;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
+  ) {
     const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
     const checksumKey = this.configService.get<string>('PAYOS_CHECKSUM_KEY');
@@ -66,6 +74,17 @@ export class PayosService {
         `Payment link created successfully for order ${orderCode}`,
       );
 
+      // Create payment record in database
+      const payment = this.paymentRepository.create({
+        bookingId: createPaymentDto.bookingId,
+        provider: 'PAYOS',
+        transactionRef: paymentLink.id || paymentLink.paymentLinkId || '',
+        payosOrderCode: orderCode,
+        amount: createPaymentDto.amount,
+        status: PaymentStatus.PENDING,
+      });
+      await this.paymentRepository.save(payment);
+
       return {
         checkoutUrl: paymentLink.checkoutUrl || '',
         orderCode: paymentLink.orderCode,
@@ -76,6 +95,7 @@ export class PayosService {
         transactionId:
           paymentLink.transactionId || paymentLink.id?.toString() || '',
         status: paymentLink.status || 'PENDING',
+        paymentId: payment.id,
       };
     } catch (error) {
       this.logger.error('Failed to create payment link', error);

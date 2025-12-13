@@ -24,6 +24,9 @@ export class PaymentResponseDto {
 
   @ApiProperty({ description: 'Payment status' })
   status: string;
+
+  @ApiProperty({ description: 'Payment ID from database' })
+  paymentId?: string;
 }
 
 export class WebhookResponseDto {

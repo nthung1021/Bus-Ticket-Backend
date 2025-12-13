@@ -39,6 +39,9 @@ class InvoiceDto {
 }
 
 export class CreatePaymentDto {
+  @IsString()
+  bookingId: string;
+
   @IsNumber()
   @Type(() => Number)
   orderCode: number;
