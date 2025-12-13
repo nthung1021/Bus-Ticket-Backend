@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { PayOS } from '@payos/node';
+import {
+  PayOS,
+  CreatePaymentLinkResponse,
+  PaymentLinkStatus,
+  PaymentLink,
+} from '@payos/node';
 import { Repository } from 'typeorm';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 
@@ -68,7 +73,7 @@ export class PayosService {
 
       const paymentLink = (await this.payos.paymentRequests.create(
         paymentData,
-      )) as any;
+      )) as CreatePaymentLinkResponse;
 
       this.logger.log(
         `Payment link created successfully for order ${orderCode}`,
@@ -78,7 +83,7 @@ export class PayosService {
       const payment = this.paymentRepository.create({
         bookingId: createPaymentDto.bookingId,
         provider: 'PAYOS',
-        transactionRef: paymentLink.id || paymentLink.paymentLinkId || '',
+        transactionRef: paymentLink.paymentLinkId || '',
         payosOrderCode: orderCode,
         amount: createPaymentDto.amount,
         status: PaymentStatus.PENDING,
@@ -92,8 +97,7 @@ export class PayosService {
         accountName: paymentLink.accountName || '',
         amount: paymentLink.amount,
         description: paymentLink.description || '',
-        transactionId:
-          paymentLink.transactionId || paymentLink.id?.toString() || '',
+        transactionId: paymentLink.paymentLinkId || '',
         status: paymentLink.status || 'PENDING',
         paymentId: payment.id,
       };
@@ -107,9 +111,22 @@ export class PayosService {
     try {
       const paymentInfo = (await this.payos.paymentRequests.get(
         orderCode,
-      )) as any;
+      )) as PaymentLink;
 
-      return paymentInfo;
+      // Get account info from most recent transaction if available
+      const latestTransaction =
+        paymentInfo.transactions?.[paymentInfo.transactions.length - 1];
+
+      return {
+        checkoutUrl: '', // PaymentLink doesn't have checkoutUrl, need to reconstruct or store separately
+        orderCode: paymentInfo.orderCode,
+        accountNumber: latestTransaction?.accountNumber || '',
+        accountName: latestTransaction?.virtualAccountName || '',
+        amount: paymentInfo.amount,
+        description: latestTransaction?.description || '',
+        transactionId: paymentInfo.id,
+        status: paymentInfo.status,
+      };
     } catch (error) {
       this.logger.error(
         `Failed to get payment information for order ${orderCode}`,
@@ -121,13 +138,23 @@ export class PayosService {
 
   async cancelPayment(orderCode: number): Promise<PaymentResponseDto> {
     try {
-      const cancelledPayment = (await this.payos.paymentRequests.cancel(
-        orderCode,
-      )) as any;
+      const cancelledPayment =
+        await this.payos.paymentRequests.cancel(orderCode);
 
       this.logger.log(`Payment cancelled successfully for order ${orderCode}`);
 
-      return cancelledPayment;
+      // The cancel response has different structure, so we need to construct the response
+      // with available data and defaults for missing properties
+      return {
+        checkoutUrl: '', // Cancel operation doesn't return a checkout URL
+        orderCode: cancelledPayment.orderCode || orderCode,
+        accountNumber: '', // Cancel operation doesn't return account info
+        accountName: '', // Cancel operation doesn't return account info
+        amount: cancelledPayment.amount || 0,
+        description: 'Payment cancelled', // Use default description since cancel response doesn't include it
+        transactionId: cancelledPayment.id?.toString() || '',
+        status: cancelledPayment.status || 'CANCELLED',
+      };
     } catch (error) {
       this.logger.error(
         `Failed to cancel payment for order ${orderCode}`,
