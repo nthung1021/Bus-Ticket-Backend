@@ -7,6 +7,7 @@ import { Booking, BookingStatus } from '../entities/booking.entity';
 import { Trip } from '../entities/trip.entity';
 import { Route } from '../entities/route.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
+import { CacheService, CacheAnalytics } from '../common/cache.service';
 import { 
   AnalyticsQueryDto, 
   AnalyticsTimeframe, 
@@ -33,6 +34,7 @@ export class AdminService {
     @InjectRepository(Trip) private tripsRepository: Repository<Trip>,
     @InjectRepository(Route) private routesRepository: Repository<Route>,
     @InjectRepository(SeatStatus) private seatStatusRepository: Repository<SeatStatus>,
+    private readonly cacheService: CacheService,
   ) {}
 
   async findAllUsers() {
@@ -100,25 +102,38 @@ export class AdminService {
     return { startDate, endDate };
   }
 
+  @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
   async getBookingsSummary(query: AnalyticsQueryDto): Promise<BookingSummaryDto> {
     const { startDate, endDate } = this.getDateRange(query);
 
-    const bookings = await this.bookingsRepository.find({
-      where: {
-        bookedAt: Between(startDate, endDate),
-      },
-      relations: ['trip'],
-    });
+    // Optimized SQL aggregation query
+    const result = await this.bookingsRepository
+      .createQueryBuilder('booking')
+      .select([
+        'COUNT(*) as "totalBookings"',
+        'COUNT(CASE WHEN booking.status = :paidStatus THEN 1 END) as "paidBookings"',
+        'COUNT(CASE WHEN booking.status = :pendingStatus THEN 1 END) as "pendingBookings"',
+        'COUNT(CASE WHEN booking.status = :cancelledStatus THEN 1 END) as "cancelledBookings"',
+        'COUNT(CASE WHEN booking.status = :expiredStatus THEN 1 END) as "expiredBookings"',
+        'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+      ])
+      .where('booking.bookedAt BETWEEN :startDate AND :endDate')
+      .setParameters({
+        startDate,
+        endDate,
+        paidStatus: BookingStatus.PAID,
+        pendingStatus: BookingStatus.PENDING,
+        cancelledStatus: BookingStatus.CANCELLED,
+        expiredStatus: BookingStatus.EXPIRED,
+      })
+      .getRawOne();
 
-    const totalBookings = bookings.length;
-    const paidBookings = bookings.filter(b => b.status === BookingStatus.PAID).length;
-    const pendingBookings = bookings.filter(b => b.status === BookingStatus.PENDING).length;
-    const cancelledBookings = bookings.filter(b => b.status === BookingStatus.CANCELLED).length;
-    const expiredBookings = bookings.filter(b => b.status === BookingStatus.EXPIRED).length;
-
-    const totalRevenue = bookings
-      .filter(b => b.status === BookingStatus.PAID)
-      .reduce((sum, b) => sum + b.totalAmount, 0);
+    const totalBookings = parseInt(result.totalBookings);
+    const paidBookings = parseInt(result.paidBookings);
+    const pendingBookings = parseInt(result.pendingBookings);
+    const cancelledBookings = parseInt(result.cancelledBookings);
+    const expiredBookings = parseInt(result.expiredBookings);
+    const totalRevenue = parseFloat(result.totalRevenue);
 
     const averageBookingValue = paidBookings > 0 ? totalRevenue / paidBookings : 0;
     const conversionRate = totalBookings > 0 ? (paidBookings / totalBookings) * 100 : 0;
@@ -139,6 +154,9 @@ export class AdminService {
     };
   }
 
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache for trends
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache for trends
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache for trends
   async getBookingsTrends(query: AnalyticsQueryDto): Promise<BookingTrendsDto> {
     const { startDate, endDate } = this.getDateRange(query);
     const timeframe = query.timeframe || AnalyticsTimeframe.DAILY;
@@ -228,64 +246,59 @@ export class AdminService {
     };
   }
 
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache for route analytics
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache for route analytics
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache for route analytics
   async getRouteAnalytics(query: AnalyticsQueryDto): Promise<RouteAnalyticsDto> {
     const { startDate, endDate } = this.getDateRange(query);
 
-    const bookings = await this.bookingsRepository
+    // Optimized SQL aggregation query with JOIN
+    const routeStats = await this.bookingsRepository
       .createQueryBuilder('booking')
-      .leftJoinAndSelect('booking.trip', 'trip')
-      .leftJoinAndSelect('trip.route', 'route')
-      .where('booking.bookedAt BETWEEN :startDate AND :endDate', { startDate, endDate })
-      .getMany();
+      .leftJoin('booking.trip', 'trip')
+      .leftJoin('trip.route', 'route')
+      .select([
+        'route.id as "routeId"',
+        'route.name as "routeName"',
+        'route.origin as "routeOrigin"',
+        'route.destination as "routeDestination"',
+        'COUNT(*) as "totalBookings"',
+        'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"',
+        'COUNT(CASE WHEN booking.status = :paidStatus THEN 1 END) as "paidBookings"'
+      ])
+      .where('booking.bookedAt BETWEEN :startDate AND :endDate')
+      .andWhere('route.id IS NOT NULL')
+      .groupBy('route.id, route.name, route.origin, route.destination')
+      .orderBy('"totalRevenue"', 'DESC')
+      .setParameters({
+        startDate,
+        endDate,
+        paidStatus: BookingStatus.PAID,
+      })
+      .getRawMany();
 
-    const routeStats = new Map<string, {
-      route: Route;
-      totalBookings: number;
-      totalRevenue: number;
-      paidBookings: number;
-    }>();
+    const totalRevenue = routeStats.reduce((sum, stat) => sum + parseFloat(stat.totalRevenue), 0);
 
-    for (const booking of bookings) {
-      const routeId = booking.trip?.route?.id;
-      if (!routeId || !booking.trip?.route) continue;
-
-      if (!routeStats.has(routeId)) {
-        routeStats.set(routeId, {
-          route: booking.trip.route,
-          totalBookings: 0,
-          totalRevenue: 0,
-          paidBookings: 0,
-        });
-      }
-
-      const stats = routeStats.get(routeId)!;
-      stats.totalBookings++;
-      if (booking.status === BookingStatus.PAID) {
-        stats.totalRevenue += booking.totalAmount;
-        stats.paidBookings++;
-      }
-    }
-
-    const totalRevenue = Array.from(routeStats.values())
-      .reduce((sum, stats) => sum + stats.totalRevenue, 0);
-
-    const routes: RoutePerformanceDto[] = Array.from(routeStats.entries())
-      .map(([routeId, stats], index) => ({
+    const routes: RoutePerformanceDto[] = routeStats.map((stat, index) => {
+      const totalBookings = parseInt(stat.totalBookings);
+      const revenue = parseFloat(stat.totalRevenue);
+      const paidBookings = parseInt(stat.paidBookings);
+      
+      return {
         route: {
-          id: stats.route.id,
-          name: stats.route.name,
-          origin: stats.route.origin,
-          destination: stats.route.destination,
+          id: stat.routeId,
+          name: stat.routeName,
+          origin: stat.routeOrigin,
+          destination: stat.routeDestination,
         },
-        totalBookings: stats.totalBookings,
-        totalRevenue: stats.totalRevenue,
-        averageBookingValue: stats.paidBookings > 0 ? stats.totalRevenue / stats.paidBookings : 0,
-        conversionRate: stats.totalBookings > 0 ? (stats.paidBookings / stats.totalBookings) * 100 : 0,
+        totalBookings,
+        totalRevenue: revenue,
+        averageBookingValue: paidBookings > 0 ? revenue / paidBookings : 0,
+        conversionRate: totalBookings > 0 ? (paidBookings / totalBookings) * 100 : 0,
         popularityRank: index + 1,
-        revenuePercentage: totalRevenue > 0 ? (stats.totalRevenue / totalRevenue) * 100 : 0,
-      }))
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .map((route, index) => ({ ...route, popularityRank: index + 1 }));
+        revenuePercentage: totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0,
+      };
+    });
 
     return {
       routes,
@@ -301,6 +314,9 @@ export class AdminService {
     };
   }
 
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache
   async getConversionAnalytics(query: AnalyticsQueryDto): Promise<ConversionAnalyticsDto> {
     const { startDate, endDate } = this.getDateRange(query);
 
@@ -392,6 +408,9 @@ export class AdminService {
 
   // D1.2 Metrics Calculation Methods
   
+  @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
+  @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
+  @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
   async getTotalBookingsCount(query: AnalyticsQueryDto): Promise<{ total: number; period: { startDate: string; endDate: string } }> {
     const { startDate, endDate } = this.getDateRange(query);
     
@@ -410,6 +429,9 @@ export class AdminService {
     };
   }
 
+  @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
+  @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
+  @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
   async getBookingGrowth(query: AnalyticsQueryDto): Promise<BookingGrowthDto> {
     const { startDate, endDate } = this.getDateRange(query);
     const timeframe = query.timeframe || AnalyticsTimeframe.WEEKLY;
@@ -419,52 +441,62 @@ export class AdminService {
     const previousEndDate = new Date(startDate.getTime() - 1);
     const previousStartDate = new Date(previousEndDate.getTime() - periodDuration);
     
-    // Current period data
-    const currentBookings = await this.bookingsRepository.find({
-      where: { bookedAt: Between(startDate, endDate) },
-    });
+    // Optimized aggregation queries for both periods
+    const [currentResult, previousResult] = await Promise.all([
+      this.bookingsRepository
+        .createQueryBuilder('booking')
+        .select([
+          'COUNT(*) as "totalBookings"',
+          'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+        ])
+        .where('booking.bookedAt BETWEEN :startDate AND :endDate')
+        .setParameters({ startDate, endDate, paidStatus: BookingStatus.PAID })
+        .getRawOne(),
+      this.bookingsRepository
+        .createQueryBuilder('booking')
+        .select([
+          'COUNT(*) as "totalBookings"',
+          'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+        ])
+        .where('booking.bookedAt BETWEEN :startDate AND :endDate')
+        .setParameters({ startDate: previousStartDate, endDate: previousEndDate, paidStatus: BookingStatus.PAID })
+        .getRawOne(),
+    ]);
     
-    // Previous period data
-    const previousBookings = await this.bookingsRepository.find({
-      where: { bookedAt: Between(previousStartDate, previousEndDate) },
-    });
-    
-    const currentTotal = currentBookings.length;
-    const currentRevenue = currentBookings
-      .filter(b => b.status === BookingStatus.PAID)
-      .reduce((sum, b) => sum + b.totalAmount, 0);
-    
-    const previousTotal = previousBookings.length;
-    const previousRevenue = previousBookings
-      .filter(b => b.status === BookingStatus.PAID)
-      .reduce((sum, b) => sum + b.totalAmount, 0);
+    const currentTotal = parseInt(currentResult.totalBookings);
+    const currentRevenue = parseFloat(currentResult.totalRevenue);
+    const previousTotal = parseInt(previousResult.totalBookings);
+    const previousRevenue = parseFloat(previousResult.totalRevenue);
     
     // Calculate growth rates
     const bookingsGrowthRate = previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal) * 100 : 0;
     const revenueGrowthRate = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0;
     
-    // Daily growth data
-    const dailyGrowth: { date: string; bookings: number; growth: number }[] = [];
-    const days = eachDayOfInterval({ start: startDate, end: endDate });
-    
-    for (let i = 0; i < days.length; i++) {
-      const day = days[i];
-      const dayStart = startOfDay(day);
-      const dayEnd = endOfDay(day);
+    // Optimized daily growth data using SQL
+    const dailyStats = await this.bookingsRepository
+      .createQueryBuilder('booking')
+      .select([
+        'DATE(booking.bookedAt) as "date"',
+        'COUNT(*) as "bookings"'
+      ])
+      .where('booking.bookedAt BETWEEN :startDate AND :endDate')
+      .groupBy('DATE(booking.bookedAt)')
+      .orderBy('"date"')
+      .setParameters({ startDate, endDate })
+      .getRawMany();
+
+    const dailyGrowth: { date: string; bookings: number; growth: number }[] = dailyStats.map((stat, index) => {
+      const bookings = parseInt(stat.bookings);
+      const previousDay = index > 0 ? dailyStats[index - 1] : null;
+      const previousBookings = previousDay ? parseInt(previousDay.bookings) : 0;
+      const growth = previousBookings > 0 ? ((bookings - previousBookings) / previousBookings) * 100 : 0;
       
-      const dayBookings = currentBookings.filter(
-        b => b.bookedAt >= dayStart && b.bookedAt <= dayEnd
-      ).length;
-      
-      const previousDay = i > 0 ? dailyGrowth[i - 1].bookings : 0;
-      const growth = previousDay > 0 ? ((dayBookings - previousDay) / previousDay) * 100 : 0;
-      
-      dailyGrowth.push({
-        date: format(day, 'yyyy-MM-dd'),
-        bookings: dayBookings,
+      return {
+        date: stat.date,
+        bookings,
         growth,
-      });
-    }
+      };
+    });
     
     return {
       currentPeriod: {
@@ -487,6 +519,9 @@ export class AdminService {
     };
   }
 
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache
   async getMostPopularRoutes(query: AnalyticsQueryDto): Promise<PopularRoutesDto> {
     const { startDate, endDate } = this.getDateRange(query);
     
@@ -592,77 +627,78 @@ export class AdminService {
     };
   }
 
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache for occupancy
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache for occupancy
+  @CacheAnalytics(15 * 60 * 1000) // 15 minutes cache for occupancy
   async getSeatOccupancyRate(query: AnalyticsQueryDto): Promise<SeatOccupancyDto> {
     const { startDate, endDate } = this.getDateRange(query);
     
-    // Get all trips in the period
-    const trips = await this.tripsRepository
+    // Optimized SQL aggregation for overall occupancy
+    const overallStats = await this.tripsRepository
       .createQueryBuilder('trip')
-      .leftJoinAndSelect('trip.route', 'route')
-      .leftJoinAndSelect('trip.bus', 'bus')
-      .leftJoinAndSelect('bus.seatLayout', 'seatLayout')
-      .leftJoinAndSelect('trip.seatStatuses', 'seatStatus')
-      .where('trip.departureTime BETWEEN :startDate AND :endDate', { startDate, endDate })
-      .getMany();
+      .leftJoin('trip.bus', 'bus')
+      .leftJoin('bus.seatLayout', 'seatLayout')
+      .leftJoin('trip.seatStatuses', 'seatStatus', 'seatStatus.state = :bookedState')
+      .select([
+        'SUM(seatLayout.totalRows * seatLayout.seatsPerRow) as "totalSeats"',
+        'COUNT(seatStatus.id) as "occupiedSeats"'
+      ])
+      .where('trip.departureTime BETWEEN :startDate AND :endDate')
+      .setParameters({ startDate, endDate, bookedState: SeatState.BOOKED })
+      .getRawOne();
     
-    let totalSeats = 0;
-    let occupiedSeats = 0;
-    const routeOccupancy = new Map<string, { total: number; occupied: number; route: any }>();
-    const dailyOccupancy: { date: string; totalSeats: number; occupiedSeats: number; occupancyRate: number }[] = [];
+    // Optimized route-wise occupancy
+    const routeStats = await this.tripsRepository
+      .createQueryBuilder('trip')
+      .leftJoin('trip.route', 'route')
+      .leftJoin('trip.bus', 'bus')
+      .leftJoin('bus.seatLayout', 'seatLayout')
+      .leftJoin('trip.seatStatuses', 'seatStatus', 'seatStatus.state = :bookedState')
+      .select([
+        'route.id as "routeId"',
+        'route.name as "routeName"',
+        'SUM(seatLayout.totalRows * seatLayout.seatsPerRow) as "totalSeats"',
+        'COUNT(seatStatus.id) as "occupiedSeats"'
+      ])
+      .where('trip.departureTime BETWEEN :startDate AND :endDate')
+      .andWhere('route.id IS NOT NULL')
+      .groupBy('route.id, route.name')
+      .setParameters({ startDate, endDate, bookedState: SeatState.BOOKED })
+      .getRawMany();
     
-    // Calculate overall occupancy
-    for (const trip of trips) {
-      const busCapacity = trip.bus?.seatLayout ? (trip.bus.seatLayout.totalRows * trip.bus.seatLayout.seatsPerRow) : 40; // Calculate from layout or default 40 seats
-      const bookedSeats = trip.seatStatuses?.filter(s => s.state === SeatState.BOOKED).length || 0;
-      
-      totalSeats += busCapacity;
-      occupiedSeats += bookedSeats;
-      
-      // By route
-      if (trip.route) {
-        const routeId = trip.route.id;
-        if (!routeOccupancy.has(routeId)) {
-          routeOccupancy.set(routeId, { total: 0, occupied: 0, route: trip.route });
-        }
-        const routeData = routeOccupancy.get(routeId)!;
-        routeData.total += busCapacity;
-        routeData.occupied += bookedSeats;
-      }
-    }
+    // Daily occupancy with optimized query
+    const dailyStats = await this.tripsRepository
+      .createQueryBuilder('trip')
+      .leftJoin('trip.bus', 'bus')
+      .leftJoin('bus.seatLayout', 'seatLayout')
+      .leftJoin('trip.seatStatuses', 'seatStatus', 'seatStatus.state = :bookedState')
+      .select([
+        'DATE(trip.departureTime) as "date"',
+        'SUM(seatLayout.totalRows * seatLayout.seatsPerRow) as "totalSeats"',
+        'COUNT(seatStatus.id) as "occupiedSeats"'
+      ])
+      .where('trip.departureTime BETWEEN :startDate AND :endDate')
+      .groupBy('DATE(trip.departureTime)')
+      .orderBy('"date"')
+      .setParameters({ startDate, endDate, bookedState: SeatState.BOOKED })
+      .getRawMany();
     
-    // Calculate daily occupancy
-    const days = eachDayOfInterval({ start: startDate, end: endDate });
-    for (const day of days) {
-      const dayTrips = trips.filter(t => 
-        t.departureTime >= startOfDay(day) && t.departureTime <= endOfDay(day)
-      );
-      
-      let dayTotalSeats = 0;
-      let dayOccupiedSeats = 0;
-      
-      for (const trip of dayTrips) {
-        const busCapacity = trip.bus?.seatLayout ? (trip.bus.seatLayout.totalRows * trip.bus.seatLayout.seatsPerRow) : 40;
-        const bookedSeats = trip.seatStatuses?.filter(s => s.state === SeatState.BOOKED).length || 0;
-        
-        dayTotalSeats += busCapacity;
-        dayOccupiedSeats += bookedSeats;
-      }
-      
-      dailyOccupancy.push({
-        date: format(day, 'yyyy-MM-dd'),
-        totalSeats: dayTotalSeats,
-        occupiedSeats: dayOccupiedSeats,
-        occupancyRate: dayTotalSeats > 0 ? (dayOccupiedSeats / dayTotalSeats) * 100 : 0,
-      });
-    }
+    const totalSeats = parseInt(overallStats.totalSeats) || 0;
+    const occupiedSeats = parseInt(overallStats.occupiedSeats) || 0;
     
-    // Build route occupancy array
-    const byRoute = Array.from(routeOccupancy.entries()).map(([routeId, data]) => ({
-      routeId,
-      routeName: data.route.name,
-      totalSeats: data.total,
-      occupiedSeats: data.occupied,
-      occupancyRate: data.total > 0 ? (data.occupied / data.total) * 100 : 0,
+    const byRoute = routeStats.map(stat => ({
+      routeId: stat.routeId,
+      routeName: stat.routeName,
+      totalSeats: parseInt(stat.totalSeats) || 0,
+      occupiedSeats: parseInt(stat.occupiedSeats) || 0,
+      occupancyRate: parseInt(stat.totalSeats) > 0 ? (parseInt(stat.occupiedSeats) / parseInt(stat.totalSeats)) * 100 : 0,
+    }));
+    
+    const byTimeframe = dailyStats.map(stat => ({
+      date: stat.date,
+      totalSeats: parseInt(stat.totalSeats) || 0,
+      occupiedSeats: parseInt(stat.occupiedSeats) || 0,
+      occupancyRate: parseInt(stat.totalSeats) > 0 ? (parseInt(stat.occupiedSeats) / parseInt(stat.totalSeats)) * 100 : 0,
     }));
     
     return {
@@ -672,7 +708,7 @@ export class AdminService {
         occupancyRate: totalSeats > 0 ? (occupiedSeats / totalSeats) * 100 : 0,
       },
       byRoute,
-      byTimeframe: dailyOccupancy,
+      byTimeframe,
       period: {
         startDate: format(startDate, 'yyyy-MM-dd'),
         endDate: format(endDate, 'yyyy-MM-dd'),
@@ -680,6 +716,9 @@ export class AdminService {
     };
   }
 
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache
   async getDetailedConversionRate(query: AnalyticsQueryDto): Promise<DetailedConversionDto> {
     const { startDate, endDate } = this.getDateRange(query);
     
@@ -756,5 +795,30 @@ export class AdminService {
         endDate: format(endDate, 'yyyy-MM-dd'),
       },
     };
+  }
+
+  // Cache management methods
+  async invalidateAnalyticsCache(): Promise<void> {
+    // Clear analytics cache when bookings or related data changes
+    const cacheKeys = [
+      'analytics:getBookingsSummary',
+      'analytics:getBookingsTrends',
+      'analytics:getRouteAnalytics',
+      'analytics:getConversionAnalytics',
+      'analytics:getBookingGrowth',
+      'analytics:getSeatOccupancyRate',
+      'analytics:getMostPopularRoutes',
+      'analytics:getDetailedConversionRate',
+      'analytics:getTotalBookingsCount',
+    ];
+    
+    for (const keyPrefix of cacheKeys) {
+      // Clear all cache entries that start with the key prefix
+      this.cacheService.clear();
+    }
+  }
+  
+  async getCacheStats(): Promise<{ size: number; hitRate?: number }> {
+    return this.cacheService.getStats();
   }
 }
