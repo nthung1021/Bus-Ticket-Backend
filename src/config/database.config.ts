@@ -59,8 +59,9 @@ export const databaseConfig = (
   ],
   
   // Automatically synchronize database schema with entities (disabled in production)
-  synchronize: configService.get<string>('NODE_ENV', 'development') !== 'production',
-  
+  // synchronize: configService.get<string>('NODE_ENV', 'development') !== 'production',
+  synchronize: false,
+
   // Disable query logging for better performance
   logging: false,
   

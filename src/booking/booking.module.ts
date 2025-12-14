@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
+import { BookingMigrationService } from './booking-migration.service';
 import { Booking } from '../entities/booking.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
@@ -25,7 +26,7 @@ import { EmailService } from './email.service';
     ScheduleModule.forRoot(),
   ],
   controllers: [BookingController],
-  providers: [BookingService, BookingSchedulerService, EmailService],
-  exports: [BookingService, BookingSchedulerService, EmailService],
+  providers: [BookingService, BookingSchedulerService, EmailService, BookingMigrationService],
+  exports: [BookingService, BookingSchedulerService, EmailService, BookingMigrationService],
 })
 export class BookingModule {}
