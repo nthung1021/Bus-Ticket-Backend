@@ -4,9 +4,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SeatStatusGateway } from './seat-status.gateway';
 import { BookingGateway } from './booking.gateway';
 import { SeatStatus } from '../entities/seat-status.entity';
+import { Booking } from '../entities/booking.entity';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([SeatStatus])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([SeatStatus, Booking])],
   providers: [SeatStatusGateway, BookingGateway],
   exports: [SeatStatusGateway, BookingGateway],
 })
