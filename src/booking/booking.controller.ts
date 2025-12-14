@@ -7,6 +7,11 @@ import { BookingSchedulerService } from './booking-scheduler.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
+import { 
+  BookingModificationDto, 
+  CheckModificationPermissionsDto, 
+  BookingModificationResponseDto 
+} from './dto/booking-modification.dto';
 
 // Inline DTO to avoid import issues
 interface PassengerUpdateDto {
@@ -314,6 +319,82 @@ export class BookingController {
           errors: [error.message],
         },
       };
+    }
+  }
+
+  @Get(':id/modification-permissions')
+  @UseGuards(OptionalJwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async checkModificationPermissions(
+    @Param('id') bookingId: string,
+    @Request() req: any,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: CheckModificationPermissionsDto;
+  }> {
+    try {
+      const userId = req.user?.userId;
+      const permissions = await this.bookingService.checkModificationPermissions(bookingId, userId);
+      
+      return {
+        success: true,
+        message: 'Modification permissions retrieved successfully',
+        data: permissions,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Put(':id/modify')
+  @UseGuards(OptionalJwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async modifyBooking(
+    @Param('id') bookingId: string,
+    @Body() modificationDto: BookingModificationDto,
+    @Request() req: any,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: BookingModificationResponseDto;
+  }> {
+    try {
+      const userId = req.user?.userId;
+      const result = await this.bookingService.modifyBooking(bookingId, modificationDto, userId);
+      
+      return {
+        success: true,
+        message: 'Booking modified successfully',
+        data: result,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Get(':id/modification-history')
+  @UseGuards(OptionalJwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async getModificationHistory(
+    @Param('id') bookingId: string,
+    @Request() req: any,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: any[];
+  }> {
+    try {
+      const userId = req.user?.userId;
+      const history = await this.bookingService.getBookingModificationHistory(bookingId, userId);
+      
+      return {
+        success: true,
+        message: 'Modification history retrieved successfully',
+        data: history,
+      };
+    } catch (error) {
+      throw error;
     }
   }
 }

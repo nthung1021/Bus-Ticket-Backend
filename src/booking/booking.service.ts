@@ -7,9 +7,16 @@ import { SeatStatus, SeatState } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
+import { BookingModificationHistory, ModificationType } from '../entities/booking-modification-history.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
+import { 
+  BookingModificationDto, 
+  CheckModificationPermissionsDto,
+  BookingModificationResponseDto 
+} from './dto/booking-modification.dto';
+import { BookingModificationPermissionService } from './booking-modification-permission.service';
 import { EmailService } from './email.service';
 import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
@@ -32,8 +39,11 @@ export class BookingService {
     private seatRepository: Repository<Seat>,
     @InjectRepository(AuditLog)
     private auditLogRepository: Repository<AuditLog>,
+    @InjectRepository(BookingModificationHistory)
+    private modificationHistoryRepository: Repository<BookingModificationHistory>,
     private dataSource: DataSource,
     private readonly emailService: EmailService,
+    private readonly modificationPermissionService: BookingModificationPermissionService,
   ) {}
 
   private async generateBookingReference(): Promise<string> {
@@ -914,5 +924,401 @@ export class BookingService {
     });
 
     return { success: true };
+  }
+
+  /**
+   * Check modification permissions for a booking
+   */
+  async checkModificationPermissions(
+    bookingId: string,
+    userId?: string,
+  ): Promise<CheckModificationPermissionsDto> {
+    const booking = await this.findBookingForModification(bookingId, userId);
+    
+    const permissions = await this.modificationPermissionService.checkModificationPermissions(
+      booking,
+      {
+        passengerInfo: true,
+        seats: true,
+        contactInfo: true,
+      }
+    );
+
+    const rules = await this.modificationPermissionService.getModificationRulesDescription(booking);
+    
+    return {
+      canModifyPassengerInfo: permissions.canModifyPassengerInfo,
+      canModifySeats: permissions.canModifySeats,
+      canModifyContactInfo: permissions.canModifyContactInfo,
+      rules,
+      restrictions: permissions.reason ? [permissions.reason] : undefined,
+    };
+  }
+
+  /**
+   * Modify booking with comprehensive validation
+   */
+  async modifyBooking(
+    bookingId: string,
+    modificationDto: BookingModificationDto,
+    userId?: string,
+  ): Promise<BookingModificationResponseDto> {
+    return await this.dataSource.transaction(async (manager) => {
+      // Find and validate booking
+      const booking = await this.findBookingForModification(bookingId, userId);
+
+      // Validate permissions for requested modifications
+      const requestedModifications = {
+        passengerInfo: !!modificationDto.passengerInfo?.length,
+        seats: !!modificationDto.seatChanges?.length,
+        contactInfo: !!modificationDto.contactInfo,
+      };
+
+      await this.modificationPermissionService.validateModificationPermissions(
+        booking,
+        requestedModifications
+      );
+
+      const modificationHistory: Array<{
+        type: ModificationType;
+        description: string;
+        changes: any;
+        previousValues: any;
+      }> = [];
+
+      // Handle passenger info modifications
+      if (modificationDto.passengerInfo?.length) {
+        const passengerChanges = await this.modifyPassengerInfo(
+          manager,
+          bookingId,
+          modificationDto.passengerInfo
+        );
+        modificationHistory.push(...passengerChanges);
+      }
+
+      // Handle seat changes
+      if (modificationDto.seatChanges?.length) {
+        const seatChanges = await this.modifySeatSelection(
+          manager,
+          booking,
+          modificationDto.seatChanges
+        );
+        modificationHistory.push(...seatChanges);
+      }
+
+      // Handle contact info changes
+      if (modificationDto.contactInfo) {
+        const contactChanges = await this.modifyContactInfo(
+          manager,
+          bookingId,
+          modificationDto.contactInfo
+        );
+        if (contactChanges) modificationHistory.push(contactChanges);
+      }
+
+      // Update booking last modified timestamp
+      await manager.update(Booking, bookingId, {
+        lastModifiedAt: new Date(),
+      });
+
+      // Record modification history
+      for (const modification of modificationHistory) {
+        await manager.save(BookingModificationHistory, {
+          bookingId,
+          userId,
+          modificationType: modification.type,
+          description: modification.description,
+          changes: modification.changes,
+          previousValues: modification.previousValues,
+          modifiedAt: new Date(),
+        });
+      }
+
+      // Create audit log
+      await this.createAuditLog(
+        'MODIFY_BOOKING',
+        `Modified booking ${bookingId}: ${modificationHistory.map(h => h.description).join(', ')}`,
+        userId,
+        undefined,
+        {
+          bookingId,
+          modifications: modificationHistory.map(h => ({
+            type: h.type,
+            description: h.description,
+          })),
+        },
+      );
+
+      // Return updated booking info
+      const updatedBooking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip'],
+      });
+
+      const modificationRules = await this.modificationPermissionService.getModificationRulesDescription(updatedBooking);
+
+      return {
+        id: updatedBooking.id,
+        bookingReference: updatedBooking.bookingReference,
+        status: updatedBooking.status,
+        modificationAllowed: true,
+        modificationRules,
+        lastModifiedAt: updatedBooking.lastModifiedAt || updatedBooking.bookedAt,
+        modificationHistory: modificationHistory.map(h => ({
+          type: h.type,
+          timestamp: new Date(),
+          changes: h.changes,
+        })),
+      };
+    });
+  }
+
+  /**
+   * Get modification history for a booking
+   */
+  async getBookingModificationHistory(
+    bookingId: string,
+    userId?: string,
+  ): Promise<BookingModificationHistory[]> {
+    // Validate access to booking
+    await this.findBookingForModification(bookingId, userId);
+
+    return await this.modificationHistoryRepository.find({
+      where: { bookingId },
+      order: { modifiedAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Helper method to find booking with modification validation
+   */
+  private async findBookingForModification(
+    bookingId: string,
+    userId?: string,
+  ): Promise<Booking> {
+    const booking = await this.bookingRepository.findOne({
+      where: { id: bookingId },
+      relations: ['trip', 'passengerDetails', 'seatStatuses'],
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    // For authenticated users, verify ownership
+    if (userId && booking.userId !== userId) {
+      throw new BadRequestException('Access denied - You can only modify your own bookings');
+    }
+
+    return booking;
+  }
+
+  /**
+   * Helper method to modify passenger information
+   */
+  private async modifyPassengerInfo(
+    manager: any,
+    bookingId: string,
+    passengerModifications: Array<{
+      passengerId: string;
+      fullName?: string;
+      documentId?: string;
+    }>
+  ): Promise<Array<{
+    type: ModificationType;
+    description: string;
+    changes: any;
+    previousValues: any;
+  }>> {
+    const modifications = [];
+
+    for (const modification of passengerModifications) {
+      const passenger = await manager.findOne(PassengerDetail, {
+        where: { id: modification.passengerId, bookingId },
+      });
+
+      if (!passenger) {
+        throw new NotFoundException(`Passenger with ID ${modification.passengerId} not found`);
+      }
+
+      const previousValues = {
+        fullName: passenger.fullName,
+        documentId: passenger.documentId,
+      };
+
+      const changes: any = {};
+      let changeDescription = [];
+
+      if (modification.fullName && modification.fullName !== passenger.fullName) {
+        changes.fullName = modification.fullName;
+        changeDescription.push(`name from "${passenger.fullName}" to "${modification.fullName}"`);
+      }
+
+      if (modification.documentId && modification.documentId !== passenger.documentId) {
+        changes.documentId = modification.documentId;
+        changeDescription.push(`document ID from "${passenger.documentId}" to "${modification.documentId}"`);
+      }
+
+      if (Object.keys(changes).length > 0) {
+        await manager.update(PassengerDetail, modification.passengerId, changes);
+
+        modifications.push({
+          type: ModificationType.PASSENGER_INFO,
+          description: `Updated passenger ${passenger.fullName}: ${changeDescription.join(', ')}`,
+          changes,
+          previousValues,
+        });
+      }
+    }
+
+    return modifications;
+  }
+
+  /**
+   * Helper method to modify seat selection
+   */
+  private async modifySeatSelection(
+    manager: any,
+    booking: Booking,
+    seatChanges: Array<{
+      passengerId: string;
+      newSeatCode: string;
+    }>
+  ): Promise<Array<{
+    type: ModificationType;
+    description: string;
+    changes: any;
+    previousValues: any;
+  }>> {
+    const modifications = [];
+
+    for (const seatChange of seatChanges) {
+      const passenger = await manager.findOne(PassengerDetail, {
+        where: { id: seatChange.passengerId, bookingId: booking.id },
+      });
+
+      if (!passenger) {
+        throw new NotFoundException(`Passenger with ID ${seatChange.passengerId} not found`);
+      }
+
+      // Check if new seat exists and is available
+      const newSeat = await manager.findOne(Seat, {
+        where: { code: seatChange.newSeatCode },
+        relations: ['bus'],
+      });
+
+      if (!newSeat) {
+        throw new BadRequestException(`Seat ${seatChange.newSeatCode} does not exist`);
+      }
+
+      // Check if the new seat is on the same bus
+      if (newSeat.bus.id !== booking.trip.busId) {
+        throw new BadRequestException(`Seat ${seatChange.newSeatCode} is not available on this trip`);
+      }
+
+      // Check if seat is available for the trip
+      const existingSeatStatus = await manager.findOne(SeatStatus, {
+        where: {
+          tripId: booking.tripId,
+          seatId: newSeat.id,
+          state: SeatState.OCCUPIED,
+        },
+      });
+
+      if (existingSeatStatus && existingSeatStatus.bookingId !== booking.id) {
+        throw new BadRequestException(`Seat ${seatChange.newSeatCode} is already occupied`);
+      }
+
+      // Get current seat information
+      const currentSeatStatus = await manager.findOne(SeatStatus, {
+        where: {
+          tripId: booking.tripId,
+          bookingId: booking.id,
+        },
+        relations: ['seat'],
+      });
+
+      const previousSeatCode = passenger.seatCode;
+
+      // Update passenger seat
+      await manager.update(PassengerDetail, seatChange.passengerId, {
+        seatCode: seatChange.newSeatCode,
+      });
+
+      // Update seat status - free the old seat and occupy the new one
+      if (currentSeatStatus) {
+        await manager.update(SeatStatus, currentSeatStatus.id, {
+          seatId: newSeat.id,
+        });
+      }
+
+      modifications.push({
+        type: ModificationType.SEAT_CHANGE,
+        description: `Changed seat for ${passenger.fullName} from ${previousSeatCode} to ${seatChange.newSeatCode}`,
+        changes: {
+          passengerId: seatChange.passengerId,
+          newSeatCode: seatChange.newSeatCode,
+          newSeatId: newSeat.id,
+        },
+        previousValues: {
+          seatCode: previousSeatCode,
+          seatId: currentSeatStatus?.seatId,
+        },
+      });
+    }
+
+    return modifications;
+  }
+
+  /**
+   * Helper method to modify contact information
+   */
+  private async modifyContactInfo(
+    manager: any,
+    bookingId: string,
+    contactInfo: {
+      contactPhone?: string;
+      contactEmail?: string;
+    }
+  ): Promise<{
+    type: ModificationType;
+    description: string;
+    changes: any;
+    previousValues: any;
+  } | null> {
+    const booking = await manager.findOne(Booking, {
+      where: { id: bookingId },
+    });
+
+    const previousValues = {
+      contactPhone: booking.contactPhone,
+      contactEmail: booking.contactEmail,
+    };
+
+    const changes: any = {};
+    let changeDescription = [];
+
+    if (contactInfo.contactPhone && contactInfo.contactPhone !== booking.contactPhone) {
+      changes.contactPhone = contactInfo.contactPhone;
+      changeDescription.push(`phone from "${booking.contactPhone || 'none'}" to "${contactInfo.contactPhone}"`);
+    }
+
+    if (contactInfo.contactEmail && contactInfo.contactEmail !== booking.contactEmail) {
+      changes.contactEmail = contactInfo.contactEmail;
+      changeDescription.push(`email from "${booking.contactEmail || 'none'}" to "${contactInfo.contactEmail}"`);
+    }
+
+    if (Object.keys(changes).length > 0) {
+      await manager.update(Booking, bookingId, changes);
+
+      return {
+        type: ModificationType.CONTACT_INFO,
+        description: `Updated contact information: ${changeDescription.join(', ')}`,
+        changes,
+        previousValues,
+      };
+    }
+
+    return null;
   }
 }

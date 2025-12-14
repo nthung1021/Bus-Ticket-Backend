@@ -62,6 +62,9 @@ export class Booking {
   @CreateDateColumn({ name: 'booked_at', type: 'timestamp with time zone' })
   bookedAt: Date;
 
+  @Column({ name: 'last_modified_at', type: 'timestamp with time zone', nullable: true })
+  lastModifiedAt?: Date;
+
   @Column({ name: 'cancelled_at', type: 'timestamp with time zone', nullable: true })
   cancelledAt?: Date;
 
