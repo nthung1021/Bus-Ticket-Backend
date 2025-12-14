@@ -15,20 +15,24 @@ export class EmailService {
   private transporter: nodemailer.Transporter;
 
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: Number(process.env.EMAIL_PORT) || 587,
-      secure: process.env.EMAIL_SECURE === 'true',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+    // Configure transporter based on environment variables
+    if (process.env.EMAIL_SERVICE === 'sendgrid') {
+      const nodemailerSendgrid = require('nodemailer-sendgrid');
+      this.transporter = nodemailer.createTransport(
+        nodemailerSendgrid({
+          apiKey: process.env.SENDGRID_API_KEY,
+        }),
+      );
+      this.logger.log('EmailService configured with SendGrid');
+    } else {
+      throw new InternalServerErrorException('No email service configuration provided. Cannot send email');
+    }
   }
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
     try {
-      const from = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+      const from = process.env.EMAIL_FROM;
+      this.logger.debug(`Attempting to send email from: ${from}`);
 
       await this.transporter.sendMail({
         from,
@@ -42,6 +46,9 @@ export class EmailService {
       this.logger.log(`E-ticket email sent to ${options.to}`);
     } catch (error: any) {
       this.logger.error(`Failed to send email: ${error.message}`);
+      if (error.response) {
+        this.logger.error(`SendGrid Error Response: ${JSON.stringify(error.response.body)}`);
+      }
       throw new InternalServerErrorException('Failed to send e-ticket email');
     }
   }
