@@ -6,7 +6,7 @@ import { BookingService } from './booking.service';
 export class BookingSchedulerService {
   private readonly logger = new Logger(BookingSchedulerService.name);
 
-  constructor(private readonly bookingService: BookingService) {}
+  constructor(private readonly bookingService: BookingService) { }
 
   // Chạy mỗi 5 phút để check expired bookings
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -15,11 +15,11 @@ export class BookingSchedulerService {
 
     try {
       const result = await this.bookingService.processExpiredBookings();
-      
+
       if (result.processed > 0) {
         this.logger.log(`Successfully processed ${result.processed} expired bookings`);
       }
-      
+
       if (result.errors.length > 0) {
         this.logger.warn(`Encountered ${result.errors.length} errors during cleanup`);
         result.errors.forEach(error => this.logger.error(error));
@@ -33,7 +33,7 @@ export class BookingSchedulerService {
   @Cron('0 */30 * * * *')
   async handlePeriodicCleanup() {
     this.logger.log('Running periodic booking cleanup...');
-    
+
     try {
       // Cleanup các booking đã expired > 24h để giảm database load
       await this.cleanupOldExpiredBookings();

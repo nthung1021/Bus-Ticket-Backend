@@ -120,3 +120,59 @@ export const getBookingConfirmationTemplate = (booking: Booking): string => {
 </html>
   `;
 };
+
+export const getTripReminderTemplate = (booking: Booking): string => {
+  const trip = booking.trip;
+  const route = trip?.route;
+  const departureDate = trip?.departureTime
+    ? new Date(trip.departureTime).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'N/A';
+  const departureTime = trip?.departureTime
+    ? new Date(trip.departureTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    : 'N/A';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f9f9f9; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .header { background-color: #f59e0b; color: #fff; padding: 20px; text-align: center; } /* Amber color for reminder */
+    .content { padding: 30px 20px; }
+    .trip-box { background: #fffbeb; border: 1px solid #fcd34d; padding: 15px; border-radius: 6px; margin: 20px 0; }
+    .footer { text-align: center; font-size: 12px; color: #999; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin:0; font-size: 24px;">Upcoming Trip Reminder</h1>
+    </div>
+    <div class="content">
+      <p>Hello ${booking.passengerDetails?.[0]?.fullName || 'Traveler'},</p>
+      <p>This is a friendly reminder that your bus trip is coming up tomorrow!</p>
+      
+      <div class="trip-box">
+        <h3 style="margin-top:0;">${route?.origin} &rarr; ${route?.destination}</h3>
+        <p><strong>Departure:</strong> ${departureDate} at ${departureTime}</p>
+        <p><strong>Bus Plate:</strong> ${trip?.bus?.plateNumber}</p>
+        <p><strong>Booking Ref:</strong> ${booking.bookingReference}</p>
+      </div>
+
+      <p>Please remember to:</p>
+      <ul>
+        <li>Arrive 30 minutes early.</li>
+        <li>Have your ID and E-Ticket ready.</li>
+      </ul>
+      
+      <p>Have a safe trip!</p>
+    </div>
+    <div class="footer">
+      <p>Sent by Bus Ticket Booking System</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+};

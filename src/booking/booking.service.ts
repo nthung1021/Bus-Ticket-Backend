@@ -274,6 +274,22 @@ export class BookingService {
     return booking;
   }
 
+  async findUpcomingPaidBookings(hours: number): Promise<Booking[]> {
+    const now = new Date();
+    const futureDate = new Date(now.getTime() + hours * 60 * 60 * 1000);
+
+    return await this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.trip', 'trip')
+      .leftJoinAndSelect('trip.route', 'route')
+      .leftJoinAndSelect('trip.bus', 'bus')
+      .leftJoinAndSelect('booking.passengerDetails', 'passenger')
+      .leftJoinAndSelect('booking.user', 'user')
+      .where('booking.status = :status', { status: BookingStatus.PAID })
+      .andWhere('trip.departureTime BETWEEN :now AND :futureDate', { now, futureDate })
+      .getMany();
+  }
+
   async findBookingsByUserWithDetails(userId: string, status?: BookingStatus): Promise<any[]> {
     // Build the query with proper joins
     const queryBuilder = this.bookingRepository

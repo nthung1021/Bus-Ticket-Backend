@@ -6,7 +6,6 @@ import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
 import { Booking } from '../entities/booking.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
-import { SeatStatus } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
@@ -17,7 +16,6 @@ import { EmailService } from './email.service';
     TypeOrmModule.forFeature([
       Booking,
       PassengerDetail,
-      SeatStatus,
       Trip,
       Seat,
       AuditLog,
@@ -28,4 +26,4 @@ import { EmailService } from './email.service';
   providers: [BookingService, BookingSchedulerService, EmailService],
   exports: [BookingService, BookingSchedulerService, EmailService],
 })
-export class BookingModule {}
+export class BookingModule { }
