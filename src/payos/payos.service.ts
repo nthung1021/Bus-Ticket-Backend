@@ -18,6 +18,7 @@ import {
 import { Payment, PaymentStatus } from '../entities/payment.entity';
 import { Booking, BookingStatus } from '../entities/booking.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
+import { SeatStatusGateway } from '../gateways/seat-status.gateway';
 
 @Injectable()
 export class PayosService {
@@ -32,6 +33,7 @@ export class PayosService {
     private bookingRepository: Repository<Booking>,
     @InjectRepository(SeatStatus)
     private seatStatusRepository: Repository<SeatStatus>,
+    private seatStatusGateway: SeatStatusGateway,
   ) {
     const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
@@ -181,6 +183,12 @@ export class PayosService {
             `Booking status updated to CANCELLED for booking ${payment.bookingId}`,
           );
 
+          // Get seat information before updating for real-time notification
+          const seatStatuses = await this.seatStatusRepository.find({
+            where: { bookingId: payment.bookingId },
+            relations: ['trip'],
+          });
+
           // Release seats back to AVAILABLE status
           await this.seatStatusRepository.update(
             { bookingId: payment.bookingId },
@@ -194,6 +202,18 @@ export class PayosService {
           this.logger.log(
             `Seats released back to AVAILABLE for booking ${payment.bookingId}`,
           );
+
+          // Notify clients in real-time about seat availability
+          if (seatStatuses.length > 0) {
+            const tripId = seatStatuses[0].tripId;
+            const seatIds = seatStatuses.map((seat) => seat.seatId);
+
+            this.seatStatusGateway.notifySeatsAvailable(tripId, seatIds);
+
+            this.logger.log(
+              `Real-time notification sent for ${seatIds.length} seats now available for trip ${tripId}`,
+            );
+          }
         }
       }
 
@@ -273,6 +293,12 @@ export class PayosService {
 
       // Handle booking and seat status updates based on payment status
       if (payment.bookingId) {
+        // Get seat information before updating for real-time notification
+        const seatStatuses = await this.seatStatusRepository.find({
+          where: { bookingId: payment.bookingId },
+          relations: ['trip'],
+        });
+
         if (success) {
           // Payment successful - update booking to PAID and confirm seat bookings
           await this.bookingRepository.update(
@@ -296,6 +322,18 @@ export class PayosService {
           this.logger.log(
             `Seat statuses updated to BOOKED for booking ${payment.bookingId}`,
           );
+
+          // Notify clients in real-time about seat booking confirmation
+          if (seatStatuses.length > 0) {
+            const tripId = seatStatuses[0].tripId;
+            const seatIds = seatStatuses.map((seat) => seat.seatId);
+
+            this.seatStatusGateway.notifySeatBooked(tripId, seatIds);
+
+            this.logger.log(
+              `Real-time notification sent for ${seatIds.length} seats now booked for trip ${tripId}`,
+            );
+          }
         } else {
           // Payment failed - release seats back to AVAILABLE
           await this.bookingRepository.update(
@@ -323,6 +361,18 @@ export class PayosService {
           this.logger.log(
             `Seats released back to AVAILABLE for booking ${payment.bookingId} due to payment failure`,
           );
+
+          // Notify clients in real-time about seat availability
+          if (seatStatuses.length > 0) {
+            const tripId = seatStatuses[0].tripId;
+            const seatIds = seatStatuses.map((seat) => seat.seatId);
+
+            this.seatStatusGateway.notifySeatsAvailable(tripId, seatIds);
+
+            this.logger.log(
+              `Real-time notification sent for ${seatIds.length} seats now available for trip ${tripId}`,
+            );
+          }
         }
       }
 

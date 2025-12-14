@@ -6,6 +6,7 @@ import { PayosController } from './payos.controller';
 import { Payment } from '../entities/payment.entity';
 import { Booking } from '../entities/booking.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
+import { SeatStatusGateway } from '../gateways/seat-status.gateway';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { SeatStatus } from '../entities/seat-status.entity';
     TypeOrmModule.forFeature([Payment, Booking, SeatStatus]),
   ],
   controllers: [PayosController],
-  providers: [PayosService],
+  providers: [PayosService, SeatStatusGateway],
   exports: [PayosService],
 })
 export class PayosModule {}
