@@ -8,9 +8,10 @@ import { AuditLog } from 'src/entities/audit-log.entity';
 import { Booking } from '../entities/booking.entity';
 import { Trip } from '../entities/trip.entity';
 import { Route } from '../entities/route.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 
 @Module({
-  imports: [AuthModule, TypeOrmModule.forFeature([User, AuditLog, Booking, Trip, Route])],
+  imports: [AuthModule, TypeOrmModule.forFeature([User, AuditLog, Booking, Trip, Route, SeatStatus])],
   controllers: [AdminController],
   providers: [AdminService],
 })

@@ -107,3 +107,106 @@ export interface ConversionAnalyticsDto {
     improvementOpportunities: string[];
   };
 }
+
+export interface BookingGrowthDto {
+  currentPeriod: {
+    totalBookings: number;
+    revenue: number;
+    period: string;
+  };
+  previousPeriod: {
+    totalBookings: number;
+    revenue: number;
+    period: string;
+  };
+  growth: {
+    bookingsGrowthRate: number;
+    revenueGrowthRate: number;
+    bookingsGrowthAbsolute: number;
+    revenueGrowthAbsolute: number;
+  };
+  dailyGrowth: {
+    date: string;
+    bookings: number;
+    growth: number;
+  }[];
+}
+
+export interface PopularRoutesDto {
+  routes: {
+    route: {
+      id: string;
+      name: string;
+      origin: string;
+      destination: string;
+    };
+    bookingsCount: number;
+    revenue: number;
+    averagePrice: number;
+    marketShare: number;
+    rank: number;
+    trend: 'up' | 'down' | 'stable';
+  }[];
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+  summary: {
+    totalRoutes: number;
+    topRoute: string;
+    totalBookings: number;
+  };
+}
+
+export interface SeatOccupancyDto {
+  overall: {
+    totalSeats: number;
+    occupiedSeats: number;
+    occupancyRate: number;
+  };
+  byRoute: {
+    routeId: string;
+    routeName: string;
+    totalSeats: number;
+    occupiedSeats: number;
+    occupancyRate: number;
+  }[];
+  byTimeframe: {
+    date: string;
+    totalSeats: number;
+    occupiedSeats: number;
+    occupancyRate: number;
+  }[];
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+}
+
+export interface DetailedConversionDto {
+  searchToBooking: {
+    searches: number;
+    bookingAttempts: number;
+    conversionRate: number;
+  };
+  bookingToPaid: {
+    totalBookings: number;
+    paidBookings: number;
+    conversionRate: number;
+  };
+  overallConversion: {
+    searches: number;
+    paidBookings: number;
+    conversionRate: number;
+  };
+  funnel: {
+    step: string;
+    count: number;
+    conversionFromPrevious: number;
+    conversionFromStart: number;
+  }[];
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+}

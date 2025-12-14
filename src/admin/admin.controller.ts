@@ -71,4 +71,35 @@ export class AdminController {
   async getConversionAnalytics(@Query() query: AnalyticsQueryDto) {
     return await this.adminService.getConversionAnalytics(query);
   }
+
+  // D1.2 Metrics Calculation Endpoints
+  @Roles('admin')
+  @Get('analytics/metrics/total-bookings')
+  async getTotalBookingsCount(@Query() query: AnalyticsQueryDto) {
+    return await this.adminService.getTotalBookingsCount(query);
+  }
+
+  @Roles('admin')
+  @Get('analytics/metrics/booking-growth')
+  async getBookingGrowth(@Query() query: AnalyticsQueryDto) {
+    return await this.adminService.getBookingGrowth(query);
+  }
+
+  @Roles('admin')
+  @Get('analytics/metrics/popular-routes')
+  async getMostPopularRoutes(@Query() query: AnalyticsQueryDto) {
+    return await this.adminService.getMostPopularRoutes(query);
+  }
+
+  @Roles('admin')
+  @Get('analytics/metrics/seat-occupancy')
+  async getSeatOccupancyRate(@Query() query: AnalyticsQueryDto) {
+    return await this.adminService.getSeatOccupancyRate(query);
+  }
+
+  @Roles('admin')
+  @Get('analytics/metrics/conversion-detailed')
+  async getDetailedConversionRate(@Query() query: AnalyticsQueryDto) {
+    return await this.adminService.getDetailedConversionRate(query);
+  }
 }
