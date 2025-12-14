@@ -16,6 +16,8 @@ import {
   WebhookResponseDto,
 } from './dto/payment-response.dto';
 import { Payment, PaymentStatus } from '../entities/payment.entity';
+import { Booking, BookingStatus } from '../entities/booking.entity';
+import { SeatStatus, SeatState } from '../entities/seat-status.entity';
 
 @Injectable()
 export class PayosService {
@@ -26,6 +28,10 @@ export class PayosService {
     private configService: ConfigService,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    @InjectRepository(Booking)
+    private bookingRepository: Repository<Booking>,
+    @InjectRepository(SeatStatus)
+    private seatStatusRepository: Repository<SeatStatus>,
   ) {
     const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
@@ -145,15 +151,51 @@ export class PayosService {
 
       this.logger.log(`Payment cancelled successfully for order ${orderCode}`);
 
-      // Update payment status in database
-      await this.paymentRepository.update(
-        { payosOrderCode: orderCode },
-        { status: PaymentStatus.CANCELLED },
-      );
+      // Get payment record to find booking ID
+      const payment = await this.paymentRepository.findOne({
+        where: { payosOrderCode: orderCode },
+      });
 
-      this.logger.log(
-        `Payment status updated to CANCELLED in database for order ${orderCode}`,
-      );
+      if (payment) {
+        // Update payment status in database
+        await this.paymentRepository.update(
+          { payosOrderCode: orderCode },
+          { status: PaymentStatus.CANCELLED },
+        );
+
+        this.logger.log(
+          `Payment status updated to CANCELLED in database for order ${orderCode}`,
+        );
+
+        // Update booking status to CANCELLED
+        if (payment.bookingId) {
+          await this.bookingRepository.update(
+            { id: payment.bookingId },
+            {
+              status: BookingStatus.CANCELLED,
+              cancelledAt: new Date(),
+            },
+          );
+
+          this.logger.log(
+            `Booking status updated to CANCELLED for booking ${payment.bookingId}`,
+          );
+
+          // Release seats back to AVAILABLE status
+          await this.seatStatusRepository.update(
+            { bookingId: payment.bookingId },
+            {
+              state: SeatState.AVAILABLE,
+              bookingId: null,
+              lockedUntil: null,
+            },
+          );
+
+          this.logger.log(
+            `Seats released back to AVAILABLE for booking ${payment.bookingId}`,
+          );
+        }
+      }
 
       // The cancel response has different structure, so we need to construct the response
       // with available data and defaults for missing properties
@@ -202,6 +244,19 @@ export class PayosService {
         `Webhook received for order ${orderCode} with status ${success}`,
       );
 
+      // Get payment record to find booking ID
+      const payment = await this.paymentRepository.findOne({
+        where: { payosOrderCode: orderCode },
+      });
+
+      if (!payment) {
+        this.logger.warn(`No payment record found for order ${orderCode}`);
+        return {
+          success: false,
+          message: 'Payment record not found',
+        };
+      }
+
       // Update payment status in database based on webhook success status
       const paymentStatus = success
         ? PaymentStatus.COMPLETED
@@ -216,8 +271,60 @@ export class PayosService {
         `Payment status updated to ${paymentStatus} in database for order ${orderCode}`,
       );
 
-      // Here you can implement additional business logic based on payment status
-      // For example: update booking status, send confirmation email, etc.
+      // Handle booking and seat status updates based on payment status
+      if (payment.bookingId) {
+        if (success) {
+          // Payment successful - update booking to PAID and confirm seat bookings
+          await this.bookingRepository.update(
+            { id: payment.bookingId },
+            { status: BookingStatus.PAID },
+          );
+
+          this.logger.log(
+            `Booking status updated to PAID for booking ${payment.bookingId}`,
+          );
+
+          // Update seat statuses from LOCKED/RESERVED to BOOKED
+          await this.seatStatusRepository.update(
+            { bookingId: payment.bookingId },
+            {
+              state: SeatState.BOOKED,
+              lockedUntil: null, // Clear any lock timers
+            },
+          );
+
+          this.logger.log(
+            `Seat statuses updated to BOOKED for booking ${payment.bookingId}`,
+          );
+        } else {
+          // Payment failed - release seats back to AVAILABLE
+          await this.bookingRepository.update(
+            { id: payment.bookingId },
+            {
+              status: BookingStatus.CANCELLED,
+              cancelledAt: new Date(),
+            },
+          );
+
+          this.logger.log(
+            `Booking status updated to CANCELLED for booking ${payment.bookingId} due to payment failure`,
+          );
+
+          // Release seats back to AVAILABLE status
+          await this.seatStatusRepository.update(
+            { bookingId: payment.bookingId },
+            {
+              state: SeatState.AVAILABLE,
+              bookingId: null,
+              lockedUntil: null,
+            },
+          );
+
+          this.logger.log(
+            `Seats released back to AVAILABLE for booking ${payment.bookingId} due to payment failure`,
+          );
+        }
+      }
 
       return {
         success: true,

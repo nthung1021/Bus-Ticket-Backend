@@ -4,9 +4,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PayosService } from './payos.service';
 import { PayosController } from './payos.controller';
 import { Payment } from '../entities/payment.entity';
+import { Booking } from '../entities/booking.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([Payment])],
+  imports: [
+    ConfigModule,
+    TypeOrmModule.forFeature([Payment, Booking, SeatStatus]),
+  ],
   controllers: [PayosController],
   providers: [PayosService],
   exports: [PayosService],
