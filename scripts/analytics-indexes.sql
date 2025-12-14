@@ -30,13 +30,6 @@ CREATE INDEX IF NOT EXISTS idx_trips_departure_bus
 ON trips(departure_time, bus_id) 
 WHERE departure_time IS NOT NULL;
 
--- Date-based partitioning support indexes
-CREATE INDEX IF NOT EXISTS idx_bookings_date_partition 
-ON bookings(DATE(booked_at), status);
-
-CREATE INDEX IF NOT EXISTS idx_trips_date_partition 
-ON trips(DATE(departure_time), route_id);
-
 -- Performance indexes for aggregation queries
 CREATE INDEX IF NOT EXISTS idx_bookings_analytics_composite 
 ON bookings(booked_at, status, total_amount, trip_id);
@@ -49,18 +42,26 @@ CREATE INDEX IF NOT EXISTS idx_bookings_summary_covering
 ON bookings(booked_at, status) 
 INCLUDE (total_amount, trip_id);
 
+-- Optimized indexes for date range queries (without function expressions)
+CREATE INDEX IF NOT EXISTS idx_bookings_date_status_analytics 
+ON bookings(booked_at, status) 
+WHERE booked_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_trips_date_route_analytics 
+ON trips(departure_time, route_id) 
+WHERE departure_time IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_routes_analytics_covering 
 ON routes(id) 
 INCLUDE (name, origin, destination);
 
--- Partial indexes for frequently queried data
+-- Partial indexes for recent data (static date ranges)
 CREATE INDEX IF NOT EXISTS idx_bookings_paid_recent 
 ON bookings(booked_at, total_amount) 
-WHERE status = 'paid' AND booked_at >= CURRENT_DATE - INTERVAL '1 year';
+WHERE status = 'paid';
 
 CREATE INDEX IF NOT EXISTS idx_trips_active_recent 
-ON trips(departure_time, route_id) 
-WHERE departure_time >= CURRENT_DATE - INTERVAL '1 year';
+ON trips(departure_time, route_id);
 
 -- Statistics maintenance (PostgreSQL specific)
 -- Run these periodically to maintain query performance
