@@ -16,6 +16,10 @@ import {
   ModifyPassengerDetailsDto,
   ModifyPassengerDetailsResponseDto 
 } from './dto/modify-passenger-details.dto';
+import { 
+  ChangeSeatsDto,
+  ChangeSeatsResponseDto 
+} from './dto/change-seats.dto';
 
 // Inline DTO to avoid import issues
 interface PassengerUpdateDto {
@@ -425,6 +429,36 @@ export class BookingController {
       return {
         success: true,
         message: 'Passenger details modified successfully',
+        data: result,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * A1.3 - Change Seats
+   * PUT /api/bookings/:id/seats
+   */
+  @Put(':id/seats')
+  @UseGuards(OptionalJwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async changeSeats(
+    @Param('id') bookingId: string,
+    @Body() changeSeatsDto: ChangeSeatsDto,
+    @Request() req: any,
+  ): Promise<ChangeSeatsResponseDto> {
+    try {
+      const userId = req.user?.userId;
+      const result = await this.bookingService.changeSeats(
+        bookingId,
+        changeSeatsDto,
+        userId,
+      );
+      
+      return {
+        success: true,
+        message: 'Seats changed successfully',
         data: result,
       };
     } catch (error) {

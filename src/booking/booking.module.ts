@@ -13,6 +13,7 @@ import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
 import { BookingModificationHistory } from '../entities/booking-modification-history.entity';
+import { SeatLayout } from '../entities/seat-layout.entity';
 import { EmailService } from './email.service';
 
 @Module({
@@ -25,6 +26,7 @@ import { EmailService } from './email.service';
       Seat,
       AuditLog,
       BookingModificationHistory,
+      SeatLayout,
     ]),
     ScheduleModule.forRoot(),
   ],

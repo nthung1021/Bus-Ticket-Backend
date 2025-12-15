@@ -8,6 +8,7 @@ import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
 import { BookingModificationHistory, ModificationType } from '../entities/booking-modification-history.entity';
+import { SeatLayout } from '../entities/seat-layout.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
@@ -41,6 +42,8 @@ export class BookingService {
     private auditLogRepository: Repository<AuditLog>,
     @InjectRepository(BookingModificationHistory)
     private modificationHistoryRepository: Repository<BookingModificationHistory>,
+    @InjectRepository(SeatLayout)
+    private seatLayoutRepository: Repository<SeatLayout>,
     private dataSource: DataSource,
     private readonly emailService: EmailService,
     private readonly modificationPermissionService: BookingModificationPermissionService,
@@ -1520,5 +1523,271 @@ export class BookingService {
     }
 
     return `Updated passenger ${passengerName}: ${descriptions.join(', ')}`;
+  }
+
+  /**
+   * A1.3 - Change Seats
+   * API: PUT /api/bookings/:id/seats
+   */
+  async changeSeats(
+    bookingId: string,
+    changeSeatsDto: { seatChanges: Array<{ passengerId: string; newSeatCode: string; }> },
+    userId?: string,
+  ): Promise<any> {
+    return await this.dataSource.transaction(async (manager) => {
+      // Step 1: Validate booking ownership
+      const booking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'trip.route', 'trip.bus', 'passengerDetails'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      // Validate ownership for registered users
+      if (userId && booking.userId !== userId) {
+        throw new BadRequestException('Access denied: You can only modify your own bookings');
+      }
+
+      // Step 2: Validate booking status and time constraints
+      await this.modificationPermissionService.validateModificationPermissions(
+        booking,
+        { seats: true }
+      );
+
+      const seatChangeResults: any[] = [];
+      const modificationHistory: any[] = [];
+      let oldTotalAmount = booking.totalAmount;
+      let totalPriceDifference = 0;
+
+      // Step 3: Process each seat change
+      for (const seatChange of changeSeatsDto.seatChanges) {
+        // Validate passenger exists and belongs to this booking
+        const passengerDetail = await manager.findOne(PassengerDetail, {
+          where: { id: seatChange.passengerId, bookingId: bookingId },
+        });
+
+        if (!passengerDetail) {
+          throw new NotFoundException(`Passenger with ID ${seatChange.passengerId} not found in this booking`);
+        }
+
+        // Check if seat change is actually needed
+        if (passengerDetail.seatCode === seatChange.newSeatCode) {
+          continue; // Skip if same seat
+        }
+
+        // Step 4: Check seat availability
+        const newSeat = await manager.findOne(Seat, {
+          where: { seatCode: seatChange.newSeatCode, busId: booking.trip.busId },
+        });
+
+        if (!newSeat) {
+          throw new NotFoundException(`Seat ${seatChange.newSeatCode} not found on this bus`);
+        }
+
+        if (!newSeat.isActive) {
+          throw new BadRequestException(`Seat ${seatChange.newSeatCode} is not available for booking`);
+        }
+
+        // Check if new seat is available for this trip
+        const existingSeatStatus = await manager.findOne(SeatStatus, {
+          where: {
+            tripId: booking.tripId,
+            seatId: newSeat.id,
+          },
+        });
+
+        if (existingSeatStatus && existingSeatStatus.state !== SeatState.AVAILABLE) {
+          if (existingSeatStatus.bookingId !== bookingId) {
+            throw new ConflictException(`Seat ${seatChange.newSeatCode} is already occupied`);
+          }
+        }
+
+        // Get old seat info for price calculation
+        const oldSeat = await manager.findOne(Seat, {
+          where: { seatCode: passengerDetail.seatCode, busId: booking.trip.busId },
+        });
+
+        // Step 5: Calculate price difference
+        const { oldSeatPrice, newSeatPrice, priceDifference } = await this.calculateSeatPriceDifference(
+          booking.trip,
+          oldSeat,
+          newSeat,
+          manager
+        );
+
+        // Step 6: Update seat statuses
+        // Release old seat
+        if (oldSeat) {
+          await manager.update(
+            SeatStatus,
+            { tripId: booking.tripId, seatId: oldSeat.id, bookingId },
+            { state: SeatState.AVAILABLE, bookingId: null }
+          );
+        }
+
+        // Lock new seat
+        if (existingSeatStatus) {
+          await manager.update(
+            SeatStatus,
+            { tripId: booking.tripId, seatId: newSeat.id },
+            { state: SeatState.BOOKED, bookingId }
+          );
+        } else {
+          // Create new seat status record
+          const newSeatStatus = manager.create(SeatStatus, {
+            tripId: booking.tripId,
+            seatId: newSeat.id,
+            bookingId,
+            state: SeatState.BOOKED,
+            seatCode: newSeat.seatCode,
+          });
+          await manager.save(SeatStatus, newSeatStatus);
+        }
+
+        // Step 7: Update passenger seat code
+        await manager.update(
+          PassengerDetail,
+          seatChange.passengerId,
+          { seatCode: seatChange.newSeatCode }
+        );
+
+        // Track changes
+        totalPriceDifference += priceDifference;
+        
+        seatChangeResults.push({
+          passengerId: seatChange.passengerId,
+          passengerName: passengerDetail.fullName,
+          oldSeatCode: passengerDetail.seatCode,
+          newSeatCode: seatChange.newSeatCode,
+          oldSeatPrice,
+          newSeatPrice,
+          priceDifference,
+        });
+
+        // Log modification history
+        const modificationRecord = {
+          bookingId,
+          userId,
+          modificationType: ModificationType.SEAT_CHANGE,
+          description: `Changed seat for ${passengerDetail.fullName} from ${passengerDetail.seatCode} to ${seatChange.newSeatCode} (${priceDifference >= 0 ? '+' : ''}${priceDifference.toLocaleString()} VND)`,
+          changes: {
+            passengerId: seatChange.passengerId,
+            newSeatCode: seatChange.newSeatCode,
+            priceDifference,
+          },
+          previousValues: {
+            oldSeatCode: passengerDetail.seatCode,
+            oldPrice: oldSeatPrice,
+          },
+        };
+
+        await manager.save(BookingModificationHistory, modificationRecord);
+        modificationHistory.push({
+          type: 'seat_change',
+          description: modificationRecord.description,
+          timestamp: new Date(),
+        });
+      }
+
+      // Step 8: Recalculate and update total price if there are price differences
+      const newTotalAmount = oldTotalAmount + totalPriceDifference;
+      
+      if (totalPriceDifference !== 0) {
+        await manager.update(Booking, bookingId, {
+          totalAmount: newTotalAmount,
+          lastModifiedAt: new Date(),
+        });
+      } else {
+        await manager.update(Booking, bookingId, {
+          lastModifiedAt: new Date(),
+        });
+      }
+
+      // Step 9: Create audit log
+      await this.createAuditLog(
+        'CHANGE_SEATS',
+        `Changed seats for booking ${booking.bookingReference}. Price difference: ${totalPriceDifference.toLocaleString()} VND`,
+        userId,
+        undefined,
+        {
+          bookingId,
+          seatChanges: seatChangeResults,
+          totalPriceDifference,
+          oldTotalAmount,
+          newTotalAmount,
+        },
+      );
+
+      return {
+        bookingId,
+        bookingReference: booking.bookingReference,
+        seatChanges: seatChangeResults,
+        oldTotalAmount,
+        newTotalAmount,
+        totalPriceDifference,
+        modificationHistory,
+      };
+    });
+  }
+
+  /**
+   * Calculate price difference between old and new seats
+   */
+  private async calculateSeatPriceDifference(
+    trip: Trip,
+    oldSeat: Seat,
+    newSeat: Seat,
+    manager: any
+  ): Promise<{ oldSeatPrice: number; newSeatPrice: number; priceDifference: number }> {
+    // Get seat layout for pricing information
+    const seatLayout = await manager.findOne(SeatLayout, {
+      where: { busId: trip.busId },
+    });
+
+    const basePrice = trip.basePrice;
+    let oldSeatPrice = basePrice;
+    let newSeatPrice = basePrice;
+
+    if (seatLayout && seatLayout.seatTypePrices) {
+      const seatTypePrices = seatLayout.seatTypePrices;
+      
+      // Calculate old seat price
+      if (oldSeat) {
+        switch (oldSeat.seatType) {
+          case 'normal':
+            oldSeatPrice = basePrice + (seatTypePrices.normal || 0);
+            break;
+          case 'vip':
+            oldSeatPrice = basePrice + (seatTypePrices.vip || 0);
+            break;
+          case 'business':
+            oldSeatPrice = basePrice + (seatTypePrices.business || 0);
+            break;
+        }
+      }
+
+      // Calculate new seat price
+      switch (newSeat.seatType) {
+        case 'normal':
+          newSeatPrice = basePrice + (seatTypePrices.normal || 0);
+          break;
+        case 'vip':
+          newSeatPrice = basePrice + (seatTypePrices.vip || 0);
+          break;
+        case 'business':
+          newSeatPrice = basePrice + (seatTypePrices.business || 0);
+          break;
+      }
+    }
+
+    const priceDifference = newSeatPrice - oldSeatPrice;
+
+    return {
+      oldSeatPrice,
+      newSeatPrice,
+      priceDifference,
+    };
   }
 }
