@@ -12,6 +12,10 @@ import {
   CheckModificationPermissionsDto, 
   BookingModificationResponseDto 
 } from './dto/booking-modification.dto';
+import { 
+  ModifyPassengerDetailsDto,
+  ModifyPassengerDetailsResponseDto 
+} from './dto/modify-passenger-details.dto';
 
 // Inline DTO to avoid import issues
 interface PassengerUpdateDto {
@@ -392,6 +396,36 @@ export class BookingController {
         success: true,
         message: 'Modification history retrieved successfully',
         data: history,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * A1.2 - Modify Passenger Details
+   * PUT /api/bookings/:id/passengers
+   */
+  @Put(':id/passengers')
+  @UseGuards(OptionalJwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async modifyPassengerDetails(
+    @Param('id') bookingId: string,
+    @Body() modifyPassengerDto: ModifyPassengerDetailsDto,
+    @Request() req: any,
+  ): Promise<ModifyPassengerDetailsResponseDto> {
+    try {
+      const userId = req.user?.userId;
+      const result = await this.bookingService.modifyPassengerDetails(
+        bookingId,
+        modifyPassengerDto,
+        userId,
+      );
+      
+      return {
+        success: true,
+        message: 'Passenger details modified successfully',
+        data: result,
       };
     } catch (error) {
       throw error;

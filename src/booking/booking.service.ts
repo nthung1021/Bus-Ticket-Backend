@@ -1321,4 +1321,204 @@ export class BookingService {
 
     return null;
   }
+
+  /**
+   * A1.2 - Modify Passenger Details
+   * API: PUT /api/bookings/:id/passengers
+   */
+  async modifyPassengerDetails(
+    bookingId: string,
+    modifyPassengerDto: { passengers: Array<{ id: string; fullName?: string; documentId?: string; seatCode?: string; }> },
+    userId?: string,
+  ): Promise<any> {
+    return await this.dataSource.transaction(async (manager) => {
+      // Step 1: Validate booking ownership
+      const booking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'passengerDetails'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      // Validate ownership for registered users
+      if (userId && booking.userId !== userId) {
+        throw new BadRequestException('Access denied: You can only modify your own bookings');
+      }
+
+      // Step 2: Validate booking status
+      await this.modificationPermissionService.validateModificationPermissions(
+        booking,
+        { passengerInfo: true }
+      );
+
+      const modificationResults: any[] = [];
+      const modificationHistory: any[] = [];
+
+      // Step 3: Validate and update each passenger
+      for (const passengerUpdate of modifyPassengerDto.passengers) {
+        // Validate passenger exists and belongs to this booking
+        const passengerDetail = await manager.findOne(PassengerDetail, {
+          where: { id: passengerUpdate.id, bookingId: bookingId },
+        });
+
+        if (!passengerDetail) {
+          throw new NotFoundException(`Passenger detail with ID ${passengerUpdate.id} not found in this booking`);
+        }
+
+        // Store previous values for history tracking
+        const previousValues = {
+          fullName: passengerDetail.fullName,
+          documentId: passengerDetail.documentId,
+          seatCode: passengerDetail.seatCode,
+        };
+
+        const changes: any = {};
+        let hasChanges = false;
+
+        // Validate and prepare changes
+        if (passengerUpdate.fullName && passengerUpdate.fullName !== passengerDetail.fullName) {
+          changes.fullName = passengerUpdate.fullName;
+          hasChanges = true;
+        }
+
+        if (passengerUpdate.documentId && passengerUpdate.documentId !== passengerDetail.documentId) {
+          changes.documentId = passengerUpdate.documentId;
+          hasChanges = true;
+        }
+
+        if (passengerUpdate.seatCode && passengerUpdate.seatCode !== passengerDetail.seatCode) {
+          // Validate seat availability if seat is being changed
+          const existingSeatBooking = await manager.findOne(SeatStatus, {
+            where: {
+              tripId: booking.tripId,
+              seatCode: passengerUpdate.seatCode,
+              state: SeatState.BOOKED,
+            },
+          });
+
+          if (existingSeatBooking && existingSeatBooking.bookingId !== bookingId) {
+            throw new ConflictException(`Seat ${passengerUpdate.seatCode} is already occupied`);
+          }
+
+          changes.seatCode = passengerUpdate.seatCode;
+          hasChanges = true;
+        }
+
+        if (hasChanges) {
+          // Step 4: Update passenger details
+          await manager.update(PassengerDetail, passengerUpdate.id, changes);
+
+          // Update seat status if seat changed
+          if (changes.seatCode) {
+            // Free old seat
+            await manager.update(
+              SeatStatus,
+              { tripId: booking.tripId, seatCode: previousValues.seatCode, bookingId },
+              { state: SeatState.AVAILABLE, bookingId: null }
+            );
+
+            // Book new seat
+            const newSeatStatus = await manager.findOne(SeatStatus, {
+              where: { tripId: booking.tripId, seatCode: changes.seatCode },
+            });
+
+            if (newSeatStatus) {
+              await manager.update(
+                SeatStatus,
+                { tripId: booking.tripId, seatCode: changes.seatCode },
+                { state: SeatState.BOOKED, bookingId }
+              );
+            }
+          }
+
+          // Step 5: Log modification history
+          const modificationRecord = {
+            bookingId,
+            userId,
+            modificationType: ModificationType.PASSENGER_INFO,
+            description: this.generatePassengerModificationDescription(
+              passengerDetail.fullName,
+              changes,
+              previousValues
+            ),
+            changes,
+            previousValues,
+          };
+
+          await manager.save(BookingModificationHistory, modificationRecord);
+          modificationHistory.push({
+            type: 'passenger_info',
+            description: modificationRecord.description,
+            timestamp: new Date(),
+          });
+
+          // Get updated passenger details
+          const updatedPassenger = await manager.findOne(PassengerDetail, {
+            where: { id: passengerUpdate.id },
+          });
+
+          modificationResults.push({
+            id: updatedPassenger.id,
+            bookingId: updatedPassenger.bookingId,
+            fullName: updatedPassenger.fullName,
+            documentId: updatedPassenger.documentId,
+            seatCode: updatedPassenger.seatCode,
+            modifiedAt: new Date(),
+          });
+        }
+      }
+
+      // Update booking last modified timestamp
+      await manager.update(Booking, bookingId, {
+        lastModifiedAt: new Date(),
+      });
+
+      // Step 6: Create audit log
+      await this.createAuditLog(
+        'MODIFY_PASSENGER_DETAILS',
+        `Modified passenger details for booking ${booking.bookingReference}`,
+        userId,
+        undefined,
+        {
+          bookingId,
+          modifiedPassengers: modificationResults.map(p => p.id),
+          changes: modificationHistory,
+        },
+      );
+
+      return {
+        bookingId,
+        bookingReference: booking.bookingReference,
+        modifiedPassengers: modificationResults,
+        modificationHistory,
+      };
+    });
+  }
+
+  /**
+   * Generate human-readable description for passenger modification
+   */
+  private generatePassengerModificationDescription(
+    passengerName: string,
+    changes: any,
+    previousValues: any
+  ): string {
+    const descriptions = [];
+
+    if (changes.fullName) {
+      descriptions.push(`name from '${previousValues.fullName}' to '${changes.fullName}'`);
+    }
+
+    if (changes.documentId) {
+      descriptions.push(`document ID from '${previousValues.documentId}' to '${changes.documentId}'`);
+    }
+
+    if (changes.seatCode) {
+      descriptions.push(`seat from '${previousValues.seatCode}' to '${changes.seatCode}'`);
+    }
+
+    return `Updated passenger ${passengerName}: ${descriptions.join(', ')}`;
+  }
 }
