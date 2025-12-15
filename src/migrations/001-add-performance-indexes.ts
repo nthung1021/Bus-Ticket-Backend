@@ -31,11 +31,11 @@ export class AddPerformanceIndexes1640000000001 implements MigrationInterface {
     `);
     
     await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS "idx_seat_layouts_type" ON "seat_layouts" ("layout_type");
+      CREATE INDEX IF NOT EXISTS "idx_seat_layouts_type" ON "seat_layouts" ("layoutType");
     `);
     
     await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS "idx_seat_layouts_bus_type" ON "seat_layouts" ("bus_id", "layout_type");
+      CREATE INDEX IF NOT EXISTS "idx_seat_layouts_bus_type" ON "seat_layouts" ("bus_id", "layoutType");
     `);
     
     await queryRunner.query(`
@@ -123,7 +123,7 @@ export class AddPerformanceIndexes1640000000001 implements MigrationInterface {
 
     // Users table indexes
     await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS "idx_users_google_id" ON "users" ("google_id");
+      CREATE INDEX IF NOT EXISTS "idx_users_google_id" ON "users" ("googleId");
     `);
     
     await queryRunner.query(`
