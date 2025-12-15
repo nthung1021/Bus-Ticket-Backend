@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
@@ -116,5 +116,20 @@ export class NotificationsService {
         totalPages: Math.ceil(total / limit)
       }
     };
+  }
+
+  async markAsRead(id: string, userId: string) {
+    const notification = await this.notificationRepository.findOne({
+      where: { id, userId },
+    });
+
+    if (!notification) {
+      throw new NotFoundException('Notification not found');
+    }
+
+    notification.status = NotificationStatus.READ;
+    await this.notificationRepository.save(notification);
+
+    return { success: true, message: 'notification marked as read' };
   }
 }
