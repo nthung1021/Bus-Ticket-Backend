@@ -8,7 +8,7 @@ config();
 const dataSource = new DataSource({
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 5432,
+  port: parseInt(process.env.DB_PORT || '5432'),
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'admin',
   database: process.env.DB_NAME || 'awad_bus_booking_user_login',
@@ -18,6 +18,27 @@ async function seedDatabase() {
   try {
     await dataSource.initialize();
     console.log('Connected to database');
+
+    // Check if data already exists
+    const existingUsersCount = await dataSource.query('SELECT COUNT(*) FROM users');
+    if (parseInt(existingUsersCount[0].count) > 0) {
+      console.log('Database already has data. Clearing existing data first...');
+      
+      // Clear all data in correct order (respecting foreign key constraints)
+      await dataSource.query('TRUNCATE TABLE booking_modification_history CASCADE');
+      await dataSource.query('TRUNCATE TABLE passenger_details CASCADE');
+      await dataSource.query('TRUNCATE TABLE seat_status CASCADE'); 
+      await dataSource.query('TRUNCATE TABLE bookings CASCADE');
+      await dataSource.query('TRUNCATE TABLE trips CASCADE');
+      await dataSource.query('TRUNCATE TABLE seats CASCADE');
+      await dataSource.query('TRUNCATE TABLE seat_layouts CASCADE');
+      await dataSource.query('TRUNCATE TABLE buses CASCADE');
+      await dataSource.query('TRUNCATE TABLE routes CASCADE');
+      await dataSource.query('TRUNCATE TABLE operators CASCADE');
+      await dataSource.query('TRUNCATE TABLE users CASCADE');
+      
+      console.log('Existing data cleared successfully');
+    }
 
     // 1. Seed Users (50 records)
     console.log('Seeding users...');
@@ -34,9 +55,17 @@ async function seedDatabase() {
       userIds.push(id);
       const role = i <= 2 ? 'admin' : i <= 5 ? 'operator' : 'customer';
       const googleId = i <= 10 ? `'google_${i}'` : 'NULL';
-      const phone = i <= 40 ? `'+1555${i.toString().padStart(7, '0')}'` : 'NULL';
+      const phone = i <= 40 ? `'+84${(900000000 + i * 1000000).toString()}'` : 'NULL';
       
-      userValues.push(`('${id}', ${googleId}, 'user${i}@example.com', 'User ${i}', ${phone}, '$2b$10$hashedpassword${i}', '${role}', NOW() - INTERVAL '${Math.floor(Math.random() * 365)} days')`);
+      // Generate more varied Vietnamese names
+      const vietnameseNames = [
+        'Nguyễn Văn Nam', 'Trần Thị Hoa', 'Lê Minh Tuấn', 'Phạm Thu Hà', 'Hoàng Đức Anh',
+        'Vũ Thị Lan', 'Đặng Quang Minh', 'Bùi Thị Mai', 'Đỗ Văn Hùng', 'Ngô Thị Thu',
+        'Lý Văn Đức', 'Phan Thị Hương', 'Trịnh Quang Hải', 'Đinh Thị Nga', 'Tạ Văn Sơn'
+      ];
+      const randomName = vietnameseNames[i % vietnameseNames.length];
+      
+      userValues.push(`('${id}', ${googleId}, 'user${i}@gmail.com', '${randomName}', ${phone}, '$2b$10$hashedpassword${i}', '${role}', NOW() - INTERVAL '${Math.floor(Math.random() * 365)} days')`);
     }
     
     await dataSource.query(userInsertQuery + userValues.join(',\n') + ';');
@@ -47,10 +76,10 @@ async function seedDatabase() {
     const operatorValues: string[] = [];
     
     const operatorNames = [
-      'Metro Bus Lines', 'City Transit Co', 'Express Travel', 'Golden Bus Service', 'Swift Transport',
-      'Premier Coaches', 'Royal Transit', 'Atlantic Buses', 'Pacific Tours', 'Mountain Express',
-      'Valley Transport', 'Coastal Lines', 'Desert Runners', 'Urban Mobility', 'Highway Express',
-      'Regional Transit', 'Inter-City Lines', 'National Bus Co', 'Local Transport', 'Cross Country'
+      'Xe Khách Phương Trang', 'Xe Khách Hoàng Long', 'Xe Khách Mai Linh', 'Xe Khách Thành Bưởi', 'Xe Khách Sinh Café',
+      'Xe Khách Hùng Cường', 'Xe Khách Thanh Nga', 'Xe Khách Hoàng Gia', 'Xe Khách Minh Tân', 'Xe Khách Sao Viet',
+      'Xe Khách Nam Sài Gòn', 'Xe Khách Cúc Tùng', 'Xe Khách Tâm Hạnh', 'Xe Khách Bảo Anh', 'Xe Khách Minh Quốc',
+      'Xe Khách Đồng Phương', 'Xe Khách Thiên Tân', 'Xe Khách Bình Minh', 'Xe Khách Thuận Tiện', 'Xe Khách Hoa Mai'
     ];
     
     for (let i = 1; i <= 20; i++) {
@@ -59,7 +88,8 @@ async function seedDatabase() {
       const status = i <= 15 ? 'approved' : i <= 18 ? 'pending' : 'suspended';
       const approvedAt = status === 'approved' ? `NOW() - INTERVAL '${Math.floor(Math.random() * 180)} days'` : 'NULL';
       
-      operatorValues.push(`('${id}', '${operatorNames[i-1]}', 'contact${i}@${operatorNames[i-1].toLowerCase().replace(/\s+/g, '')}.com', '+1555${(100 + i).toString()}0000', '${status}', ${approvedAt})`);
+      const emailDomain = operatorNames[i-1].toLowerCase().replace(/[^a-z]/g, '') + '.vn';
+      operatorValues.push(`('${id}', '${operatorNames[i-1]}', 'lienhe${i}@${emailDomain}', '+84${(900000000 + i * 1000000).toString()}', '${status}', ${approvedAt})`);
     }
     
     await dataSource.query(`
@@ -73,11 +103,11 @@ async function seedDatabase() {
     const routeValues: string[] = [];
     
     const cities = [
-      'New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
-      'San Diego', 'Dallas', 'San Jose', 'Austin', 'Jacksonville', 'Fort Worth', 'Columbus',
-      'Charlotte', 'San Francisco', 'Indianapolis', 'Seattle', 'Denver', 'Washington DC',
-      'Boston', 'El Paso', 'Detroit', 'Nashville', 'Portland', 'Memphis', 'Oklahoma City',
-      'Las Vegas', 'Louisville', 'Baltimore'
+      'Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ', 'Biên Hòa', 'Huế',
+      'Nha Trang', 'Buôn Ma Thuột', 'Vũng Tàu', 'Quy Nhon', 'Thủ Dầu Một', 'Nam Định', 'Phan Thiết',
+      'Long Xuyên', 'Hạ Long', 'Thái Nguyên', 'Thanh Hóa', 'Rạch Giá', 'Cà Mau',
+      'Vinh', 'Mỹ Tho', 'Tây Ninh', 'Sóc Trăng', 'Kon Tum', 'Hội An', 'Sapa',
+      'Đà Lạt', 'Phú Quốc', 'Bạc Liêu'
     ];
     
     for (let i = 1; i <= 30; i++) {
@@ -103,8 +133,8 @@ async function seedDatabase() {
     const busValues: string[] = [];
     
     const busModels = [
-      'Mercedes Sprinter', 'Volvo B8R', 'Scania Citywide', 'MAN Lion\'s City', 'Iveco Daily',
-      'Ford Transit', 'Mercedes Tourismo', 'Setra S 416', 'Neoplan Skyliner', 'Van Hool EX'
+      'Hyundai Universe', 'Thaco Isuzu', 'Mercedes Benz O500', 'Samco Felix', 'Daewoo FX120',
+      'Hino AK', 'Isuzu Citybus', 'King Long XMQ6127', 'Yutong ZK6122', 'Golden Dragon XML6127'
     ];
     
     for (let i = 1; i <= 40; i++) {
@@ -216,8 +246,8 @@ async function seedDatabase() {
       const totalAmount = Math.floor(Math.random() * 20000) + 5000;
       const statuses = ['pending', 'paid', 'cancelled', 'expired'];
       const status = statuses[Math.floor(Math.random() * statuses.length)];
-      const contactEmail = `customer${i}@example.com`;
-      const contactPhone = `+1555${i.toString().padStart(7, '0')}`;
+      const contactEmail = `khachhang${i}@gmail.com`;
+      const contactPhone = `+84${(900000000 + i * 1000000).toString()}`;
       const bookedAt = `NOW() - INTERVAL '${Math.floor(Math.random() * 30)} days'`;
       const lastModifiedAt = Math.random() > 0.7 ? `NOW() - INTERVAL '${Math.floor(Math.random() * 10)} days'` : 'NULL';
       const cancelledAt = status === 'cancelled' ? `NOW() - INTERVAL '${Math.floor(Math.random() * 20)} days'` : 'NULL';
@@ -256,15 +286,15 @@ async function seedDatabase() {
     // 10. Seed Passenger Details (150 records)
     console.log('Seeding passenger details...');
     const passengerValues: string[] = [];
-    const firstNames = ['John', 'Jane', 'Michael', 'Sarah', 'David', 'Lisa', 'Robert', 'Emma', 'James', 'Anna'];
-    const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez'];
+    const firstNames = ['Văn', 'Thị', 'Minh', 'Thu', 'Hoàng', 'Mai', 'Đức', 'Hoa', 'Quang', 'Lan'];
+    const lastNames = ['Nguyễn', 'Trần', 'Lê', 'Phạm', 'Hoàng', 'Huỳnh', 'Phan', 'Vũ', 'Võ', 'Đặng'];
     
     for (let i = 1; i <= 150; i++) {
       const id = `90000000-0000-4000-8000-${i.toString().padStart(12, '0')}`;
       const bookingId = bookingIds[Math.floor(Math.random() * bookingIds.length)];
       const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
       const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
-      const fullName = `${firstName} ${lastName}`;
+      const fullName = `${lastName} ${firstName} ${i % 2 === 0 ? 'Văn' : 'Thị'} ${String.fromCharCode(65 + i % 26)}`;
       const documentId = `ID${i.toString().padStart(8, '0')}`;
       const seatCode = `${String.fromCharCode(65 + Math.floor(Math.random() * 10))}${Math.floor(Math.random() * 4) + 1}`;
       
@@ -281,9 +311,9 @@ async function seedDatabase() {
     const modificationValues: string[] = [];
     const modificationTypes = ['passenger_info', 'seat_change', 'contact_info'];
     const descriptions = {
-      'passenger_info': ['Updated passenger name', 'Changed document ID', 'Added passenger details'],
-      'seat_change': ['Changed from seat A1 to A2', 'Upgraded to VIP seat', 'Moved to different row'],
-      'contact_info': ['Updated email address', 'Changed phone number', 'Updated contact details']
+      'passenger_info': ['Cập nhật tên hành khách', 'Thay đổi số CMND/CCCD', 'Bổ sung thông tin hành khách'],
+      'seat_change': ['Đổi từ ghế A1 sang A2', 'Nâng cấp lên ghế VIP', 'Chuyển sang hàng ghế khác'],
+      'contact_info': ['Cập nhật địa chỉ email', 'Thay đổi số điện thoại', 'Cập nhật thông tin liên hệ']
     };
     
     for (let i = 1; i <= 80; i++) {
@@ -293,8 +323,8 @@ async function seedDatabase() {
       const userIdValue = userId ? `'${userId}'` : 'NULL';
       const modificationType = modificationTypes[Math.floor(Math.random() * modificationTypes.length)];
       const description = descriptions[modificationType][Math.floor(Math.random() * descriptions[modificationType].length)];
-      const changes = `'{"field": "example", "old_value": "old", "new_value": "new"}'`;
-      const previousValues = `'{"field": "example", "value": "previous"}'`;
+      const changes = JSON.stringify({"field": "example", "old_value": "old", "new_value": "new"});
+      const previousValues = JSON.stringify({"field": "example", "value": "previous"});
       const modifiedAt = `NOW() - INTERVAL '${Math.floor(Math.random() * 20)} days'`;
       
       modificationValues.push(`('${id}', '${bookingId}', ${userIdValue}, '${modificationType}', '${description}', '${changes}', '${previousValues}', ${modifiedAt})`);
