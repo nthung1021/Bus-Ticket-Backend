@@ -617,10 +617,13 @@ export class BookingGateway
     sessionsToRemove.forEach((key) => {
       const session = this.bookingSessions.get(key);
       if (session) {
-        // Remove client from booking room
-        this.server.sockets.sockets
-          .get(socketId)
-          ?.leave(`booking:${session.bookingId}`);
+        // Remove client from booking room (only if server and socket still exist)
+        if (this.server?.sockets?.sockets) {
+          const socket = this.server.sockets.sockets.get(socketId);
+          if (socket) {
+            socket.leave(`booking:${session.bookingId}`);
+          }
+        }
       }
       this.bookingSessions.delete(key);
     });

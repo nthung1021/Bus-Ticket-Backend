@@ -19,6 +19,7 @@ import { Payment, PaymentStatus } from '../entities/payment.entity';
 import { Booking, BookingStatus } from '../entities/booking.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
 import { SeatStatusGateway } from '../gateways/seat-status.gateway';
+import { BookingGateway } from '../gateways/booking.gateway';
 
 @Injectable()
 export class PayosService {
@@ -34,6 +35,7 @@ export class PayosService {
     @InjectRepository(SeatStatus)
     private seatStatusRepository: Repository<SeatStatus>,
     private seatStatusGateway: SeatStatusGateway,
+    private bookingGateway: BookingGateway,
   ) {
     const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
@@ -299,6 +301,12 @@ export class PayosService {
           relations: ['trip'],
         });
 
+        // Get booking information for booking gateway notifications
+        const booking = await this.bookingRepository.findOne({
+          where: { id: payment.bookingId },
+          relations: ['trip'],
+        });
+
         if (success) {
           // Payment successful - update booking to PAID and confirm seat bookings
           await this.bookingRepository.update(
@@ -322,6 +330,19 @@ export class PayosService {
           this.logger.log(
             `Seat statuses updated to BOOKED for booking ${payment.bookingId}`,
           );
+
+          // Notify clients using BookingGateway for booking status change
+          if (booking) {
+            this.bookingGateway.notifyBookingStatusChanged(
+              payment.bookingId,
+              BookingStatus.PAID,
+              {
+                paymentCompleted: true,
+                paymentMethod: 'payos',
+                transactionId: orderCode.toString(),
+              },
+            );
+          }
 
           // Notify clients in real-time about seat booking confirmation
           if (seatStatuses.length > 0) {
@@ -361,6 +382,20 @@ export class PayosService {
           this.logger.log(
             `Seats released back to AVAILABLE for booking ${payment.bookingId} due to payment failure`,
           );
+
+          // Notify clients using BookingGateway for booking status change
+          if (booking) {
+            this.bookingGateway.notifyBookingStatusChanged(
+              payment.bookingId,
+              BookingStatus.CANCELLED,
+              {
+                paymentFailed: true,
+                paymentMethod: 'payos',
+                transactionId: orderCode.toString(),
+                reason: 'Payment failed',
+              },
+            );
+          }
 
           // Notify clients in real-time about seat availability
           if (seatStatuses.length > 0) {
