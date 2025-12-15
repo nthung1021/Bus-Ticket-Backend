@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import { Notification, NotificationChannel, NotificationStatus } from '../entities/notification.entity';
 import { BookingService } from '../booking/booking.service';
 import { EmailService } from '../booking/email.service';
@@ -69,5 +69,52 @@ export class NotificationsService {
     if (sentCount > 0) {
       this.logger.log(`Sent ${sentCount} trip reminders`);
     }
+  }
+  async getUserNotifications(
+    userId: string,
+    filters: { status?: string; page?: number; limit?: number } = {},
+  ) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = { userId };
+
+    if (filters.status && filters.status !== 'all') {
+      if (filters.status === 'unread') {
+        where.status = Not(NotificationStatus.READ);
+      } else if (filters.status === 'read') {
+        where.status = NotificationStatus.READ;
+      }
+    }
+
+    const [notifications, total] = await this.notificationRepository.findAndCount({
+      where,
+      order: { sentAt: 'DESC' },
+      skip,
+      take: limit,
+      relations: ['booking'] // Include booking data if needed, usually notification data blob is enough but relation is good
+    });
+
+    // Map entity to API response format if needed, or return/transform in controller
+    const mappedNotifications = notifications.map(n => ({
+      notificationId: n.id,
+      type: n.type || 'system', // Default type if missing
+      title: n.title,
+      message: n.message,
+      data: n.data,
+      status: n.status === NotificationStatus.READ ? 'read' : 'unread',
+      createdAt: n.sentAt
+    }));
+
+    return {
+      data: mappedNotifications,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
   }
 }

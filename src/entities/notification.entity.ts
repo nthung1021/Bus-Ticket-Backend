@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 import { Booking } from './booking.entity';
+import { User } from './user.entity';
 
 export enum NotificationChannel {
   EMAIL = 'email',
@@ -28,8 +29,23 @@ export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'booking_id' })
-  bookingId: string;
+  @Column({ name: 'booking_id', nullable: true })
+  bookingId?: string;
+
+  @Column({ name: 'user_id' })
+  userId: string;
+
+  @Column({ nullable: true })
+  title: string;
+
+  @Column()
+  message: string;
+
+  @Column({ nullable: true })
+  type: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  data: any;
 
   @Column({
     type: 'enum',
@@ -55,4 +71,8 @@ export class Notification {
   @ManyToOne(() => Booking, (booking) => booking.notifications)
   @JoinColumn({ name: 'booking_id' })
   booking: Booking;
+
+  @ManyToOne(() => User, (user) => user.notifications)
+  @JoinColumn({ name: 'user_id' })
+  user: User;
 }
