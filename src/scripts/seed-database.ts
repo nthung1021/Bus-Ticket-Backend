@@ -65,7 +65,7 @@ async function seedDatabase() {
       ];
       const randomName = vietnameseNames[i % vietnameseNames.length];
       
-      userValues.push(`('${id}', ${googleId}, 'user${i}@gmail.com', '${randomName}', ${phone}, '$2b$10$hashedpassword${i}', '${role}', NOW() - INTERVAL '${Math.floor(Math.random() * 365)} days')`);
+      userValues.push(`('${id}', ${googleId}, 'user${i}@gmail.com', '${randomName}', ${phone}, '$2b$10$hashedpassword${i}', '${role}', '2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00')`);
     }
     
     await dataSource.query(userInsertQuery + userValues.join(',\n') + ';');
@@ -86,7 +86,7 @@ async function seedDatabase() {
       const id = `10000000-0000-4000-8000-${i.toString().padStart(12, '0')}`;
       operatorIds.push(id);
       const status = i <= 15 ? 'approved' : i <= 18 ? 'pending' : 'suspended';
-      const approvedAt = status === 'approved' ? `NOW() - INTERVAL '${Math.floor(Math.random() * 180)} days'` : 'NULL';
+      const approvedAt = status === 'approved' ? `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'` : 'NULL';
       
       const emailDomain = operatorNames[i-1].toLowerCase().replace(/[^a-z]/g, '') + '.vn';
       operatorValues.push(`('${id}', '${operatorNames[i-1]}', 'lienhe${i}@${emailDomain}', '+84${(900000000 + i * 1000000).toString()}', '${status}', ${approvedAt})`);
@@ -119,7 +119,7 @@ async function seedDatabase() {
       const minutes = Math.floor(distance * 1.5) + Math.floor(Math.random() * 120);
       const operatorId = operatorIds[Math.floor(Math.random() * operatorIds.length)];
       
-      routeValues.push(`('${id}', '${operatorId}', 'Route ${i}: ${origin} to ${destination}', '${origin} to ${destination}', '${origin}', '${destination}', ${distance}.50, ${minutes}, true, '{}', NOW() - INTERVAL '${Math.floor(Math.random() * 200)} days', NOW() - INTERVAL '${Math.floor(Math.random() * 30)} days')`);
+      routeValues.push(`('${id}', '${operatorId}', 'Route ${i}: ${origin} to ${destination}', '${origin} to ${destination}', '${origin}', '${destination}', ${distance}.50, ${minutes}, true, '{}', '2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00', '2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00')`);
     }
     
     await dataSource.query(`
@@ -168,7 +168,7 @@ async function seedDatabase() {
       const layoutConfig = `'{"aisles": [2], "doors": [1, ${totalRows}], "emergency_exits": [${Math.floor(totalRows/2)}]}'`;
       const seatPricing = `'{"standard": 100, "premium": 150, "vip": 200}'`;
       
-      seatLayoutValues.push(`('${id}', '${busId}', '${layoutType}', ${totalRows}, ${seatsPerRow}, ${layoutConfig}, ${seatPricing}, NOW() - INTERVAL '${Math.floor(Math.random() * 100)} days', NOW() - INTERVAL '${Math.floor(Math.random() * 10)} days')`);
+      seatLayoutValues.push(`('${id}', '${busId}', '${layoutType}', ${totalRows}, ${seatsPerRow}, ${layoutConfig}, ${seatPricing}, '2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00', '2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00')`);
     });
     
     await dataSource.query(`
@@ -217,8 +217,8 @@ async function seedDatabase() {
       const routeId = routeIds[Math.floor(Math.random() * routeIds.length)];
       const busId = busIds[Math.floor(Math.random() * busIds.length)];
       const daysFromNow = Math.floor(Math.random() * 60) - 30; // -30 to +30 days
-      const departureTime = `NOW() + INTERVAL '${daysFromNow} days' + INTERVAL '${Math.floor(Math.random() * 24)} hours'`;
-      const arrivalTime = `NOW() + INTERVAL '${daysFromNow} days' + INTERVAL '${Math.floor(Math.random() * 24) + 4} hours'`;
+      const departureTime = `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'`;
+      const arrivalTime = `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'`;
       const basePrice = Math.floor(Math.random() * 15000) + 5000; // 50-200 dollars in cents
       const statuses = ['scheduled', 'in_progress', 'completed', 'cancelled'];
       const status = statuses[Math.floor(Math.random() * statuses.length)];
@@ -248,9 +248,9 @@ async function seedDatabase() {
       const status = statuses[Math.floor(Math.random() * statuses.length)];
       const contactEmail = `khachhang${i}@gmail.com`;
       const contactPhone = `+84${(900000000 + i * 1000000).toString()}`;
-      const bookedAt = `NOW() - INTERVAL '${Math.floor(Math.random() * 30)} days'`;
-      const lastModifiedAt = Math.random() > 0.7 ? `NOW() - INTERVAL '${Math.floor(Math.random() * 10)} days'` : 'NULL';
-      const cancelledAt = status === 'cancelled' ? `NOW() - INTERVAL '${Math.floor(Math.random() * 20)} days'` : 'NULL';
+      const bookedAt = `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'`;
+      const lastModifiedAt = Math.random() > 0.7 ? `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'` : 'NULL';
+      const cancelledAt = status === 'cancelled' ? `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'` : 'NULL';
       
       bookingValues.push(`('${id}', '${bookingReference}', ${userIdValue}, '${tripId}', ${totalAmount}, '${status}', '${contactEmail}', '${contactPhone}', ${bookedAt}, ${lastModifiedAt}, ${cancelledAt})`);
     }
@@ -273,7 +273,7 @@ async function seedDatabase() {
       const bookingIdValue = bookingId ? `'${bookingId}'` : 'NULL';
       const states = ['available', 'booked', 'locked', 'reserved'];
       const state = bookingId ? 'booked' : states[Math.floor(Math.random() * states.length)];
-      const lockedUntil = state === 'locked' ? `NOW() + INTERVAL '15 minutes'` : 'NULL';
+      const lockedUntil = state === 'locked' ? `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'` : 'NULL';
       
       seatStatusValues.push(`('${id}', '${tripId}', '${seatId}', '${seatCode}', ${bookingIdValue}, '${state}', ${lockedUntil})`);
     }
@@ -325,7 +325,7 @@ async function seedDatabase() {
       const description = descriptions[modificationType][Math.floor(Math.random() * descriptions[modificationType].length)];
       const changes = JSON.stringify({"field": "example", "old_value": "old", "new_value": "new"});
       const previousValues = JSON.stringify({"field": "example", "value": "previous"});
-      const modifiedAt = `NOW() - INTERVAL '${Math.floor(Math.random() * 20)} days'`;
+      const modifiedAt = `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'`;
       
       modificationValues.push(`('${id}', '${bookingId}', ${userIdValue}, '${modificationType}', '${description}', '${changes}', '${previousValues}', ${modifiedAt})`);
     }
