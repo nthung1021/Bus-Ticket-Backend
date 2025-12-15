@@ -16,10 +16,14 @@ import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthGuard } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
@@ -34,15 +38,20 @@ export class AuthController {
       return res.redirect('http://localhost:8000');
     }
 
-    res.cookie('access_token', response.data.accessToken, {
+    // Determine cookie settings based on environment
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const cookieOptions = {
       httpOnly: true,
-      secure: false,
-      sameSite: 'none',
-    });
+      secure: isProduction, // HTTPS only in production
+      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict', // Explicit type casting
+      maxAge: 60 * 60 * 1000, // 1 hour
+      path: '/',
+    };
+
+    res.cookie('access_token', response.data.accessToken, cookieOptions);
     res.cookie('refresh_token', response.data.refreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: 'none',
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
     res.redirect(`http://localhost:8000/`);
@@ -76,18 +85,20 @@ export class AuthController {
   ) {
     const response = await this.authService.login(loginDto);
 
-    // Set HTTP-only cookies for both tokens
-    res.cookie('access_token', response.data.accessToken, {
+    // Determine cookie settings based on environment
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-      sameSite: 'none',
+      secure: isProduction, // HTTPS only in production
+      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict', // Explicit type casting
       maxAge: 60 * 60 * 1000, // 1 hour
-    });
+      path: '/',
+    };
 
+    // Set HTTP-only cookies for both tokens
+    res.cookie('access_token', response.data.accessToken, cookieOptions);
     res.cookie('refresh_token', response.data.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
+      ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -115,18 +126,20 @@ export class AuthController {
 
     const response = await this.authService.refreshToken(refreshToken);
 
-    // Set new HTTP-only cookies
-    res.cookie('access_token', response.data.accessToken, {
+    // Determine cookie settings based on environment
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
+      secure: isProduction, // HTTPS only in production
+      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict', // Explicit type casting
       maxAge: 60 * 60 * 1000, // 1 hour
-    });
+      path: '/',
+    };
 
+    // Set new HTTP-only cookies
+    res.cookie('access_token', response.data.accessToken, cookieOptions);
     res.cookie('refresh_token', response.data.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
+      ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
