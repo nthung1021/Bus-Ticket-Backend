@@ -90,7 +90,7 @@ export class PayosController {
   @ApiResponse({ status: 500, description: 'Internal Server Error' })
   async handleWebhook(@Body() webhookData: any): Promise<WebhookResponseDto> {
     this.logger.log('Received webhook notification');
-
+    this.logger.log('Webhook data: ', webhookData);
     try {
       // Verify webhook data using PayOS method
       const verifiedData = this.payosService.verifyWebhookData(webhookData);

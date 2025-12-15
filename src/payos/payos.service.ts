@@ -7,6 +7,7 @@ import {
   PaymentLinkStatus,
   PaymentLink,
   Webhook,
+  WebhookData,
 } from '@payos/node';
 import { Repository } from 'typeorm';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -244,7 +245,7 @@ export class PayosService {
     try {
       // Verify webhook signature using PayOS method
       const verifiedData = this.payos.webhooks.verify(webhookData);
-
+      this.logger.log('Verified data:', verifiedData);
       this.logger.log('Webhook data verified successfully');
       return verifiedData;
     } catch (error) {
@@ -253,14 +254,12 @@ export class PayosService {
     }
   }
 
-  async handleWebhook(webhookData: Webhook): Promise<WebhookResponseDto> {
+  async handleWebhook(webhookData: WebhookData): Promise<WebhookResponseDto> {
     try {
-      const {
-        code,
-        desc,
-        success,
-        data: { orderCode },
-      } = webhookData;
+      const { orderCode, amount, description, code, desc } = webhookData;
+
+      // Determine success based on code (00 = success for PayOS)
+      const success = code === '00';
 
       this.logger.log(
         `Webhook received for order ${orderCode} with status ${success}`,
