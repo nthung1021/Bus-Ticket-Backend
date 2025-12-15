@@ -93,7 +93,8 @@ export class PayosController {
     this.logger.log('Webhook data: ', webhookData);
     try {
       // Verify webhook data using PayOS method
-      const verifiedData = this.payosService.verifyWebhookData(webhookData);
+      const verifiedData =
+        await this.payosService.verifyWebhookData(webhookData);
 
       // Process webhook with verified data
       return this.payosService.handleWebhook(verifiedData);
