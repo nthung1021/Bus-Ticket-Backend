@@ -1058,6 +1058,10 @@ export class BookingService {
         relations: ['trip'],
       });
 
+      if (!updatedBooking) {
+        throw new NotFoundException('Updated booking not found');
+      }
+
       const modificationRules = await this.modificationPermissionService.getModificationRulesDescription(updatedBooking);
 
       return {
@@ -1133,7 +1137,12 @@ export class BookingService {
     changes: any;
     previousValues: any;
   }>> {
-    const modifications = [];
+    const modifications: Array<{
+      type: ModificationType;
+      description: string;
+      changes: any;
+      previousValues: any;
+    }> = [];
 
     for (const modification of passengerModifications) {
       const passenger = await manager.findOne(PassengerDetail, {
@@ -1150,7 +1159,7 @@ export class BookingService {
       };
 
       const changes: any = {};
-      let changeDescription = [];
+      let changeDescription: string[] = [];
 
       if (modification.fullName && modification.fullName !== passenger.fullName) {
         changes.fullName = modification.fullName;
@@ -1193,7 +1202,12 @@ export class BookingService {
     changes: any;
     previousValues: any;
   }>> {
-    const modifications = [];
+    const modifications: Array<{
+      type: ModificationType;
+      description: string;
+      changes: any;
+      previousValues: any;
+    }> = [];
 
     for (const seatChange of seatChanges) {
       const passenger = await manager.findOne(PassengerDetail, {
@@ -1224,7 +1238,7 @@ export class BookingService {
         where: {
           tripId: booking.tripId,
           seatId: newSeat.id,
-          state: SeatState.OCCUPIED,
+          state: SeatState.BOOKED,
         },
       });
 
@@ -1299,7 +1313,7 @@ export class BookingService {
     };
 
     const changes: any = {};
-    let changeDescription = [];
+    let changeDescription: string[] = [];
 
     if (contactInfo.contactPhone && contactInfo.contactPhone !== booking.contactPhone) {
       changes.contactPhone = contactInfo.contactPhone;
@@ -1462,6 +1476,10 @@ export class BookingService {
             where: { id: passengerUpdate.id },
           });
 
+          if (!updatedPassenger) {
+            throw new NotFoundException('Updated passenger not found');
+          }
+
           modificationResults.push({
             id: updatedPassenger.id,
             bookingId: updatedPassenger.bookingId,
@@ -1508,7 +1526,7 @@ export class BookingService {
     changes: any,
     previousValues: any
   ): string {
-    const descriptions = [];
+    const descriptions: string[] = [];
 
     if (changes.fullName) {
       descriptions.push(`name from '${previousValues.fullName}' to '${changes.fullName}'`);
@@ -1737,7 +1755,7 @@ export class BookingService {
    */
   private async calculateSeatPriceDifference(
     trip: Trip,
-    oldSeat: Seat,
+    oldSeat: Seat | null,
     newSeat: Seat,
     manager: any
   ): Promise<{ oldSeatPrice: number; newSeatPrice: number; priceDifference: number }> {
