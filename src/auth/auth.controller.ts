@@ -10,7 +10,7 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { Response, Request } from 'express';
+import type { Response, Request, CookieOptions } from 'express';
 import { AuthService } from './auth.service';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -25,6 +25,16 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
+  private getCookieOptions(): CookieOptions {
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    return {
+      httpOnly: true,
+      secure: isProduction, // HTTPS only in production
+      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict',
+      path: '/',
+    };
+  }
+
   @Get('google')
   @UseGuards(AuthGuard('google'))
   async googleAuth(@Req() req) {}
@@ -38,17 +48,12 @@ export class AuthController {
       return res.redirect(`${process.env.FRONTEND_URL}/`);
     }
 
-    // Determine cookie settings based on environment
-    const isProduction = this.configService.get('NODE_ENV') === 'production';
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isProduction, // HTTPS only in production
-      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict', // Explicit type casting
-      maxAge: 60 * 60 * 1000, // 1 hour
-      path: '/',
-    };
+    const cookieOptions = this.getCookieOptions();
 
-    res.cookie('access_token', response.data.accessToken, cookieOptions);
+    res.cookie('access_token', response.data.accessToken, {
+      ...cookieOptions,
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
     res.cookie('refresh_token', response.data.refreshToken, {
       ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -85,18 +90,13 @@ export class AuthController {
   ) {
     const response = await this.authService.login(loginDto);
 
-    // Determine cookie settings based on environment
-    const isProduction = this.configService.get('NODE_ENV') === 'production';
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isProduction, // HTTPS only in production
-      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict', // Explicit type casting
-      maxAge: 60 * 60 * 1000, // 1 hour
-      path: '/',
-    };
+    const cookieOptions = this.getCookieOptions();
 
     // Set HTTP-only cookies for both tokens
-    res.cookie('access_token', response.data.accessToken, cookieOptions);
+    res.cookie('access_token', response.data.accessToken, {
+      ...cookieOptions,
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
     res.cookie('refresh_token', response.data.refreshToken, {
       ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -126,18 +126,13 @@ export class AuthController {
 
     const response = await this.authService.refreshToken(refreshToken);
 
-    // Determine cookie settings based on environment
-    const isProduction = this.configService.get('NODE_ENV') === 'production';
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isProduction, // HTTPS only in production
-      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict', // Explicit type casting
-      maxAge: 60 * 60 * 1000, // 1 hour
-      path: '/',
-    };
+    const cookieOptions = this.getCookieOptions();
 
     // Set new HTTP-only cookies
-    res.cookie('access_token', response.data.accessToken, cookieOptions);
+    res.cookie('access_token', response.data.accessToken, {
+      ...cookieOptions,
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
     res.cookie('refresh_token', response.data.refreshToken, {
       ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -155,9 +150,11 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Res({ passthrough: true }) res: Response) {
-    // Clear cookies
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');
+    const cookieOptions = this.getCookieOptions();
+
+    // Clear cookies with the same options as they were set (except maxAge)
+    res.clearCookie('access_token', cookieOptions);
+    res.clearCookie('refresh_token', cookieOptions);
 
     return {
       success: true,
