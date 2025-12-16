@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
+import { BookingExpirationScheduler } from './booking-expiration-scheduler.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
@@ -38,6 +39,7 @@ export class BookingController {
   constructor(
     private readonly bookingService: BookingService,
     private readonly bookingSchedulerService: BookingSchedulerService,
+    private readonly bookingExpirationScheduler: BookingExpirationScheduler,
   ) {}
 
   @Post()
@@ -466,49 +468,6 @@ export class BookingController {
     }
   }
 
-  @Post('admin/cleanup-expired')
-  @HttpCode(HttpStatus.OK)
-  async cleanupExpiredBookings(): Promise<{
-    success: boolean;
-    message: string;
-    data: { expiredCount: number; bookings: string[] };
-  }> {
-    try {
-      const result = await this.bookingService.expireBookings();
-      
-      return {
-        success: true,
-        message: `Successfully expired ${result.expiredCount} bookings`,
-        data: result,
-      };
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  @Get('admin/expired-bookings')
-  async getExpiredBookings(): Promise<{
-    success: boolean;
-    data: any[];
-  }> {
-    try {
-      const expiredBookings = await this.bookingService.findExpiredBookings();
-      
-      return {
-        success: true,
-        data: expiredBookings.map(b => ({
-          id: b.id,
-          bookingReference: b.bookingReference,
-          status: b.status,
-          expiresAt: b.expiresAt,
-          bookedAt: b.bookedAt,
-        })),
-      };
-    } catch (error) {
-      throw error;
-    }
-  }
-
   @Get(':id/remaining-time')
   async getBookingRemainingTime(
     @Param('id') bookingId: string,
@@ -526,6 +485,61 @@ export class BookingController {
           remainingMinutes,
           isExpired,
         },
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Post('admin/expiration/trigger')
+  @HttpCode(HttpStatus.OK)
+  async triggerManualExpiration(): Promise<{
+    success: boolean;
+    message: string;
+    data: { expiredCount: number; bookings: string[] };
+  }> {
+    try {
+      const result = await this.bookingExpirationScheduler.triggerManualExpiration();
+      
+      return {
+        success: true,
+        message: `Manual expiration completed. Processed ${result.expiredCount} bookings`,
+        data: result,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Get('admin/expiration/status')
+  async getExpirationSchedulerStatus(): Promise<{
+    success: boolean;
+    data: { isRunning: boolean; nextRun: string | null };
+  }> {
+    try {
+      const status = this.bookingExpirationScheduler.getCronJobStatus();
+      
+      return {
+        success: true,
+        data: status,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Post('admin/expiration/restart')
+  @HttpCode(HttpStatus.OK)
+  async restartExpirationScheduler(): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    try {
+      this.bookingExpirationScheduler.restartCronJob();
+      
+      return {
+        success: true,
+        message: 'Booking expiration scheduler restarted successfully',
       };
     } catch (error) {
       throw error;

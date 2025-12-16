@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
+import { BookingExpirationScheduler } from './booking-expiration-scheduler.service';
 import { BookingMigrationService } from './booking-migration.service';
 import { BookingModificationPermissionService } from './booking-modification-permission.service';
 import { Booking } from '../entities/booking.entity';
@@ -33,14 +34,16 @@ import { EmailService } from './email.service';
   controllers: [BookingController],
   providers: [
     BookingService, 
-    BookingSchedulerService, 
+    BookingSchedulerService,
+    BookingExpirationScheduler,
     EmailService, 
     BookingMigrationService,
     BookingModificationPermissionService,
   ],
   exports: [
     BookingService, 
-    BookingSchedulerService, 
+    BookingSchedulerService,
+    BookingExpirationScheduler,
     EmailService, 
     BookingMigrationService,
     BookingModificationPermissionService,

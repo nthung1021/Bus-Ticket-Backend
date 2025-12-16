@@ -536,18 +536,6 @@ export class BookingService {
     });
   }
 
-  async findExpiredBookings(): Promise<Booking[]> {
-    // Find PENDING bookings older than 15 minutes
-    const fifteenMinutesAgo = new Date();
-    fifteenMinutesAgo.setMinutes(fifteenMinutesAgo.getMinutes() - 15);
-
-    return await this.bookingRepository
-      .createQueryBuilder('booking')
-      .where('booking.status = :status', { status: BookingStatus.PENDING })
-      .andWhere('booking.bookedAt < :expiryTime', { expiryTime: fifteenMinutesAgo })
-      .getMany();
-  }
-
   async updatePassengerInfo(
     bookingId: string,
     updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId: string; seatCode: string; }> },
@@ -1865,18 +1853,18 @@ export class BookingService {
           );
 
           // Create audit log
-          await this.createAuditLog(manager, {
-            bookingId: booking.id,
-            userId: booking.userId,
-            action: 'BOOKING_EXPIRED',
-            details: `Booking ${booking.bookingReference} expired automatically after ${BOOKING_EXPIRATION_MINUTES} minutes`,
-            metadata: {
+          await this.createAuditLog(
+            'BOOKING_EXPIRED',
+            `Booking ${booking.bookingReference} expired automatically after ${BOOKING_EXPIRATION_MINUTES} minutes`,
+            undefined, // actorId (system action)
+            booking.userId,
+            {
               bookingReference: booking.bookingReference,
               tripId: booking.tripId,
               totalAmount: booking.totalAmount,
               expiresAt: booking.expiresAt,
             },
-          });
+          );
 
           expiredBookingIds.push(booking.bookingReference);
         });
