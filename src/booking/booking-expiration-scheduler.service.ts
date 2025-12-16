@@ -6,6 +6,7 @@ import { BookingService } from './booking.service';
 export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BookingExpirationScheduler.name);
   private cronJob: cron.ScheduledTask | null = null;
+  private isJobRunning = false;
 
   constructor(private readonly bookingService: BookingService) {}
 
@@ -29,8 +30,10 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
         await this.processExpiredBookings();
       }, {
         timezone: 'UTC',
+        scheduled: true, // Auto start
       });
-
+      
+      this.isJobRunning = true;
       this.logger.log('🕒 Booking expiration cron job started - runs every 2 minutes');
     } catch (error) {
       this.logger.error('Failed to start booking expiration cron job:', error);
@@ -42,56 +45,87 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
    */
   private stopBookingExpirationJob() {
     if (this.cronJob) {
-      this.cronJob.destroy();
+      this.cronJob.stop();
       this.cronJob = null;
+      this.isJobRunning = false;
       this.logger.log('🛑 Booking expiration cron job stopped');
     }
   }
 
   /**
-   * Process expired bookings
+   * Process expired bookings with enhanced safety and idempotency
    */
   private async processExpiredBookings() {
     const startTime = Date.now();
+    const sessionId = `exp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     try {
-      this.logger.debug('🔍 Checking for expired bookings...');
+      this.logger.log(`🚀 [${sessionId}] Starting booking expiration process...`);
       
+      // Safety check: ensure service is healthy
+      if (!this.bookingService) {
+        this.logger.error(`❌ [${sessionId}] BookingService not available, skipping expiration`);
+        return;
+      }
+
       // Find expired bookings first for logging
       const expiredBookings = await this.bookingService.findExpiredBookings();
       
       if (expiredBookings.length === 0) {
-        this.logger.debug('✅ No expired bookings found');
+        this.logger.debug(`✅ [${sessionId}] No expired bookings found`);
         return;
       }
 
-      this.logger.log(`📋 Found ${expiredBookings.length} expired bookings to process`);
+      this.logger.warn(`📋 [${sessionId}] Found ${expiredBookings.length} expired bookings to process`);
       
-      // Log details of expired bookings
-      expiredBookings.forEach(booking => {
-        this.logger.log(
-          `⏰ Expiring booking: ${booking.bookingReference} ` +
-          `(Trip: ${booking.trip?.route?.origin || 'Unknown'} → ${booking.trip?.route?.destination || 'Unknown'}) ` +
-          `expired at: ${booking.expiresAt?.toISOString()}`
+      // Enhanced logging with booking details
+      expiredBookings.forEach((booking, index) => {
+        const expiredMinutes = Math.floor(
+          (Date.now() - new Date(booking.expiresAt!).getTime()) / (1000 * 60)
+        );
+        this.logger.warn(
+          `⏰ [${sessionId}][${index + 1}/${expiredBookings.length}] Expiring booking: ${booking.bookingReference} ` +
+          `(User: ${booking.userId}, Trip: ${booking.trip?.route?.origin || 'Unknown'} → ${booking.trip?.route?.destination || 'Unknown'}) ` +
+          `expired ${expiredMinutes}min ago (deadline: ${booking.expiresAt?.toISOString()})`
         );
       });
 
-      // Process expiration
-      const result = await this.bookingService.expireBookings();
+      // Process expiration with retry mechanism
+      let retryCount = 0;
+      const maxRetries = 2;
+      let result;
+
+      while (retryCount <= maxRetries) {
+        try {
+          result = await this.bookingService.expireBookings();
+          break; // Success, exit retry loop
+        } catch (error) {
+          retryCount++;
+          if (retryCount > maxRetries) {
+            throw error; // Final failure
+          }
+          this.logger.warn(`⚠️ [${sessionId}] Expiration attempt ${retryCount} failed, retrying... Error: ${error.message}`);
+          await this.delay(1000 * retryCount); // Progressive delay
+        }
+      }
       
       const endTime = Date.now();
       const processingTime = endTime - startTime;
 
       if (result.expiredCount > 0) {
         this.logger.log(
-          `✅ Successfully expired ${result.expiredCount} bookings in ${processingTime}ms: ` +
+          `✅ [${sessionId}] Successfully expired ${result.expiredCount}/${expiredBookings.length} bookings in ${processingTime}ms: ` +
           `[${result.bookings.join(', ')}]`
         );
 
-        // Log seat release details
-        this.logger.log(`🪑 Released seats for ${result.expiredCount} expired bookings`);
+        // Enhanced seat release logging
+        this.logger.log(`🪑 [${sessionId}] Released seats for ${result.expiredCount} expired bookings`);
+        
+        // Log performance metrics
+        const avgProcessingTime = processingTime / result.expiredCount;
+        this.logger.debug(`📊 [${sessionId}] Performance: ${avgProcessingTime.toFixed(2)}ms avg per booking`);
       } else {
-        this.logger.warn('⚠️ No bookings were expired despite finding expired bookings');
+        this.logger.error(`⚠️ [${sessionId}] No bookings were expired despite finding ${expiredBookings.length} expired bookings - possible race condition or data inconsistency`);
       }
 
     } catch (error) {
@@ -99,41 +133,120 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
       const processingTime = endTime - startTime;
       
       this.logger.error(
-        `❌ Failed to process expired bookings after ${processingTime}ms:`,
+        `❌ [${sessionId}] Failed to process expired bookings after ${processingTime}ms:`,
         error.stack || error.message
       );
+      
+      // Log additional debugging information
+      this.logger.error(`🔍 [${sessionId}] Debug info: cron job status=${this.cronJob?.getStatus()}, service available=${!!this.bookingService}`);
     }
+  }
+
+  /**
+   * Utility method for delays in retry logic
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
    * Manually trigger expiration process (for testing/admin)
+   * Returns detailed results with idempotency safety
    */
-  async triggerManualExpiration(): Promise<{ expiredCount: number; bookings: string[] }> {
-    this.logger.log('🔧 Manual booking expiration triggered');
-    await this.processExpiredBookings();
-    return await this.bookingService.expireBookings();
+  async triggerManualExpiration(): Promise<{ 
+    processed: number; 
+    errors: string[];
+    sessionId: string;
+    processingTimeMs: number;
+  }> {
+    const sessionId = `manual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const startTime = Date.now();
+    
+    this.logger.log(`🔧 [${sessionId}] Manual booking expiration triggered`);
+    
+    try {
+      await this.processExpiredBookings();
+      const result = await this.bookingService.expireBookings();
+      const processingTime = Date.now() - startTime;
+      
+      this.logger.log(`✅ [${sessionId}] Manual expiration completed: ${result.expiredCount} bookings processed in ${processingTime}ms`);
+      
+      return {
+        processed: result.expiredCount,
+        errors: [],
+        sessionId,
+        processingTimeMs: processingTime,
+      };
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+      this.logger.error(`❌ [${sessionId}] Manual expiration failed after ${processingTime}ms:`, error);
+      
+      return {
+        processed: 0,
+        errors: [error.message],
+        sessionId,
+        processingTimeMs: processingTime,
+      };
+    }
   }
 
   /**
-   * Get cron job status
+   * Get comprehensive cron job status and health information
    */
-  getCronJobStatus(): { isRunning: boolean; nextRun: string | null } {
+  getCronJobStatus(): { 
+    isRunning: boolean; 
+    nextRun: string | null;
+    schedule: string;
+    timezone: string;
+    serviceHealth: 'healthy' | 'degraded' | 'unavailable';
+    lastCheck?: Date;
+  } {
+    const serviceHealth = this.bookingService ? 'healthy' : 'unavailable';
+    
     if (!this.cronJob) {
-      return { isRunning: false, nextRun: null };
+      return { 
+        isRunning: false, 
+        nextRun: null,
+        schedule: '*/2 * * * *',
+        timezone: 'UTC',
+        serviceHealth,
+      };
     }
 
     return {
-      isRunning: this.cronJob.getStatus() === 'scheduled',
+      isRunning: this.isJobRunning && !!this.cronJob,
       nextRun: 'Every 2 minutes',
+      schedule: '*/2 * * * *',
+      timezone: 'UTC',
+      serviceHealth,
+      lastCheck: new Date(),
     };
   }
 
   /**
-   * Restart the cron job
+   * Restart the cron job with safety checks
    */
-  restartCronJob() {
-    this.logger.log('🔄 Restarting booking expiration cron job');
-    this.stopBookingExpirationJob();
-    this.startBookingExpirationJob();
+  restartCronJob(): { success: boolean; message: string } {
+    try {
+      this.logger.log('🔄 Restarting booking expiration cron job');
+      
+      // Safety check: ensure we have BookingService
+      if (!this.bookingService) {
+        const errorMsg = 'Cannot restart cron job: BookingService not available';
+        this.logger.error(errorMsg);
+        return { success: false, message: errorMsg };
+      }
+      
+      this.stopBookingExpirationJob();
+      this.startBookingExpirationJob();
+      
+      const successMsg = 'Cron job restarted successfully';
+      this.logger.log(`✅ ${successMsg}`);
+      return { success: true, message: successMsg };
+    } catch (error) {
+      const errorMsg = `Failed to restart cron job: ${error.message}`;
+      this.logger.error(errorMsg, error);
+      return { success: false, message: errorMsg };
+    }
   }
 }

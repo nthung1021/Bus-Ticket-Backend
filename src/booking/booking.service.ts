@@ -1819,38 +1819,83 @@ export class BookingService {
   }
 
   /**
-   * Auto-cancel expired bookings and release their seats
+   * Auto-cancel expired bookings and release their seats with enhanced idempotency
    */
   async expireBookings(): Promise<{ expiredCount: number; bookings: string[] }> {
+    const sessionId = `exp-svc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const expiredBookings = await this.findExpiredBookings();
     const expiredBookingIds: string[] = [];
+    const processedBookingIds = new Set<string>(); // Track processed bookings for idempotency
 
     if (expiredBookings.length === 0) {
       return { expiredCount: 0, bookings: [] };
     }
 
-    this.logger.log(`Found ${expiredBookings.length} expired bookings to process`);
+    this.logger.log(`[${sessionId}] Found ${expiredBookings.length} expired bookings to process`);
 
     // Process each expired booking in a transaction
     for (const booking of expiredBookings) {
+      // Idempotency check: skip if already processed
+      if (processedBookingIds.has(booking.id)) {
+        this.logger.warn(`[${sessionId}] Booking ${booking.bookingReference} already processed in this session, skipping`);
+        continue;
+      }
+
       try {
         await this.dataSource.transaction(async manager => {
-          // Update booking status to expired
-          await manager.update(Booking, booking.id, {
-            status: BookingStatus.EXPIRED,
-            cancelledAt: new Date(),
-            lastModifiedAt: new Date(),
+          // Double-check booking is still eligible for expiration (idempotency safety)
+          const currentBooking = await manager.findOne(Booking, {
+            where: { 
+              id: booking.id, 
+              status: BookingStatus.PENDING  // Only expire if still PENDING
+            },
+            select: ['id', 'status', 'expiresAt', 'bookingReference']
           });
 
-          // Release all seats for this booking
-          await manager.update(SeatStatus, 
-            { bookingId: booking.id }, 
+          if (!currentBooking) {
+            this.logger.debug(`[${sessionId}] Booking ${booking.bookingReference} no longer PENDING, skipping`);
+            return; // Skip if booking is no longer in PENDING state
+          }
+
+          if (new Date(currentBooking.expiresAt!) > new Date()) {
+            this.logger.warn(`[${sessionId}] Booking ${booking.bookingReference} expiration time changed, no longer expired`);
+            return; // Skip if expiration time was updated
+          }
+
+          // Update booking status to expired (with WHERE condition for safety)
+          const updateResult = await manager.update(
+            Booking, 
+            { 
+              id: booking.id, 
+              status: BookingStatus.PENDING // Additional safety check 
+            },
+            {
+              status: BookingStatus.EXPIRED,
+              cancelledAt: new Date(),
+              lastModifiedAt: new Date(),
+            }
+          );
+
+          if (updateResult.affected === 0) {
+            this.logger.warn(`[${sessionId}] Booking ${booking.bookingReference} was not updated - may have been processed by another instance`);
+            return; // Skip if update didn't affect any rows (already processed)
+          }
+
+          // Release all seats for this booking (only if they're still linked to this booking)
+          const seatUpdateResult = await manager.update(
+            SeatStatus, 
+            { 
+              bookingId: booking.id, 
+              state: SeatState.LOCKED // Only release locked seats
+            }, 
             { 
               state: SeatState.AVAILABLE,
               bookingId: null,
               lockedUntil: null,
             }
           );
+
+          this.logger.debug(`[${sessionId}] Released ${seatUpdateResult.affected} seats for booking ${booking.bookingReference}`);
 
           // Create audit log
           await this.createAuditLog(
@@ -1863,19 +1908,28 @@ export class BookingService {
               tripId: booking.tripId,
               totalAmount: booking.totalAmount,
               expiresAt: booking.expiresAt,
+              sessionId, // Include session ID for tracking
+              seatsReleased: seatUpdateResult.affected,
             },
           );
 
           expiredBookingIds.push(booking.bookingReference);
+          processedBookingIds.add(booking.id);
         });
 
-        this.logger.log(`Successfully expired booking ${booking.bookingReference}`);
+        this.logger.debug(`[${sessionId}] Successfully expired booking ${booking.bookingReference}`);
       } catch (error) {
-        this.logger.error(`Failed to expire booking ${booking.bookingReference}:`, error);
+        this.logger.error(`[${sessionId}] Failed to expire booking ${booking.bookingReference}:`, error);
+        
+        // Check if it's a constraint violation (booking already processed)
+        if (error.message?.includes('duplicate') || error.message?.includes('constraint')) {
+          this.logger.warn(`[${sessionId}] Booking ${booking.bookingReference} appears to be already processed by another instance`);
+          processedBookingIds.add(booking.id); // Mark as processed to avoid retry
+        }
       }
     }
 
-    this.logger.log(`Expired ${expiredBookingIds.length} bookings: ${expiredBookingIds.join(', ')}`);
+    this.logger.log(`[${sessionId}] Expired ${expiredBookingIds.length}/${expiredBookings.length} bookings: ${expiredBookingIds.join(', ')}`);
 
     return {
       expiredCount: expiredBookingIds.length,

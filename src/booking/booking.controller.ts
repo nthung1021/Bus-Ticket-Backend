@@ -310,14 +310,16 @@ export class BookingController {
     data: {
       processed: number;
       errors: string[];
+      sessionId: string;
+      processingTimeMs: number;
     };
   }> {
     try {
-      const result = await this.bookingSchedulerService.triggerManualCleanup();
+      const result = await this.bookingExpirationScheduler.triggerManualExpiration();
       
       return {
         success: true,
-        message: `Cleanup completed. Processed ${result.processed} expired bookings.`,
+        message: `Cleanup completed. Processed ${result.processed} expired bookings in ${result.processingTimeMs}ms.`,
         data: result,
       };
     } catch (error) {
@@ -327,6 +329,8 @@ export class BookingController {
         data: {
           processed: 0,
           errors: [error.message],
+          sessionId: `error-${Date.now()}`,
+          processingTimeMs: 0,
         },
       };
     }
@@ -503,8 +507,11 @@ export class BookingController {
       
       return {
         success: true,
-        message: `Manual expiration completed. Processed ${result.expiredCount} bookings`,
-        data: result,
+        message: `Manual expiration completed. Processed ${result.processed} bookings in ${result.processingTimeMs}ms`,
+        data: {
+          expiredCount: result.processed,
+          bookings: [`${result.processed} bookings processed`],
+        },
       };
     } catch (error) {
       throw error;

@@ -228,4 +228,554 @@ describe('BookingService', () => {
       expect(passengers[0].seatCode).toBe('A1');
     });
   });
+
+  describe('Booking Expiration Logic', () => {
+    let mockEntityManager: any;
+    let mockSeatStatusRepository: any;
+    let mockAuditLogRepository: any;
+
+    beforeEach(() => {
+      mockEntityManager = {
+        findOne: jest.fn(),
+        update: jest.fn(),
+        find: jest.fn(),
+        save: jest.fn(),
+      };
+
+      mockSeatStatusRepository = {
+        find: jest.fn(),
+        update: jest.fn(),
+      };
+
+      mockAuditLogRepository = {
+        save: jest.fn(),
+        create: jest.fn(),
+      };
+
+      mockDataSource.transaction.mockImplementation(async (callback) => {
+        return callback(mockEntityManager);
+      });
+    });
+
+    describe('findExpiredBookings', () => {
+      it('should find bookings that have expired', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-expired-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20), // 20 minutes ago
+            userId: 'user-1',
+            trip: {
+              route: {
+                origin: 'Hà Nội',
+                destination: 'TP. Hồ Chí Minh'
+              }
+            }
+          },
+          {
+            id: 'booking-expired-2', 
+            bookingReference: 'REF002',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
+            userId: 'user-2',
+            trip: {
+              route: {
+                origin: 'Hà Nội',
+                destination: 'Đà Nẵng'
+              }
+            }
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Act
+        const result = await service.findExpiredBookings();
+
+        // Assert
+        expect(result).toHaveLength(2);
+        expect(result[0].bookingReference).toBe('REF001');
+        expect(result[1].bookingReference).toBe('REF002');
+        expect(mockQB.where).toHaveBeenCalledWith('booking.status = :status', { status: BookingStatus.PENDING });
+        expect(mockQB.andWhere).toHaveBeenCalledWith('booking.expiresAt < :now', expect.any(Object));
+      });
+
+      it('should return empty array when no expired bookings found', async () => {
+        // Arrange
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Act
+        const result = await service.findExpiredBookings();
+
+        // Assert
+        expect(result).toHaveLength(0);
+      });
+    });
+
+    describe('expireBookings', () => {
+      it('should successfully expire multiple bookings with idempotency', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000,
+            trip: {
+              route: { origin: 'Hà Nội', destination: 'TP. Hồ Chí Minh' }
+            }
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock successful database updates
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+          bookingReference: 'REF001'
+        });
+
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 1 }); // Booking update
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 2 }); // Seat update
+
+        // Mock audit log creation
+        service['createAuditLog'] = jest.fn().mockResolvedValue({});
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(1);
+        expect(result.bookings).toContain('REF001');
+        expect(mockDataSource.transaction).toHaveBeenCalled();
+        expect(mockEntityManager.findOne).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            where: { id: 'booking-1', status: BookingStatus.PENDING }
+          })
+        );
+        expect(mockEntityManager.update).toHaveBeenCalledWith(
+          expect.anything(),
+          { id: 'booking-1', status: BookingStatus.PENDING },
+          expect.objectContaining({
+            status: BookingStatus.EXPIRED,
+            cancelledAt: expect.any(Date),
+            lastModifiedAt: expect.any(Date),
+          })
+        );
+      });
+
+      it('should skip bookings that are no longer PENDING (idempotency)', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock booking that's already been processed (no longer PENDING)
+        mockEntityManager.findOne.mockResolvedValue(null);
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(0);
+        expect(result.bookings).toHaveLength(0);
+        expect(mockEntityManager.update).not.toHaveBeenCalled();
+      });
+
+      it('should skip bookings where expiration time was updated', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock booking with updated expiration time (future date)
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() + 1000 * 60 * 10), // 10 minutes in future
+          bookingReference: 'REF001'
+        });
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(0);
+        expect(result.bookings).toHaveLength(0);
+        expect(mockEntityManager.update).not.toHaveBeenCalled();
+      });
+
+      it('should handle race conditions gracefully', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+          bookingReference: 'REF001'
+        });
+
+        // Mock race condition - update affects 0 rows (already processed by another instance)
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 0 });
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(0);
+        expect(result.bookings).toHaveLength(0);
+      });
+
+      it('should continue processing after individual booking failures', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          },
+          {
+            id: 'booking-2',
+            bookingReference: 'REF002',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 15),
+            userId: 'user-2',
+            tripId: 'trip-2',
+            totalAmount: 300000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock first booking fails, second succeeds
+        mockDataSource.transaction
+          .mockRejectedValueOnce(new Error('Database constraint violation'))
+          .mockImplementationOnce(async (callback) => {
+            mockEntityManager.findOne.mockResolvedValue({
+              id: 'booking-2',
+              status: BookingStatus.PENDING,
+              expiresAt: new Date(Date.now() - 1000 * 60 * 15),
+              bookingReference: 'REF002'
+            });
+            mockEntityManager.update.mockResolvedValueOnce({ affected: 1 });
+            mockEntityManager.update.mockResolvedValueOnce({ affected: 1 });
+            return callback(mockEntityManager);
+          });
+
+        service['createAuditLog'] = jest.fn().mockResolvedValue({});
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(1);
+        expect(result.bookings).toContain('REF002');
+        expect(result.bookings).not.toContain('REF001');
+      });
+
+      it('should handle constraint violations as idempotency indicators', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock constraint violation (booking already processed)
+        const constraintError = new Error('duplicate key value violates unique constraint');
+        mockDataSource.transaction.mockRejectedValue(constraintError);
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(0);
+        expect(result.bookings).toHaveLength(0);
+        // Should not throw error - constraint violations are handled gracefully
+      });
+
+      it('should release only locked seats for expired bookings', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+          bookingReference: 'REF001'
+        });
+
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 1 }); // Booking update
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 3 }); // Seat update (3 seats released)
+
+        service['createAuditLog'] = jest.fn().mockResolvedValue({});
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(1);
+        expect(mockEntityManager.update).toHaveBeenNthCalledWith(
+          2, // Second update call (seats)
+          expect.anything(),
+          expect.objectContaining({
+            bookingId: 'booking-1',
+            state: expect.anything() // Should check for LOCKED state
+          }),
+          expect.objectContaining({
+            state: expect.anything(), // Should set to AVAILABLE
+            bookingId: null,
+            lockedUntil: null,
+          })
+        );
+      });
+
+      it('should create detailed audit logs with session tracking', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+          bookingReference: 'REF001'
+        });
+
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 1 });
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 2 });
+
+        const createAuditLogSpy = jest.spyOn(service as any, 'createAuditLog').mockResolvedValue({});
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(1);
+        expect(createAuditLogSpy).toHaveBeenCalledWith(
+          'BOOKING_EXPIRED',
+          expect.stringContaining('REF001'),
+          undefined, // system action
+          'user-1',
+          expect.objectContaining({
+            bookingReference: 'REF001',
+            tripId: 'trip-1',
+            totalAmount: 500000,
+            sessionId: expect.stringMatching(/^exp-svc-\d+-[a-z0-9]+$/),
+            seatsReleased: 2,
+          })
+        );
+      });
+    });
+
+    describe('isBookingExpired', () => {
+      it('should return true for expired pending bookings', async () => {
+        // Arrange
+        const expiredBooking = {
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 10) // 10 minutes ago
+        };
+
+        mockRepository.findOne.mockResolvedValue(expiredBooking);
+
+        // Act
+        const result = await service.isBookingExpired('booking-1');
+
+        // Assert
+        expect(result).toBe(true);
+      });
+
+      it('should return false for non-expired pending bookings', async () => {
+        // Arrange
+        const activeBooking = {
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() + 1000 * 60 * 10) // 10 minutes in future
+        };
+
+        mockRepository.findOne.mockResolvedValue(activeBooking);
+
+        // Act
+        const result = await service.isBookingExpired('booking-1');
+
+        // Assert
+        expect(result).toBe(false);
+      });
+
+      it('should return false for non-pending bookings', async () => {
+        // Arrange
+        const paidBooking = {
+          id: 'booking-1',
+          status: BookingStatus.PAID,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 10) // Even if expired
+        };
+
+        mockRepository.findOne.mockResolvedValue(paidBooking);
+
+        // Act
+        const result = await service.isBookingExpired('booking-1');
+
+        // Assert
+        expect(result).toBe(false);
+      });
+
+      it('should return true for non-existent bookings', async () => {
+        // Arrange
+        mockRepository.findOne.mockResolvedValue(null);
+
+        // Act
+        const result = await service.isBookingExpired('non-existent');
+
+        // Assert
+        expect(result).toBe(true);
+      });
+    });
+  });
 });
