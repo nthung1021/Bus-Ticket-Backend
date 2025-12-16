@@ -132,4 +132,12 @@ export class NotificationsService {
 
     return { success: true, message: 'notification marked as read' };
   }
+
+  async markAllAsRead(userId: string) {
+    await this.notificationRepository.update(
+      { userId, status: Not(NotificationStatus.READ) },
+      { status: NotificationStatus.READ }
+    );
+    return { success: true, message: 'All notifications marked as read' };
+  }
 }
