@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BookingController } from './booking.controller';
@@ -11,6 +11,7 @@ import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
 import { EmailService } from './email.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EmailService } from './email.service';
       AuditLog,
     ]),
     ScheduleModule.forRoot(),
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [BookingController],
   providers: [BookingService, BookingSchedulerService, EmailService],

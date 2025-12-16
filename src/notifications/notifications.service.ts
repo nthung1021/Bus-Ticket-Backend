@@ -140,4 +140,26 @@ export class NotificationsService {
     );
     return { success: true, message: 'All notifications marked as read' };
   }
+
+  async createInAppNotification(
+    userId: string,
+    title: string,
+    message: string,
+    data?: any,
+    bookingId?: string,
+  ): Promise<Notification> {
+    const notification = this.notificationRepository.create({
+      userId,
+      title,
+      message,
+      data,
+      bookingId,
+      channel: NotificationChannel.IN_APP,
+      status: NotificationStatus.SENT,
+      sentAt: new Date(),
+      template: 'in_app_notification', // Generic template name
+    });
+
+    return await this.notificationRepository.save(notification);
+  }
 }

@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
@@ -33,6 +34,8 @@ export class BookingService {
     private auditLogRepository: Repository<AuditLog>,
     private dataSource: DataSource,
     private readonly emailService: EmailService,
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService: NotificationsService,
   ) { }
 
   private async generateBookingReference(): Promise<string> {
@@ -136,10 +139,15 @@ export class BookingService {
       const bookingReference = await this.generateBookingReference();
       const bookingData: any = {
         bookingReference,
-        tripId,
         totalAmount: totalPrice,
         status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
       };
+
+      // Notification for auto-paid booking
+      if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
+         // We'll handle notification after save to get ID, or here if we have enough info. 
+         // Actually better to do it after save to ensure FK constraints if any, though userId is available.
+      }
 
       if (!isGuestCheckout && userId) {
         bookingData.userId = userId;
@@ -417,7 +425,7 @@ export class BookingService {
       // 6. Prepare response
       const seatStatuses = updatedBooking.seatStatuses || [];
 
-      return {
+      const response = {
         id: updatedBooking.id,
         tripId: updatedBooking.tripId,
         totalAmount: updatedBooking.totalAmount,
@@ -436,6 +444,19 @@ export class BookingService {
           status: status.state,
         })),
       };
+
+      // 7. Send notification
+      if (updatedBooking.userId) {
+        await this.notificationsService.createInAppNotification(
+          updatedBooking.userId,
+          'Booking Successful',
+          `Your booking ${updatedBooking.bookingReference} has been successfully confirmed and payment was completed. Please check your email for the e-ticket.`,
+           { bookingId: updatedBooking.id, reference: updatedBooking.bookingReference },
+           updatedBooking.id
+        );
+      }
+      
+      return response;
     });
   }
 
