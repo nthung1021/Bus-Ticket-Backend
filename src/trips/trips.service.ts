@@ -396,22 +396,20 @@ export class TripsService {
       .leftJoinAndSelect('trip.bus', 'bus')
       .leftJoinAndSelect('bus.operator', 'operator');
 
-    // Required: origin/destination/date - assume route has origin/destination,
-    // trip has departureTime (timestamp)
+    // Required: origin/destination - assume route has origin/destination
     qb.andWhere('LOWER(route.origin) = LOWER(:origin)', { origin: dto.origin.trim() });
     qb.andWhere('LOWER(route.destination) = LOWER(:destination)', { destination: dto.destination.trim() });
 
-    // date filter: trips whose departure date = dto.date (timezone note: store timestamps in UTC)
-    // We compare date part by bounding between start and end of the day in UTC or DB timezone.
-    const startDate = new Date(dto.date);
-    startDate.setUTCHours(0, 0, 0, 0);
-    const startOfDay = startDate.toISOString();
-    // console.log(startOfDay);
-    const endDate = new Date(dto.date);
-    endDate.setUTCHours(23, 59, 59, 999);
-    const endOfDay = endDate.toISOString();
-    // console.log(endOfDay);
-    qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
+    // Optional date filter: trips whose departure date = dto.date (if provided)
+    if (dto.date) {
+      const startDate = new Date(dto.date);
+      startDate.setUTCHours(0, 0, 0, 0);
+      const startOfDay = startDate.toISOString();
+      const endDate = new Date(dto.date);
+      endDate.setUTCHours(23, 59, 59, 999);
+      const endOfDay = endDate.toISOString();
+      qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
+    }
 
 
 
