@@ -28,4 +28,4 @@ import { EmailService } from './email.service';
   providers: [BookingService, BookingSchedulerService, EmailService],
   exports: [BookingService, BookingSchedulerService, EmailService],
 })
-export class BookingModule {}
+export class BookingModule { }
