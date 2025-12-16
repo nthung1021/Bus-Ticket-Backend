@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, LessThan } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
@@ -19,6 +19,7 @@ import {
 } from './dto/booking-modification.dto';
 import { BookingModificationPermissionService } from './booking-modification-permission.service';
 import { EmailService } from './email.service';
+import { BOOKING_EXPIRATION_MINUTES } from '../constants/booking.constants';
 import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -146,13 +147,17 @@ export class BookingService {
         throw new ConflictException(`Seats ${unavailableCodes.join(', ')} are no longer available`);
       }
 
-      // 6. Create booking with PAID status since payment is bypassed
+      // 6. Create booking with appropriate status and expiration
       const bookingReference = await this.generateBookingReference();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + BOOKING_EXPIRATION_MINUTES * 60 * 1000);
+      
       const bookingData: any = {
         bookingReference,
         tripId,
         totalAmount: totalPrice,
         status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
+        expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
       };
 
       if (!isGuestCheckout && userId) {
@@ -1807,5 +1812,127 @@ export class BookingService {
       newSeatPrice,
       priceDifference,
     };
+  }
+
+  /**
+   * Find expired bookings that need to be auto-cancelled
+   */
+  async findExpiredBookings(): Promise<Booking[]> {
+    const now = new Date();
+    
+    return await this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.trip', 'trip')
+      .leftJoinAndSelect('trip.route', 'route')
+      .leftJoinAndSelect('booking.seatStatuses', 'seatStatuses')
+      .where('booking.status = :status', { status: BookingStatus.PENDING })
+      .andWhere('booking.expiresAt < :now', { now })
+      .getMany();
+  }
+
+  /**
+   * Auto-cancel expired bookings and release their seats
+   */
+  async expireBookings(): Promise<{ expiredCount: number; bookings: string[] }> {
+    const expiredBookings = await this.findExpiredBookings();
+    const expiredBookingIds: string[] = [];
+
+    if (expiredBookings.length === 0) {
+      return { expiredCount: 0, bookings: [] };
+    }
+
+    this.logger.log(`Found ${expiredBookings.length} expired bookings to process`);
+
+    // Process each expired booking in a transaction
+    for (const booking of expiredBookings) {
+      try {
+        await this.dataSource.transaction(async manager => {
+          // Update booking status to expired
+          await manager.update(Booking, booking.id, {
+            status: BookingStatus.EXPIRED,
+            cancelledAt: new Date(),
+            lastModifiedAt: new Date(),
+          });
+
+          // Release all seats for this booking
+          await manager.update(SeatStatus, 
+            { bookingId: booking.id }, 
+            { 
+              state: SeatState.AVAILABLE,
+              bookingId: null,
+              lockedUntil: null,
+            }
+          );
+
+          // Create audit log
+          await this.createAuditLog(manager, {
+            bookingId: booking.id,
+            userId: booking.userId,
+            action: 'BOOKING_EXPIRED',
+            details: `Booking ${booking.bookingReference} expired automatically after ${BOOKING_EXPIRATION_MINUTES} minutes`,
+            metadata: {
+              bookingReference: booking.bookingReference,
+              tripId: booking.tripId,
+              totalAmount: booking.totalAmount,
+              expiresAt: booking.expiresAt,
+            },
+          });
+
+          expiredBookingIds.push(booking.bookingReference);
+        });
+
+        this.logger.log(`Successfully expired booking ${booking.bookingReference}`);
+      } catch (error) {
+        this.logger.error(`Failed to expire booking ${booking.bookingReference}:`, error);
+      }
+    }
+
+    this.logger.log(`Expired ${expiredBookingIds.length} bookings: ${expiredBookingIds.join(', ')}`);
+
+    return {
+      expiredCount: expiredBookingIds.length,
+      bookings: expiredBookingIds,
+    };
+  }
+
+  /**
+   * Check if a booking has expired
+   */
+  async isBookingExpired(bookingId: string): Promise<boolean> {
+    const booking = await this.bookingRepository.findOne({
+      where: { id: bookingId },
+      select: ['status', 'expiresAt'],
+    });
+
+    if (!booking) {
+      return true; // Non-existent bookings are considered expired
+    }
+
+    if (booking.status !== BookingStatus.PENDING) {
+      return false; // Only pending bookings can expire
+    }
+
+    if (!booking.expiresAt) {
+      return false; // No expiration time set
+    }
+
+    return new Date() > booking.expiresAt;
+  }
+
+  /**
+   * Get remaining time for a booking in minutes
+   */
+  async getBookingRemainingTime(bookingId: string): Promise<number | null> {
+    const booking = await this.bookingRepository.findOne({
+      where: { id: bookingId },
+      select: ['status', 'expiresAt'],
+    });
+
+    if (!booking || booking.status !== BookingStatus.PENDING || !booking.expiresAt) {
+      return null;
+    }
+
+    const remainingMs = booking.expiresAt.getTime() - new Date().getTime();
+    return Math.max(0, Math.ceil(remainingMs / (1000 * 60))); // Convert to minutes
   }
 }

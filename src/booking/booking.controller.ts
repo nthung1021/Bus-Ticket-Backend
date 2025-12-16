@@ -465,4 +465,70 @@ export class BookingController {
       throw error;
     }
   }
+
+  @Post('admin/cleanup-expired')
+  @HttpCode(HttpStatus.OK)
+  async cleanupExpiredBookings(): Promise<{
+    success: boolean;
+    message: string;
+    data: { expiredCount: number; bookings: string[] };
+  }> {
+    try {
+      const result = await this.bookingService.expireBookings();
+      
+      return {
+        success: true,
+        message: `Successfully expired ${result.expiredCount} bookings`,
+        data: result,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Get('admin/expired-bookings')
+  async getExpiredBookings(): Promise<{
+    success: boolean;
+    data: any[];
+  }> {
+    try {
+      const expiredBookings = await this.bookingService.findExpiredBookings();
+      
+      return {
+        success: true,
+        data: expiredBookings.map(b => ({
+          id: b.id,
+          bookingReference: b.bookingReference,
+          status: b.status,
+          expiresAt: b.expiresAt,
+          bookedAt: b.bookedAt,
+        })),
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Get(':id/remaining-time')
+  async getBookingRemainingTime(
+    @Param('id') bookingId: string,
+  ): Promise<{
+    success: boolean;
+    data: { remainingMinutes: number | null; isExpired: boolean };
+  }> {
+    try {
+      const remainingMinutes = await this.bookingService.getBookingRemainingTime(bookingId);
+      const isExpired = await this.bookingService.isBookingExpired(bookingId);
+      
+      return {
+        success: true,
+        data: {
+          remainingMinutes,
+          isExpired,
+        },
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
 }
