@@ -139,6 +139,7 @@ export class BookingService {
       // 6. Create booking with PAID status since payment is bypassed
       const bookingReference = await this.generateBookingReference();
       const bookingData: any = {
+        tripId,
         bookingReference,
         totalAmount: totalPrice,
         status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
