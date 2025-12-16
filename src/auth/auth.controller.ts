@@ -35,7 +35,7 @@ export class AuthController {
     const response = await this.authService.googleLogin(req.user);
 
     if (!response) {
-      return res.redirect('http://localhost:8000');
+      return res.redirect(`${process.env.FRONTEND_URL}/`);
     }
 
     // Determine cookie settings based on environment
@@ -54,7 +54,7 @@ export class AuthController {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    res.redirect(`http://localhost:8000/`);
+    res.redirect(`${process.env.FRONTEND_URL}/`);
   }
 
   @Post('register')
