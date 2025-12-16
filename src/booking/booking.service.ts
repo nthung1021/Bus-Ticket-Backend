@@ -13,6 +13,7 @@ import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
 import { EmailService } from './email.service';
 import PDFDocument from 'pdfkit';
+import * as QRCode from 'qrcode';
 import { getBookingConfirmationTemplate } from './email.templates';
 
 @Injectable()
@@ -841,8 +842,11 @@ export class BookingService {
     });
   }
 
-  async generateEticketFile(bookingId: string): Promise<{ buffer: Buffer; filename: string }> {
+  async generateEticketFile(bookingId: string): Promise<{ buffer: Buffer; filename: string; qrBuffer: Buffer }> {
     const { booking } = await this.getBookingForEticket(bookingId);
+
+    // Generate QR Code
+    const qrBuffer = await QRCode.toBuffer(booking.bookingReference || 'NO_REF');
 
     const doc = new PDFDocument({ margin: 50 });
     const chunks: Buffer[] = [];
@@ -852,7 +856,7 @@ export class BookingService {
       doc.on('end', () => {
         const buffer = Buffer.concat(chunks);
         const filename = `${booking.bookingReference || 'ticket'}.pdf`;
-        resolve({ buffer, filename });
+        resolve({ buffer, filename, qrBuffer });
       });
       doc.on('error', (err) => reject(err));
 
@@ -864,6 +868,13 @@ export class BookingService {
         .fontSize(20)
         .text('Bus Ticket E-Ticket', { align: 'center' })
         .moveDown();
+
+      // Add QR Code to PDF (Top Right)
+      try {
+        doc.image(qrBuffer, 450, 40, { width: 100 });
+      } catch (error) {
+        this.logger.error(`Failed to add QR code to PDF: ${error.message}`);
+      }
 
       // Booking info
       doc
@@ -935,7 +946,7 @@ export class BookingService {
       throw new BadRequestException('No email available for this booking');
     }
 
-    const { buffer, filename } = await this.generateEticketFile(bookingId);
+    const { buffer, filename, qrBuffer } = await this.generateEticketFile(bookingId);
 
     await this.emailService.sendEmail({
       to,
@@ -946,6 +957,11 @@ export class BookingService {
         {
           filename,
           content: buffer,
+        },
+        {
+          filename: 'qrcode.png',
+          content: qrBuffer,
+          cid: 'qrcode', // cid referenced in the html
         },
       ],
     });

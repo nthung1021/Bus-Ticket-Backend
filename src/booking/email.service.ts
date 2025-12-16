@@ -6,7 +6,7 @@ interface SendEmailOptions {
   subject: string;
   text?: string;
   html?: string;
-  attachments?: { filename: string; content: Buffer }[];
+  attachments?: { filename: string; content: Buffer; cid?: string }[];
 }
 
 @Injectable()

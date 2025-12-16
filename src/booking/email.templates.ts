@@ -56,6 +56,11 @@ export const getBookingConfirmationTemplate = (booking: Booking): string => {
       <p>Dear Customer,</p>
       <p>Thank you for using our service. Your trip is confirmed. Please find your e-ticket attached to this email.</p>
       
+      <div style="text-align: center; margin: 20px 0;">
+        <img src="cid:qrcode" alt="Booking QR Code" style="width: 150px; height: 150px;" />
+        <p style="font-size: 12px; color: #666; margin-top: 5px;">Scan for Check-in</p>
+      </div>
+
       <div class="section">
         <div class="section-title">Trip Details</div>
         <div class="info-grid">
