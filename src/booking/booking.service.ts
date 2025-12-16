@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
@@ -21,8 +22,8 @@ import { BookingModificationPermissionService } from './booking-modification-per
 import { EmailService } from './email.service';
 import { BOOKING_EXPIRATION_MINUTES } from '../constants/booking.constants';
 import PDFDocument from 'pdfkit';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as QRCode from 'qrcode';
+import { getBookingConfirmationTemplate } from './email.templates';
 
 @Injectable()
 export class BookingService {
@@ -47,8 +48,14 @@ export class BookingService {
     private seatLayoutRepository: Repository<SeatLayout>,
     private dataSource: DataSource,
     private readonly emailService: EmailService,
+<<<<<<< HEAD
     private readonly modificationPermissionService: BookingModificationPermissionService,
   ) {}
+=======
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService: NotificationsService,
+  ) { }
+>>>>>>> ab1610017e7711cad4cbfbd90a795534971ae717
 
   private async generateBookingReference(): Promise<string> {
     const prefix = 'BK';
@@ -111,13 +118,13 @@ export class BookingService {
       // 4. Find seat IDs and validate they exist on the bus
       const seatIds: string[] = [];
       for (const seatDto of seats) {
-        const seat = await manager.findOne(Seat, { 
-          where: { 
+        const seat = await manager.findOne(Seat, {
+          where: {
             seatCode: seatDto.code,
             busId: trip.busId
           }
         });
-        
+
         if (!seat) {
           throw new BadRequestException(`Seat ${seatDto.code} not found on this bus`);
         }
@@ -153,12 +160,18 @@ export class BookingService {
       const expiresAt = new Date(now.getTime() + BOOKING_EXPIRATION_MINUTES * 60 * 1000);
       
       const bookingData: any = {
-        bookingReference,
         tripId,
+        bookingReference,
         totalAmount: totalPrice,
         status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
         expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
       };
+
+      // Notification for auto-paid booking
+      if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
+         // We'll handle notification after save to get ID, or here if we have enough info. 
+         // Actually better to do it after save to ensure FK constraints if any, though userId is available.
+      }
 
       if (!isGuestCheckout && userId) {
         bookingData.userId = userId;
@@ -172,7 +185,7 @@ export class BookingService {
       const savedBooking = await manager.save(booking);
 
       // 7. Create passenger details
-      const passengerDetails = passengers.map(passenger => 
+      const passengerDetails = passengers.map(passenger =>
         manager.create(PassengerDetail, {
           bookingId: savedBooking.id,
           fullName: passenger.fullName,
@@ -186,7 +199,7 @@ export class BookingService {
       // 8. Update/Create seat status to BOOKED
       for (let i = 0; i < seatIds.length; i++) {
         const existingStatus = seatStatuses.find(status => status.seatId === seatIds[i]);
-        
+
         if (existingStatus) {
           // Update existing status
           await manager.update(SeatStatus, existingStatus.id, {
@@ -236,11 +249,11 @@ export class BookingService {
     const booking = await this.bookingRepository.findOne({
       where: { id: bookingId },
       relations: [
-        'user', 
-        'trip', 
+        'user',
+        'trip',
         'trip.route',
-        'trip.bus', 
-        'passengerDetails', 
+        'trip.bus',
+        'passengerDetails',
         'seatStatuses',
         'seatStatuses.seat'
       ],
@@ -263,11 +276,11 @@ export class BookingService {
 
   async findBookingByGuest(dto: GetGuestBookingDto) {
     const { contactEmail, contactPhone } = dto;
-    
+
     if (!contactEmail || !contactPhone) {
       throw new BadRequestException({
         success: false,
-        error: { message: 'Contact Email and Contact Phone are required'},
+        error: { message: 'Contact Email and Contact Phone are required' },
         timestamp: new Date().toISOString(),
       });
     }
@@ -291,6 +304,22 @@ export class BookingService {
     }
 
     return booking;
+  }
+
+  async findUpcomingPaidBookings(hours: number): Promise<Booking[]> {
+    const now = new Date();
+    const futureDate = new Date(now.getTime() + hours * 60 * 60 * 1000);
+
+    return await this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.trip', 'trip')
+      .leftJoinAndSelect('trip.route', 'route')
+      .leftJoinAndSelect('trip.bus', 'bus')
+      .leftJoinAndSelect('booking.passengerDetails', 'passenger')
+      .leftJoinAndSelect('booking.user', 'user')
+      .where('booking.status = :status', { status: BookingStatus.PAID })
+      .andWhere('trip.departureTime BETWEEN :now AND :futureDate', { now, futureDate })
+      .getMany();
   }
 
   async findBookingsByUserWithDetails(userId: string, status?: BookingStatus): Promise<any[]> {
@@ -322,9 +351,9 @@ export class BookingService {
       status: booking.status,
       bookedAt: booking.bookedAt,
       cancelledAt: booking.cancelledAt,
-      expiresAt: booking.status === BookingStatus.PENDING ? 
+      expiresAt: booking.status === BookingStatus.PENDING ?
         new Date(booking.bookedAt.getTime() + 15 * 60 * 1000) : null,
-      
+
       // Trip details
       trip: booking.trip ? {
         id: booking.trip.id,
@@ -348,7 +377,7 @@ export class BookingService {
           seatCapacity: booking.trip.bus.seatCapacity,
         } : null,
       } : null,
-      
+
       // Passenger details
       passengers: booking.passengerDetails?.map(passenger => ({
         id: passenger.id,
@@ -356,7 +385,7 @@ export class BookingService {
         documentId: passenger.documentId,
         seatCode: passenger.seatCode,
       })) || [],
-      
+
       // Seat details
       seats: booking.seatStatuses?.map(seatStatus => ({
         id: seatStatus.id,
@@ -395,7 +424,7 @@ export class BookingService {
       // 3. Check if booking has expired (optional business rule)
       const expirationTime = new Date(booking.bookedAt);
       expirationTime.setMinutes(expirationTime.getMinutes() + 15);
-      
+
       if (new Date() > expirationTime) {
         // Auto-cancel expired booking
         await this.cancelBooking(bookingId, 'Booking expired');
@@ -419,8 +448,8 @@ export class BookingService {
 
       // 6. Prepare response
       const seatStatuses = updatedBooking.seatStatuses || [];
-      
-      return {
+
+      const response = {
         id: updatedBooking.id,
         tripId: updatedBooking.tripId,
         totalAmount: updatedBooking.totalAmount,
@@ -439,6 +468,19 @@ export class BookingService {
           status: status.state,
         })),
       };
+
+      // 7. Send notification
+      if (updatedBooking.userId) {
+        await this.notificationsService.createInAppNotification(
+          updatedBooking.userId,
+          'Booking Successful',
+          `Your booking ${updatedBooking.bookingReference} has been successfully confirmed and payment was completed. Please check your email for the e-ticket.`,
+           { bookingId: updatedBooking.id, reference: updatedBooking.bookingReference },
+           updatedBooking.id
+        );
+      }
+      
+      return response;
     });
   }
 
@@ -481,7 +523,7 @@ export class BookingService {
 
       return {
         success: true,
-        message: reason 
+        message: reason
           ? `Booking cancelled: ${reason}`
           : 'Booking cancelled successfully',
       };
@@ -620,7 +662,7 @@ export class BookingService {
           seatCode: s.seat?.seatCode || '',
           state: s.state,
         })) || [],
-        expirationTimestamp: updatedBooking.status === 'pending' ? 
+        expirationTimestamp: updatedBooking.status === 'pending' ?
           new Date(updatedBooking.bookedAt.getTime() + 15 * 60 * 1000) : null,
       };
     });
@@ -737,9 +779,9 @@ export class BookingService {
 
     try {
       this.logger.log('Starting expired bookings cleanup...');
-      
+
       const expiredBookings = await this.findExpiredBookings();
-      
+
       if (expiredBookings.length === 0) {
         this.logger.log('No expired bookings found');
         return { processed: 0, errors: [] };
@@ -751,7 +793,7 @@ export class BookingService {
         try {
           await this.expireBooking(booking.id);
           processed++;
-          
+
           // Log audit trail
           await this.createAuditLog(
             'AUTO_EXPIRED_BOOKING',
@@ -765,7 +807,7 @@ export class BookingService {
               expiredAt: new Date(),
             },
           );
-          
+
           this.logger.log(`Auto-expired booking ${booking.id}`);
         } catch (error) {
           const errorMsg = `Failed to expire booking ${booking.id}: ${error.message}`;
@@ -775,7 +817,7 @@ export class BookingService {
       }
 
       this.logger.log(`Expired bookings cleanup completed. Processed: ${processed}, Errors: ${errors.length}`);
-      
+
       return { processed, errors };
     } catch (error) {
       const errorMsg = `Error during expired bookings cleanup: ${error.message}`;
@@ -811,8 +853,11 @@ export class BookingService {
     });
   }
 
-  async generateEticketFile(bookingId: string): Promise<{ buffer: Buffer; filename: string }> {
+  async generateEticketFile(bookingId: string): Promise<{ buffer: Buffer; filename: string; qrBuffer: Buffer }> {
     const { booking } = await this.getBookingForEticket(bookingId);
+
+    // Generate QR Code
+    const qrBuffer = await QRCode.toBuffer(booking.bookingReference || 'NO_REF');
 
     const doc = new PDFDocument({ margin: 50 });
     const chunks: Buffer[] = [];
@@ -822,7 +867,7 @@ export class BookingService {
       doc.on('end', () => {
         const buffer = Buffer.concat(chunks);
         const filename = `${booking.bookingReference || 'ticket'}.pdf`;
-        resolve({ buffer, filename });
+        resolve({ buffer, filename, qrBuffer });
       });
       doc.on('error', (err) => reject(err));
 
@@ -834,6 +879,13 @@ export class BookingService {
         .fontSize(20)
         .text('Bus Ticket E-Ticket', { align: 'center' })
         .moveDown();
+
+      // Add QR Code to PDF (Top Right)
+      try {
+        doc.image(qrBuffer, 450, 40, { width: 100 });
+      } catch (error) {
+        this.logger.error(`Failed to add QR code to PDF: ${error.message}`);
+      }
 
       // Booking info
       doc
@@ -905,16 +957,22 @@ export class BookingService {
       throw new BadRequestException('No email available for this booking');
     }
 
-    const { buffer, filename } = await this.generateEticketFile(bookingId);
+    const { buffer, filename, qrBuffer } = await this.generateEticketFile(bookingId);
 
     await this.emailService.sendEmail({
       to,
-      subject: `Your e-ticket ${booking.bookingReference}`,
+      subject: `Booking Confirmed: ${booking.bookingReference}`,
       text: `Dear customer,\n\nPlease find attached your e-ticket for booking ${booking.bookingReference}.`,
+      html: getBookingConfirmationTemplate(booking),
       attachments: [
         {
           filename,
           content: buffer,
+        },
+        {
+          filename: 'qrcode.png',
+          content: qrBuffer,
+          cid: 'qrcode', // cid referenced in the html
         },
       ],
     });

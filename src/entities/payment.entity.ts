@@ -30,6 +30,9 @@ export class Payment {
   @Column({ name: 'transaction_ref' })
   transactionRef: string;
 
+  @Column({ name: 'payos_order_code', nullable: true })
+  payosOrderCode?: number;
+
   @Column()
   amount: number;
 

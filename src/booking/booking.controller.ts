@@ -1,4 +1,18 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, HttpStatus, HttpCode, Put, Delete, Query, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+  HttpStatus,
+  HttpCode,
+  Put,
+  Delete,
+  Query,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
@@ -55,8 +69,11 @@ export class BookingController {
   }> {
     try {
       const userId = req.user?.userId ?? null;
-      const booking = await this.bookingService.createBooking(userId, createBookingDto);
-      
+      const booking = await this.bookingService.createBooking(
+        userId,
+        createBookingDto,
+      );
+
       return {
         success: true,
         message: 'Booking created successfully',
@@ -101,49 +118,61 @@ export class BookingController {
         status: booking.status,
         bookedAt: booking.bookedAt,
         cancelledAt: booking.cancelledAt,
-        trip: booking.trip ? {
-          id: booking.trip.id,
-          departureTime: booking.trip.departureTime,
-          arrivalTime: booking.trip.arrivalTime,
-          basePrice: booking.trip.basePrice,
-          status: booking.trip.status,
-          route: booking.trip.route ? {
-            id: booking.trip.route.id,
-            name: booking.trip.route.name,
-            description: booking.trip.route.description,
-            origin: booking.trip.route.origin,
-            destination: booking.trip.route.destination,
-            distanceKm: booking.trip.route.distanceKm,
-            estimatedMinutes: booking.trip.route.estimatedMinutes,
-          } : null,
-          bus: booking.trip.bus ? {
-            id: booking.trip.bus.id,
-            plateNumber: booking.trip.bus.plateNumber,
-            model: booking.trip.bus.model,
-            seatCapacity: booking.trip.bus.seatCapacity,
-          } : null,
-        } : null,
-        passengers: booking.passengerDetails?.map(p => ({
-          id: p.id,
-          fullName: p.fullName,
-          documentId: p.documentId,
-          seatCode: p.seatCode,
-        })) || [],
-        seats: booking.seatStatuses?.map(s => ({
-          id: s.id,
-          seatId: s.seatId,
-          state: s.state,
-          seat: s.seat ? {
-            id: s.seat.id,
-            seatCode: s.seat.seatCode,
-            seatType: s.seat.seatType,
-            isActive: s.seat.isActive,
-          } : null,
-        })) || [],
-        expirationTimestamp: booking.status === 'pending' ? 
-          new Date(booking.bookedAt.getTime() + 15 * 60 * 1000) : null,
+        trip: booking.trip
+          ? {
+              id: booking.trip.id,
+              departureTime: booking.trip.departureTime,
+              arrivalTime: booking.trip.arrivalTime,
+              basePrice: booking.trip.basePrice,
+              status: booking.trip.status,
+              route: booking.trip.route
+                ? {
+                    id: booking.trip.route.id,
+                    name: booking.trip.route.name,
+                    description: booking.trip.route.description,
+                    origin: booking.trip.route.origin,
+                    destination: booking.trip.route.destination,
+                    distanceKm: booking.trip.route.distanceKm,
+                    estimatedMinutes: booking.trip.route.estimatedMinutes,
+                  }
+                : null,
+              bus: booking.trip.bus
+                ? {
+                    id: booking.trip.bus.id,
+                    plateNumber: booking.trip.bus.plateNumber,
+                    model: booking.trip.bus.model,
+                    seatCapacity: booking.trip.bus.seatCapacity,
+                  }
+                : null,
+            }
+          : null,
+        passengers:
+          booking.passengerDetails?.map((p) => ({
+            id: p.id,
+            fullName: p.fullName,
+            documentId: p.documentId,
+            seatCode: p.seatCode,
+          })) || [],
+        seats:
+          booking.seatStatuses?.map((s) => ({
+            id: s.id,
+            seatId: s.seatId,
+            state: s.state,
+            seat: s.seat
+              ? {
+                  id: s.seat.id,
+                  seatCode: s.seat.seatCode,
+                  seatType: s.seat.seatType,
+                  isActive: s.seat.isActive,
+                }
+              : null,
+          })) || [],
+        expirationTimestamp:
+          booking.status === 'pending'
+            ? new Date(booking.bookedAt.getTime() + 15 * 60 * 1000)
+            : null,
       };
-      
+
       return {
         success: true,
         message: 'Booking details retrieved successfully',
@@ -182,7 +211,7 @@ export class BookingController {
         updatePassengerDto,
         req.user.userId,
       );
-      
+
       return {
         success: true,
         message: 'Passenger information updated successfully',
@@ -207,7 +236,7 @@ export class BookingController {
         bookingId,
         req.user.userId,
       );
-      
+
       return result;
     } catch (error) {
       throw error;
@@ -225,8 +254,11 @@ export class BookingController {
     data: BookingResponseDto;
   }> {
     try {
-      const booking = await this.bookingService.confirmPayment(bookingId, paymentData);
-      
+      const booking = await this.bookingService.confirmPayment(
+        bookingId,
+        paymentData,
+      );
+
       return {
         success: true,
         message: 'Payment confirmed successfully',
@@ -247,8 +279,11 @@ export class BookingController {
     message: string;
   }> {
     try {
-      const result = await this.bookingService.cancelBooking(bookingId, body.reason);
-      
+      const result = await this.bookingService.cancelBooking(
+        bookingId,
+        body.reason,
+      );
+
       return result;
     } catch (error) {
       throw error;
@@ -257,15 +292,13 @@ export class BookingController {
 
   @Put(':id/expire')
   @HttpCode(HttpStatus.OK)
-  async expireBooking(
-    @Param('id') bookingId: string,
-  ): Promise<{
+  async expireBooking(@Param('id') bookingId: string): Promise<{
     success: boolean;
     message: string;
   }> {
     try {
       const result = await this.bookingService.expireBooking(bookingId);
-      
+
       return result;
     } catch (error) {
       throw error;
@@ -277,7 +310,8 @@ export class BookingController {
     @Param('bookingId') bookingId: string,
     @Res() res: Response,
   ) {
-    const { buffer, filename } = await this.bookingService.generateEticketFile(bookingId);
+    const { buffer, filename } =
+      await this.bookingService.generateEticketFile(bookingId);
 
     res
       .set({
@@ -293,7 +327,10 @@ export class BookingController {
     @Param('bookingId') bookingId: string,
     @Body() body: { email?: string } = {},
   ): Promise<{ success: boolean; message: string }> {
-    const result = await this.bookingService.sendEticketEmail(bookingId, body.email);
+    const result = await this.bookingService.sendEticketEmail(
+      bookingId,
+      body.email,
+    );
 
     return {
       success: result.success,
@@ -315,8 +352,13 @@ export class BookingController {
     };
   }> {
     try {
+<<<<<<< HEAD
       const result = await this.bookingExpirationScheduler.triggerManualExpiration();
       
+=======
+      const result = await this.bookingSchedulerService.triggerManualCleanup();
+
+>>>>>>> ab1610017e7711cad4cbfbd90a795534971ae717
       return {
         success: true,
         message: `Cleanup completed. Processed ${result.processed} expired bookings in ${result.processingTimeMs}ms.`,
@@ -335,6 +377,7 @@ export class BookingController {
       };
     }
   }
+<<<<<<< HEAD
 
   @Get(':id/modification-permissions')
   @UseGuards(OptionalJwtAuthGuard)
@@ -553,3 +596,6 @@ export class BookingController {
     }
   }
 }
+=======
+}
+>>>>>>> ab1610017e7711cad4cbfbd90a795534971ae717
