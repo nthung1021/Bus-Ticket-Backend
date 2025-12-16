@@ -30,7 +30,6 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
         await this.processExpiredBookings();
       }, {
         timezone: 'UTC',
-        scheduled: true, // Auto start
       });
       
       this.isJobRunning = true;

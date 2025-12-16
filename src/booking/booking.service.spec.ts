@@ -8,6 +8,10 @@ import { SeatStatus } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
+import { BookingModificationHistory } from '../entities/booking-modification-history.entity';
+import { SeatLayout } from '../entities/seat-layout.entity';
+import { EmailService } from './email.service';
+import { BookingModificationPermissionService } from './booking-modification-permission.service';
 
 describe('BookingService', () => {
   let service: BookingService;
@@ -25,6 +29,16 @@ describe('BookingService', () => {
 
   const mockDataSource = {
     transaction: jest.fn(),
+  };
+
+  const mockEmailService = {
+    sendBookingConfirmation: jest.fn(),
+    sendBookingCancellation: jest.fn(),
+  };
+
+  const mockModificationPermissionService = {
+    checkModificationPermissions: jest.fn(),
+    validateModificationRequest: jest.fn(),
   };
 
   const mockBookingData = [
@@ -122,8 +136,24 @@ describe('BookingService', () => {
           useValue: mockRepository,
         },
         {
+          provide: getRepositoryToken(BookingModificationHistory),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(SeatLayout),
+          useValue: mockRepository,
+        },
+        {
           provide: DataSource,
           useValue: mockDataSource,
+        },
+        {
+          provide: EmailService,
+          useValue: mockEmailService,
+        },
+        {
+          provide: BookingModificationPermissionService,
+          useValue: mockModificationPermissionService,
         },
       ],
     }).compile();
