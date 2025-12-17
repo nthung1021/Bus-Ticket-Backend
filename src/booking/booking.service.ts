@@ -1281,7 +1281,7 @@ export class BookingService {
 
       // Check if new seat exists and is available
       const newSeat = await manager.findOne(Seat, {
-        where: { code: seatChange.newSeatCode },
+        where: { seatCode: seatChange.newSeatCode },
         relations: ['bus'],
       });
 
@@ -1471,7 +1471,7 @@ export class BookingService {
           const existingSeatBooking = await manager.findOne(SeatStatus, {
             where: {
               tripId: booking.tripId,
-              seatCode: passengerUpdate.seatCode,
+              seat: { seatCode: passengerUpdate.seatCode },
               state: SeatState.BOOKED,
             },
           });
@@ -1491,22 +1491,35 @@ export class BookingService {
           // Update seat status if seat changed
           if (changes.seatCode) {
             // Free old seat
-            await manager.update(
-              SeatStatus,
-              { tripId: booking.tripId, seatCode: previousValues.seatCode, bookingId },
-              { state: SeatState.AVAILABLE, bookingId: null }
-            );
+            const previousSeatStatus = await manager.findOne(SeatStatus, {
+              where: {
+                tripId: booking.tripId,
+                bookingId,
+                seat: { seatCode: previousValues.seatCode },
+              },
+            });
+
+            if (previousSeatStatus) {
+              await manager.update(
+                SeatStatus,
+                previousSeatStatus.id,
+                { state: SeatState.AVAILABLE, bookingId: null },
+              );
+            }
 
             // Book new seat
             const newSeatStatus = await manager.findOne(SeatStatus, {
-              where: { tripId: booking.tripId, seatCode: changes.seatCode },
+              where: {
+                tripId: booking.tripId,
+                seat: { seatCode: changes.seatCode },
+              },
             });
 
             if (newSeatStatus) {
               await manager.update(
                 SeatStatus,
-                { tripId: booking.tripId, seatCode: changes.seatCode },
-                { state: SeatState.BOOKED, bookingId }
+                newSeatStatus.id,
+                { state: SeatState.BOOKED, bookingId },
               );
             }
           }
@@ -1720,7 +1733,7 @@ export class BookingService {
             seatId: newSeat.id,
             bookingId,
             state: SeatState.BOOKED,
-            seatCode: newSeat.seatCode,
+            // seatCode: newSeat.seatCode,
           });
           await manager.save(SeatStatus, newSeatStatus);
         }
