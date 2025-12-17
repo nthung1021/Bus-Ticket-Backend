@@ -352,13 +352,8 @@ export class BookingController {
     };
   }> {
     try {
-<<<<<<< HEAD
       const result = await this.bookingExpirationScheduler.triggerManualExpiration();
       
-=======
-      const result = await this.bookingSchedulerService.triggerManualCleanup();
-
->>>>>>> ab1610017e7711cad4cbfbd90a795534971ae717
       return {
         success: true,
         message: `Cleanup completed. Processed ${result.processed} expired bookings in ${result.processingTimeMs}ms.`,
@@ -377,7 +372,6 @@ export class BookingController {
       };
     }
   }
-<<<<<<< HEAD
 
   @Get(':id/modification-permissions')
   @UseGuards(OptionalJwtAuthGuard)
@@ -596,6 +590,3 @@ export class BookingController {
     }
   }
 }
-=======
-}
->>>>>>> ab1610017e7711cad4cbfbd90a795534971ae717
