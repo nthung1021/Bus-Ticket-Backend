@@ -48,14 +48,10 @@ export class BookingService {
     private seatLayoutRepository: Repository<SeatLayout>,
     private dataSource: DataSource,
     private readonly emailService: EmailService,
-<<<<<<< HEAD
     private readonly modificationPermissionService: BookingModificationPermissionService,
-  ) {}
-=======
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
   ) { }
->>>>>>> ab1610017e7711cad4cbfbd90a795534971ae717
 
   private async generateBookingReference(): Promise<string> {
     const prefix = 'BK';
@@ -154,11 +150,10 @@ export class BookingService {
         throw new ConflictException(`Seats ${unavailableCodes.join(', ')} are no longer available`);
       }
 
-      // 6. Create booking with appropriate status and expiration
+      // 6. Create booking with PAID status since payment is bypassed
       const bookingReference = await this.generateBookingReference();
       const now = new Date();
       const expiresAt = new Date(now.getTime() + BOOKING_EXPIRATION_MINUTES * 60 * 1000);
-      
       const bookingData: any = {
         tripId,
         bookingReference,
@@ -166,7 +161,6 @@ export class BookingService {
         status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
         expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
       };
-
       // Notification for auto-paid booking
       if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
          // We'll handle notification after save to get ID, or here if we have enough info. 
@@ -220,6 +214,22 @@ export class BookingService {
 
       // 9. Set expiration time (null for PAID bookings, they don't expire)
       const expirationTimestamp = null; // PAID bookings don't need expiration
+
+      // Send notification for auto-paid booking if user is logged in
+      if (savedBooking.status === BookingStatus.PAID && userId) {
+        try {
+          await this.notificationsService.createInAppNotification(
+            userId,
+            'Booking Successful',
+            `Your booking ${savedBooking.bookingReference} has been successfully confirmed. We have sent an email to your email address. Please check your email for the e-ticket.`,
+            { bookingId: savedBooking.id, reference: savedBooking.bookingReference },
+            savedBooking.id
+          );
+        } catch (error) {
+          this.logger.error(`Failed to create in-app notification for booking ${savedBooking.id}`, error.stack);
+          // Suppress error so booking doesn't fail
+        }
+      }
 
       // 10. Prepare response
       return {
@@ -474,7 +484,7 @@ export class BookingService {
         await this.notificationsService.createInAppNotification(
           updatedBooking.userId,
           'Booking Successful',
-          `Your booking ${updatedBooking.bookingReference} has been successfully confirmed and payment was completed. Please check your email for the e-ticket.`,
+          `Your booking ${updatedBooking.bookingReference} has been successfully confirmed and payment was completed.  We have sent an email to your email address. Please check your email for the e-ticket.`,
            { bookingId: updatedBooking.id, reference: updatedBooking.bookingReference },
            updatedBooking.id
         );
@@ -979,7 +989,7 @@ export class BookingService {
 
     return { success: true };
   }
-
+  
   /**
    * Check modification permissions for a booking
    */
