@@ -12,6 +12,13 @@ const dataSource = new DataSource({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'admin',
   database: process.env.DB_NAME || 'awad_bus_booking_user_login',
+  extra: {
+    ssl: process.env.DB_SSL === 'true' || 
+         process.env.NODE_ENV === 'production' || 
+         process.env.NODE_ENV === 'staging' ? {
+      rejectUnauthorized: false,
+    } : false,
+  },
 });
 
 // ===================== HELPER FUNCTIONS =====================
@@ -318,6 +325,7 @@ async function seedDatabase() {
       console.log('🧹 Database already has data. Clearing existing data first...');
       
       // Clear all data in correct order (respecting foreign key constraints)
+      await dataSource.query('TRUNCATE TABLE audit_logs CASCADE')
       await dataSource.query('TRUNCATE TABLE booking_modification_history CASCADE');
       await dataSource.query('TRUNCATE TABLE passenger_details CASCADE');
       await dataSource.query('TRUNCATE TABLE seat_status CASCADE'); 
@@ -326,8 +334,10 @@ async function seedDatabase() {
       await dataSource.query('TRUNCATE TABLE seats CASCADE');
       await dataSource.query('TRUNCATE TABLE seat_layouts CASCADE');
       await dataSource.query('TRUNCATE TABLE buses CASCADE');
+      await dataSource.query('TRUNCATE TABLE route_points CASCADE')
       await dataSource.query('TRUNCATE TABLE routes CASCADE');
       await dataSource.query('TRUNCATE TABLE operators CASCADE');
+      await dataSource.query('TRUNCATE TABLE refresh_tokens CASCADE')
       await dataSource.query('TRUNCATE TABLE users CASCADE');
       
       console.log('✅ Existing data cleared successfully');
@@ -466,15 +476,7 @@ async function seedDatabase() {
         emergency_exits: totalRows > 8 ? [Math.floor(totalRows / 2)] : [],
         restroom: bus.capacity > 35 ? [totalRows - 1] : []
       });
-      
-      const seatPricing = JSON.stringify({
-        basePrice: 0, // Will be set per trip
-        seatTypePrices: {
-          normal: 1.0,
-          vip: 1.3,
-          business: 1.5
-        }
-      });
+      const seatPricing = '{"standard": 10000, "premium": 15000, "vip": 20000}';
       
       seatLayoutValues.push(`('${id}', '${bus.id}', '${bus.layoutType}', ${totalRows}, ${bus.seatsPerRow}, '${layoutConfig}', '${seatPricing}', NOW(), NOW())`);
     });
@@ -634,12 +636,7 @@ async function seedDatabase() {
     for (let i = 1; i <= 120; i++) {
       const id = `70000000-0000-4000-8000-${i.toString().padStart(12, '0')}`;
       bookingIds.push(id);
-      const bookingReference = `BKG${(new Date().getFullYear().toString().slice(-2))}${i.toString().padStart(6, '0')}`;
-      
-      // 85% of bookings have user accounts
-      const userId = i <= 100 ? userIds[Math.floor(Math.random() * userIds.length)] : null;
-      const userIdValue = userId ? `'${userId}'` : 'NULL';
-      
+
       const tripId = tripIds[Math.floor(Math.random() * tripIds.length)];
       
       // Get trip info for realistic booking
@@ -654,13 +651,36 @@ async function seedDatabase() {
         const basePrice = tripInfo[0].base_price;
         const departureTime = new Date(tripInfo[0].departure_time);
         
+        // Generate bookedAt first to use its date in the reference
+        const bookedAt = new Date(departureTime.getTime() - Math.random() * 30 * 24 * 60 * 60 * 1000); // Up to 30 days before
+        
+        const year = bookedAt.getFullYear();
+        const month = (bookedAt.getMonth() + 1).toString().padStart(2, '0');
+        const day = bookedAt.getDate().toString().padStart(2, '0');
+
+        const prefix = 'BK';
+        const datePart = `${year}${month}${day}`;
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+        const randomPart = () =>
+          Array.from({ length: 6 })
+            .map(
+              () => chars[Math.floor(Math.random() * chars.length)],
+            )
+            .join('');
+
+        const bookingReference = `${prefix}${datePart}-${randomPart()}`;
+        
+        // 85% of bookings have user accounts
+        const userId = i <= 100 ? userIds[Math.floor(Math.random() * userIds.length)] : null;
+        const userIdValue = userId ? `'${userId}'` : 'NULL';
+        
         // Calculate passengers (1-4 per booking)
         const passengerCount = Math.floor(Math.random() * 4) + 1;
         const totalAmount = basePrice * passengerCount;
         
         // Booking status logic
         let status = 'paid';
-        let bookedAt = new Date(departureTime.getTime() - Math.random() * 30 * 24 * 60 * 60 * 1000); // Up to 30 days before
         let cancelledAt = 'NULL';
         
         if (departureTime < now) {
