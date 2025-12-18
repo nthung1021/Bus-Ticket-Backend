@@ -25,4 +25,13 @@ export const AppDataSource = new DataSource({
   subscribers: [
     'src/subscribers/**/*.ts'
   ],
+  extra: {
+    ssl: configService.get('NODE_ENV') === 'production' ? {
+      sslmode: "require",
+      rejectUnauthorized: false,
+    } : configService.get('NODE_ENV') === 'staging' ? {
+      sslmode: "require",
+      rejectUnauthorized: false,
+    } : false,
+  },
 });
