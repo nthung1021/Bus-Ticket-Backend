@@ -7,12 +7,12 @@ export class AddExpiresAtToBookings1734347925000 implements MigrationInterface {
         // Add expires_at column to bookings table
         await queryRunner.query(`
             ALTER TABLE "bookings" 
-            ADD "expires_at" TIMESTAMP WITH TIME ZONE
+            ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMP WITH TIME ZONE
         `);
 
         // Create index for status + expires_at for efficient querying of expired bookings
         await queryRunner.query(`
-            CREATE INDEX "idx_bookings_status_expires_at" 
+            CREATE INDEX IF NOT EXISTS "idx_bookings_status_expires_at" 
             ON "bookings" ("status", "expires_at")
         `);
 

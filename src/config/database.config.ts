@@ -14,9 +14,10 @@ import { Feedback } from '../entities/feedback.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { Payment } from '../entities/payment.entity';
 import { Notification } from '../entities/notification.entity';
-import { AuditLog } from 'src/entities/audit-log.entity';
+import { AuditLog } from '../entities/audit-log.entity';
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
+import { BookingModificationHistory } from '../entities/booking-modification-history.entity';
 
 /**
  * Database configuration for the application
@@ -56,6 +57,7 @@ export const databaseConfig = (
     Notification,      // System notifications
     AuditLog,          // Audit trail
     RefreshToken,      // Refresh tokens for authentication
+    BookingModificationHistory, // Booking modification logs
   ],
   
   // Automatically synchronize database schema with entities (disabled in production)

@@ -357,6 +357,7 @@ export class BookingService {
       id: booking.id,
       userId: booking.userId,
       tripId: booking.tripId,
+      reference: booking.bookingReference,
       totalAmount: booking.totalAmount,
       status: booking.status,
       bookedAt: booking.bookedAt,

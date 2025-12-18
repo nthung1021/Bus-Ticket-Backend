@@ -12,6 +12,13 @@ const dataSource = new DataSource({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'admin',
   database: process.env.DB_NAME || 'awad_bus_booking_user_login',
+  extra: {
+    ssl: process.env.DB_SSL === 'true' || 
+         process.env.NODE_ENV === 'production' || 
+         process.env.NODE_ENV === 'staging' ? {
+      rejectUnauthorized: false,
+    } : false,
+  },
 });
 
 async function seedDatabase() {
@@ -25,6 +32,7 @@ async function seedDatabase() {
       console.log('Database already has data. Clearing existing data first...');
       
       // Clear all data in correct order (respecting foreign key constraints)
+      await dataSource.query('TRUNCATE TABLE audit_logs CASCADE')
       await dataSource.query('TRUNCATE TABLE booking_modification_history CASCADE');
       await dataSource.query('TRUNCATE TABLE passenger_details CASCADE');
       await dataSource.query('TRUNCATE TABLE seat_status CASCADE'); 
@@ -33,8 +41,10 @@ async function seedDatabase() {
       await dataSource.query('TRUNCATE TABLE seats CASCADE');
       await dataSource.query('TRUNCATE TABLE seat_layouts CASCADE');
       await dataSource.query('TRUNCATE TABLE buses CASCADE');
+      await dataSource.query('TRUNCATE TABLE route_points CASCADE')
       await dataSource.query('TRUNCATE TABLE routes CASCADE');
       await dataSource.query('TRUNCATE TABLE operators CASCADE');
+      await dataSource.query('TRUNCATE TABLE refresh_tokens CASCADE')
       await dataSource.query('TRUNCATE TABLE users CASCADE');
       
       console.log('Existing data cleared successfully');
@@ -166,7 +176,7 @@ async function seedDatabase() {
       const capacity = parseInt(busIds.length > index ? '32' : '24'); // Get from buses table
       const totalRows = Math.ceil(capacity / seatsPerRow);
       const layoutConfig = `'{"aisles": [2], "doors": [1, ${totalRows}], "emergency_exits": [${Math.floor(totalRows/2)}]}'`;
-      const seatPricing = `'{"standard": 100, "premium": 150, "vip": 200}'`;
+      const seatPricing = `'{"standard": 10000, "premium": 15000, "vip": 20000}'`;
       
       seatLayoutValues.push(`('${id}', '${busId}', '${layoutType}', ${totalRows}, ${seatsPerRow}, ${layoutConfig}, ${seatPricing}, '2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00', '2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00')`);
     });
@@ -219,7 +229,7 @@ async function seedDatabase() {
       const daysFromNow = Math.floor(Math.random() * 60) - 30; // -30 to +30 days
       const departureTime = `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'`;
       const arrivalTime = `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'`;
-      const basePrice = Math.floor(Math.random() * 15000) + 5000; // 50-200 dollars in cents
+      const basePrice = Math.floor(Math.random() * 15 + 10) * 1000;
       const statuses = ['scheduled', 'in_progress', 'completed', 'cancelled'];
       const status = statuses[Math.floor(Math.random() * statuses.length)];
       
@@ -239,16 +249,31 @@ async function seedDatabase() {
     for (let i = 1; i <= 100; i++) {
       const id = `70000000-0000-4000-8000-${i.toString().padStart(12, '0')}`;
       bookingIds.push(id);
-      const bookingReference = `BKG${i.toString().padStart(6, '0')}`;
+
+      const booked_month = (Math.floor(Math.random() * 12) + 1).toString().padStart(2, '0');
+      const booked_day = (Math.floor(Math.random() * 28) + 1).toString().padStart(2, '0');
+
+      const prefix = 'BK';
+      const datePart = `2026${booked_month}${booked_day}`;
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+      const randomPart = () =>
+        Array.from({ length: 6 })
+          .map(
+            () => chars[Math.floor(Math.random() * chars.length)],
+          )
+          .join('');
+
+      const bookingReference = `${prefix}${datePart}-${randomPart()}`;
       const userId = i <= 80 ? userIds[Math.floor(Math.random() * userIds.length)] : null;
       const userIdValue = userId ? `'${userId}'` : 'NULL';
       const tripId = tripIds[Math.floor(Math.random() * tripIds.length)];
-      const totalAmount = Math.floor(Math.random() * 20000) + 5000;
+      const totalAmount = Math.floor(Math.random() * 25 + 20) * 1000;
       const statuses = ['pending', 'paid', 'cancelled', 'expired'];
       const status = statuses[Math.floor(Math.random() * statuses.length)];
       const contactEmail = `khachhang${i}@gmail.com`;
       const contactPhone = `+84${(900000000 + i * 1000000).toString()}`;
-      const bookedAt = `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'`;
+      const bookedAt = `'2026-${booked_month}-${booked_day} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'`;
       const lastModifiedAt = Math.random() > 0.7 ? `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'` : 'NULL';
       const cancelledAt = status === 'cancelled' ? `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:00'` : 'NULL';
       
