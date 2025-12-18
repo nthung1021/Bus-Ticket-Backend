@@ -27,6 +27,7 @@ export enum BookingStatus {
 @Index('idx_bookings_trip_status', ['tripId', 'status'])
 @Index('idx_bookings_user_status', ['userId', 'status'])
 @Index('idx_bookings_booked_at', ['bookedAt'])
+@Index('idx_bookings_status_expires_at', ['status', 'expiresAt'])
 export class Booking {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -62,8 +63,14 @@ export class Booking {
   @CreateDateColumn({ name: 'booked_at', type: 'timestamp with time zone' })
   bookedAt: Date;
 
+  @Column({ name: 'last_modified_at', type: 'timestamp with time zone', nullable: true })
+  lastModifiedAt?: Date;
+
   @Column({ name: 'cancelled_at', type: 'timestamp with time zone', nullable: true })
   cancelledAt?: Date;
+
+  @Column({ name: 'expires_at', type: 'timestamp with time zone', nullable: true })
+  expiresAt?: Date;
 
   // Relations
   @ManyToOne(() => User, (user) => user.bookings)

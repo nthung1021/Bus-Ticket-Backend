@@ -8,9 +8,10 @@ export class SearchTripsDto {
   @IsString()
   destination: string;
 
+  @IsOptional()
   @IsISO8601()
-  @Transform(({ value }) => new Date(value).toISOString())
-  date: string; // ISO 8601 format (e.g., 2025-12-05T17:00:00.000Z)
+  @Transform(({ value }) => value ? new Date(value).toISOString() : undefined)
+  date?: string; // ISO 8601 format (e.g., 2025-12-05T17:00:00.000Z) - Optional
 
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))

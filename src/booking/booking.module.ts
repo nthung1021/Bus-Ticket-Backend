@@ -1,16 +1,22 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
 import { BookingSchedulerService } from './booking-scheduler.service';
+import { BookingExpirationScheduler } from './booking-expiration-scheduler.service';
+import { BookingMigrationService } from './booking-migration.service';
+import { BookingModificationPermissionService } from './booking-modification-permission.service';
 import { Booking } from '../entities/booking.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
+import { BookingModificationHistory } from '../entities/booking-modification-history.entity';
+import { SeatLayout } from '../entities/seat-layout.entity';
 import { EmailService } from './email.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -21,11 +27,28 @@ import { EmailService } from './email.service';
       Trip,
       Seat,
       AuditLog,
+      BookingModificationHistory,
+      SeatLayout,
     ]),
     ScheduleModule.forRoot(),
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [BookingController],
-  providers: [BookingService, BookingSchedulerService, EmailService],
-  exports: [BookingService, BookingSchedulerService, EmailService],
+  providers: [
+    BookingService, 
+    BookingSchedulerService,
+    BookingExpirationScheduler,
+    EmailService, 
+    BookingMigrationService,
+    BookingModificationPermissionService,
+  ],
+  exports: [
+    BookingService, 
+    BookingSchedulerService,
+    BookingExpirationScheduler,
+    EmailService, 
+    BookingMigrationService,
+    BookingModificationPermissionService,
+  ],
 })
-export class BookingModule {}
+export class BookingModule { }

@@ -35,8 +35,8 @@ export class TripsController {
     // optional: await validateOrReject(dto);
 
     // Basic required param check (the DTO has types, but keep friendly error)
-    if (!dto.origin || !dto.destination || !dto.date) {
-      throw new BadRequestException('origin, destination and date are required');
+    if (!dto.origin || !dto.destination) {
+      throw new BadRequestException('origin and destination are required');
     }
 
     const result = await this.tripsService.search(dto);

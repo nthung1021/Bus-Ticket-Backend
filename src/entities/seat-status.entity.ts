@@ -27,6 +27,9 @@ export class SeatStatus {
   @Column({ name: 'seat_id' })
   seatId: string;
 
+  // @Column({ name: 'seat_code' })
+  // seatCode: string;
+
   @Column({ name: 'booking_id', nullable: true })
   bookingId: string | null;
 

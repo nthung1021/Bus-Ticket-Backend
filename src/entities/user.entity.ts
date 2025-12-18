@@ -10,6 +10,7 @@ import { Booking } from './booking.entity';
 import { PaymentMethod } from './payment-method.entity';
 import { Feedback } from './feedback.entity';
 import { RefreshToken } from './refresh-token.entity';
+import { Notification } from './notification.entity';
 
 export enum UserRole {
   ADMIN = 'admin',
@@ -69,4 +70,7 @@ export class User {
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];
+
+  @OneToMany(() => Notification, (notification) => notification.user)
+  notifications: Notification[];
 }

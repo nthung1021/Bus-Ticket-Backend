@@ -5,10 +5,15 @@ import { AdminService } from './admin.service';
 import { AuthModule } from 'src/auth/auth.module';
 import { User } from '../entities/user.entity';
 import { AuditLog } from 'src/entities/audit-log.entity';
+import { Booking } from '../entities/booking.entity';
+import { Trip } from '../entities/trip.entity';
+import { Route } from '../entities/route.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
+import { CacheService } from '../common/cache.service';
 
 @Module({
-  imports: [AuthModule, TypeOrmModule.forFeature([User, AuditLog])],
+  imports: [AuthModule, TypeOrmModule.forFeature([User, AuditLog, Booking, Trip, Route, SeatStatus])],
   controllers: [AdminController],
-  providers: [AdminService],
+  providers: [AdminService, CacheService],
 })
 export class AdminModule {}
