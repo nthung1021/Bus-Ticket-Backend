@@ -396,6 +396,7 @@ export class TripsService {
 
   // GET /trips/search 
   async search(dto: SearchTripsDto) {
+    console.log("trips.service.ts", "search function called");
     const page = dto.page || 1;
     const limit = Math.min(dto.limit || 20, 100);
     const offset = (page - 1) * limit;
