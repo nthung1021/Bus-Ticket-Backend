@@ -42,6 +42,17 @@ export class TripsService {
     private readonly routeRepository: Repository<Route>,
   ) { }
 
+  // Return list of distinct origin/destination names from routes (for fuzzy matching)
+  async listLocationNames(): Promise<string[]> {
+    const routes = await this.routeRepository.find({ select: ['origin', 'destination'] });
+    const set = new Set<string>();
+    for (const r of routes) {
+      if (r.origin) set.add(r.origin);
+      if (r.destination) set.add(r.destination);
+    }
+    return Array.from(set);
+  }
+
   // helper: convert "morning/afternoon/..." into a range of hours
   private getTimeRangeForBucket(bucket: string) {
     // local times (24h) considered for departureTime field
