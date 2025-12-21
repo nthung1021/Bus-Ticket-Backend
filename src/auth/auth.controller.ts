@@ -8,6 +8,7 @@ import {
   UseGuards,
   Req,
   Res,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Response, Request, CookieOptions } from 'express';
@@ -20,6 +21,8 @@ import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
@@ -37,29 +40,42 @@ export class AuthController {
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
-  async googleAuth(@Req() req) {}
+  async googleAuth(@Req() req) {
+    // Google OAuth flow initiation - handled by Passport
+    this.logger.log('Initiating Google OAuth flow');
+  }
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req, @Res() res: Response) {
-    const response = await this.authService.googleLogin(req.user);
+    try {
+      this.logger.log(`Google callback received for user: ${req.user?.email}`);
+      
+      const response = await this.authService.googleLogin(req.user);
 
-    if (!response) {
-      return res.redirect(`${process.env.FRONTEND_URL}/`);
+      if (!response) {
+        this.logger.error('Google login failed - invalid response');
+        return res.redirect(`${process.env.FRONTEND_URL}/?error=auth_failed`);
+      }
+
+      const cookieOptions = this.getCookieOptions();
+
+      // Set authentication cookies
+      res.cookie('access_token', response.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 60 * 60 * 1000, // 1 hour
+      });
+      res.cookie('refresh_token', response.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      this.logger.log(`Google OAuth successful for user: ${response.data.user.userId}`);
+      res.redirect(`${process.env.FRONTEND_URL}/`);
+    } catch (error) {
+      this.logger.error(`Google OAuth error: ${error.message}`, error.stack);
+      res.redirect(`${process.env.FRONTEND_URL}/?error=auth_failed`);
     }
-
-    const cookieOptions = this.getCookieOptions();
-
-    res.cookie('access_token', response.data.accessToken, {
-      ...cookieOptions,
-      maxAge: 60 * 60 * 1000, // 1 hour
-    });
-    res.cookie('refresh_token', response.data.refreshToken, {
-      ...cookieOptions,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
-    res.redirect(`${process.env.FRONTEND_URL}/`);
   }
 
   @Post('register')

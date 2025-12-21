@@ -22,11 +22,13 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   ): Promise<any> {
     const { id, emails, displayName, photos } = profile;
 
+    // Enhanced Google profile with provider mapping
     const user = {
-      googleId: id,
-      email: emails[0].value,
+      googleId: id, // This becomes provider_user_id
+      email: emails?.[0]?.value,
       name: displayName,
       avatar: photos?.[0]?.value,
+      provider: 'google' as const, // Provider identifier
     };
 
     done(null, user);

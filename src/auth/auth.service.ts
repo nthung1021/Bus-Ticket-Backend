@@ -3,6 +3,7 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,14 +15,19 @@ import * as bcrypt from 'bcrypt';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 
+// Enhanced Google profile type with provider mapping
 type GoogleProfile = {
-  googleId?: string;
+  googleId: string; // provider_user_id
   email?: string;
   name?: string;
+  avatar?: string;
+  provider: 'google';
 };
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
@@ -43,36 +49,75 @@ export class AuthService {
   }
 
   /**
-   * Google login handler — typed profile instead of `any`
+   * Google OAuth login handler with enhanced user linking logic
+   * Maps Google profile to internal user with proper provider tracking
    */
   async googleLogin(profile?: GoogleProfile | null) {
-    if (!profile || !profile.googleId) return null;
-
-    let existingUser = await this.usersRepository.findOne({
-      where: { googleId: profile.googleId },
-    });
-
-    if (!existingUser) {
-      const salt = await bcrypt.genSalt();
-      const passwordHash = await bcrypt.hash(Math.random().toString(), salt);
-
-      // Determine role based on email
-      const userRole = this.determineUserRole(profile.email || '');
-
-      // create expects a Partial<User>; cast to User for TypeORM API
-      existingUser = this.usersRepository.create({
-        googleId: profile.googleId,
-        email: profile.email,
-        name: profile.name,
-        passwordHash: passwordHash,
-        role: userRole,
-      } as Partial<User> as User);
-
-      await this.usersRepository.save(existingUser);
+    if (!profile || !profile.googleId) {
+      this.logger.warn('Google login attempt with invalid profile');
+      return null;
     }
 
-    const { accessToken, refreshToken } =
-      await this.generateAndStoreTokens(existingUser);
+    this.logger.log(`Google OAuth login attempt for email: ${profile.email}`);
+
+    let existingUser: User | null = null;
+
+    // Step 1: Check if provider_user_id (googleId) already exists
+    if (profile.googleId) {
+      existingUser = await this.usersRepository.findOne({
+        where: { googleId: profile.googleId },
+      });
+      
+      if (existingUser) {
+        this.logger.log(`Existing Google user found: ${existingUser.id}`);
+        return this.generateAuthResponse(existingUser, 'google_login_existing');
+      }
+    }
+
+    // Step 2: Check if email exists (link Google account to existing user)
+    if (profile.email) {
+      existingUser = await this.usersRepository.findOne({
+        where: { email: profile.email },
+      });
+
+      if (existingUser) {
+        // Link Google account to existing email user
+        this.logger.log(`Linking Google account to existing user: ${existingUser.id}`);
+        existingUser.googleId = profile.googleId;
+        await this.usersRepository.save(existingUser);
+        
+        return this.generateAuthResponse(existingUser, 'google_account_linked');
+      }
+    }
+
+    // Step 3: Create new user with Google profile
+    this.logger.log(`Creating new user from Google profile`);
+    
+    const salt = await bcrypt.genSalt();
+    const passwordHash = await bcrypt.hash(Math.random().toString(), salt);
+    const userRole = this.determineUserRole(profile.email || '');
+
+    existingUser = this.usersRepository.create({
+      googleId: profile.googleId,
+      email: profile.email,
+      name: profile.name || 'Google User',
+      passwordHash: passwordHash,
+      role: userRole,
+    } as Partial<User> as User);
+
+    await this.usersRepository.save(existingUser);
+    this.logger.log(`New Google user created: ${existingUser.id}`);
+
+    return this.generateAuthResponse(existingUser, 'google_user_created');
+  }
+
+  /**
+   * Generate authentication response with logging
+   */
+  private async generateAuthResponse(user: User, event: string) {
+    const { accessToken, refreshToken } = await this.generateAndStoreTokens(user);
+    
+    this.logger.log(`Google OAuth ${event} for user: ${user.id}`);
 
     return {
       success: true,
@@ -80,10 +125,10 @@ export class AuthService {
         accessToken,
         refreshToken,
         user: {
-          userId: existingUser.id,
-          email: existingUser.email,
-          fullName: existingUser.name,
-          role: existingUser.role,
+          userId: user.id,
+          email: user.email,
+          fullName: user.name,
+          role: user.role,
         },
       },
     };
