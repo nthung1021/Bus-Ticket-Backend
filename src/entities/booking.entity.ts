@@ -20,6 +20,7 @@ import { Review } from './review.entity';
 export enum BookingStatus {
   PENDING = 'pending',
   PAID = 'paid',
+  COMPLETED = 'completed',
   CANCELLED = 'cancelled', 
   EXPIRED = 'expired',
 }

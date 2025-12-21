@@ -56,6 +56,12 @@ export class Trip {
   @Index('idx_trips_status')
   status: TripStatus;
 
+  @Column({ name: 'average_rating', type: 'decimal', precision: 3, scale: 2, default: 0 })
+  averageRating: number;
+
+  @Column({ name: 'review_count', type: 'int', default: 0 })
+  reviewCount: number;
+
   // Relations
   @ManyToOne(() => Route, (route) => route.trips)
   @JoinColumn({ name: 'route_id' })

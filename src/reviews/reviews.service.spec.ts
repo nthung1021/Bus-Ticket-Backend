@@ -43,7 +43,7 @@ describe('ReviewsService', () => {
     id: mockBookingId,
     userId: mockUserId,
     tripId: mockTripId,
-    status: BookingStatus.PAID,
+    status: BookingStatus.COMPLETED,
     trip: mockTrip as Trip,
     user: mockUser as User,
   };
@@ -75,6 +75,7 @@ describe('ReviewsService', () => {
           provide: getRepositoryToken(Review),
           useValue: {
             findOne: jest.fn(),
+            find: jest.fn(),
             create: jest.fn(),
             save: jest.fn(),
             remove: jest.fn(),
@@ -91,6 +92,7 @@ describe('ReviewsService', () => {
           provide: getRepositoryToken(Trip),
           useValue: {
             findOne: jest.fn(),
+            update: jest.fn(),
           },
         },
         {
@@ -123,6 +125,8 @@ describe('ReviewsService', () => {
       jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(null); // No existing review
       jest.spyOn(reviewRepository, 'create').mockReturnValue(mockReview as Review);
       jest.spyOn(reviewRepository, 'save').mockResolvedValue(mockReview as Review);
+      jest.spyOn(reviewRepository, 'find').mockResolvedValue([mockReview as Review]);
+      jest.spyOn(tripRepository, 'update').mockResolvedValue({} as any);
 
       const result = await service.createReview(mockUserId, mockCreateReviewDto);
 
@@ -152,7 +156,7 @@ describe('ReviewsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw BadRequestException if booking is not paid', async () => {
+    it('should throw BadRequestException if booking is not completed', async () => {
       const unpaidBooking = { ...mockBooking, status: BookingStatus.PENDING };
       jest.spyOn(bookingRepository, 'findOne').mockResolvedValue(unpaidBooking as Booking);
 
@@ -284,6 +288,8 @@ describe('ReviewsService', () => {
 
       jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(mockReview as Review);
       jest.spyOn(reviewRepository, 'save').mockResolvedValue(updatedReview as Review);
+      jest.spyOn(reviewRepository, 'find').mockResolvedValue([updatedReview as Review]);
+      jest.spyOn(tripRepository, 'update').mockResolvedValue({} as any);
 
       const result = await service.updateReview(mockUserId, mockReviewId, updateDto);
 
@@ -310,6 +316,8 @@ describe('ReviewsService', () => {
     it('should delete a review successfully', async () => {
       jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(mockReview as Review);
       jest.spyOn(reviewRepository, 'remove').mockResolvedValue(mockReview as Review);
+      jest.spyOn(reviewRepository, 'find').mockResolvedValue([]);
+      jest.spyOn(tripRepository, 'update').mockResolvedValue({} as any);
 
       await expect(
         service.deleteReview(mockUserId, mockReviewId)
@@ -352,7 +360,7 @@ describe('ReviewsService', () => {
       });
     });
 
-    it('should return false if booking is not paid', async () => {
+    it('should return false if booking is not completed', async () => {
       const unpaidBooking = { ...mockBooking, status: BookingStatus.PENDING };
       jest.spyOn(bookingRepository, 'findOne').mockResolvedValue(unpaidBooking as Booking);
 
@@ -360,7 +368,7 @@ describe('ReviewsService', () => {
 
       expect(result).toEqual({
         canReview: false,
-        reason: 'Booking must be completed (paid) to leave a review',
+        reason: 'Booking must be completed to leave a review',
         bookingStatus: BookingStatus.PENDING,
       });
     });

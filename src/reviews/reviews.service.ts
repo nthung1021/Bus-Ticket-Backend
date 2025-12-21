@@ -41,11 +41,16 @@ export class ReviewsService {
 
   /**
    * Create a new review for a completed booking
+   * B2 API Requirements:
+   * - Validate booking belongs to user  
+   * - Validate booking status = COMPLETED
+   * - Save review
+   * - Update trip average rating
    */
   async createReview(userId: string, createReviewDto: CreateReviewDto): Promise<ReviewResponseDto> {
     const { bookingId, rating, comment } = createReviewDto;
 
-    // Check if booking exists and belongs to user
+    // B2 Requirement: Validate booking belongs to user
     const booking = await this.bookingRepository.findOne({
       where: { id: bookingId, userId },
       relations: ['trip', 'user']
@@ -55,8 +60,8 @@ export class ReviewsService {
       throw new NotFoundException('Booking not found or does not belong to you');
     }
 
-    // Check if booking is completed (paid)
-    if (booking.status !== BookingStatus.PAID) {
+    // B2 Requirement: Validate booking status = COMPLETED
+    if (booking.status !== BookingStatus.COMPLETED) {
       throw new BadRequestException('Can only review completed bookings');
     }
 
@@ -65,7 +70,7 @@ export class ReviewsService {
       throw new BadRequestException('Can only review after trip completion');
     }
 
-    // Check if review already exists for this booking
+    // Check if review already exists for this booking (1 booking → 1 review constraint)
     const existingReview = await this.reviewRepository.findOne({
       where: { bookingId }
     });
@@ -74,7 +79,7 @@ export class ReviewsService {
       throw new ConflictException('Review already exists for this booking');
     }
 
-    // Create review
+    // B2 Requirement: Save review
     const review = this.reviewRepository.create({
       userId,
       tripId: booking.tripId,
@@ -84,6 +89,9 @@ export class ReviewsService {
     });
 
     const savedReview = await this.reviewRepository.save(review);
+
+    // B2 Requirement: Update trip average rating
+    await this.updateTripAverageRating(booking.tripId);
 
     this.logger.log(`Review created: ${savedReview.id} for booking ${bookingId} by user ${userId}`);
 
@@ -228,6 +236,11 @@ export class ReviewsService {
 
     const updatedReview = await this.reviewRepository.save(review);
 
+    // Update trip average rating if rating was changed
+    if (updateReviewDto.rating !== undefined) {
+      await this.updateTripAverageRating(review.tripId);
+    }
+
     this.logger.log(`Review updated: ${reviewId} by user ${userId}`);
 
     return this.mapToResponseDto(updatedReview);
@@ -245,7 +258,11 @@ export class ReviewsService {
       throw new NotFoundException('Review not found' + (isAdmin ? '' : ' or does not belong to you'));
     }
 
+    const tripId = review.tripId;
     await this.reviewRepository.remove(review);
+
+    // Update trip average rating after deletion
+    await this.updateTripAverageRating(tripId);
 
     this.logger.log(`Review deleted: ${reviewId} by ${isAdmin ? 'admin' : `user ${userId}`}`);
   }
@@ -287,10 +304,10 @@ export class ReviewsService {
       };
     }
 
-    if (booking.status !== BookingStatus.PAID) {
+    if (booking.status !== BookingStatus.COMPLETED) {
       return {
         canReview: false,
-        reason: 'Booking must be completed (paid) to leave a review',
+        reason: 'Booking must be completed to leave a review',
         bookingStatus: booking.status
       };
     }
@@ -363,5 +380,30 @@ export class ReviewsService {
       trip: review.trip,
       booking: review.booking
     };
+  }
+
+  /**
+   * Update trip average rating and review count after review changes
+   * B2 API Requirement: Update trip average rating when review is created
+   */
+  private async updateTripAverageRating(tripId: string): Promise<void> {
+    // Get all reviews for this trip
+    const reviews = await this.reviewRepository.find({
+      where: { tripId }
+    });
+
+    // Calculate new average and count
+    const reviewCount = reviews.length;
+    const averageRating = reviewCount > 0 
+      ? Math.round((reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount) * 100) / 100 // Round to 2 decimal places
+      : 0;
+
+    // Update trip with new average rating and review count
+    await this.tripRepository.update(tripId, {
+      averageRating,
+      reviewCount
+    });
+
+    this.logger.log(`Updated trip ${tripId} average rating: ${averageRating} (${reviewCount} reviews)`);
   }
 }
