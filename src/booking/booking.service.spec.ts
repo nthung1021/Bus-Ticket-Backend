@@ -12,6 +12,7 @@ import { BookingModificationHistory } from '../entities/booking-modification-his
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { EmailService } from './email.service';
 import { BookingModificationPermissionService } from './booking-modification-permission.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('BookingService', () => {
   let service: BookingService;
@@ -154,6 +155,12 @@ describe('BookingService', () => {
         {
           provide: BookingModificationPermissionService,
           useValue: mockModificationPermissionService,
+        },
+        {
+          provide: NotificationsService,
+          useValue: {
+            createInAppNotification: jest.fn().mockResolvedValue({ id: 'notification-1' }),
+          },
         },
       ],
     }).compile();

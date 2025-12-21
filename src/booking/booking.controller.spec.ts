@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
+import { BookingSchedulerService } from './booking-scheduler.service';
+import { BookingExpirationScheduler } from './booking-expiration-scheduler.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 describe('BookingController', () => {
@@ -20,6 +22,19 @@ describe('BookingController', () => {
         {
           provide: BookingService,
           useValue: mockBookingService,
+        },
+        {
+          provide: BookingSchedulerService,
+          useValue: {
+            scheduleBookingReminder: jest.fn(),
+          },
+        },
+        {
+          provide: BookingExpirationScheduler,
+          useValue: {
+            scheduleExpiration: jest.fn(),
+            manualExpireBookings: jest.fn(),
+          },
         },
       ],
     })
