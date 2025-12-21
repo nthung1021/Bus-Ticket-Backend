@@ -21,7 +21,8 @@ export class ChatToolsService {
           limit: params.limit || 5,
         };
         const results = await this.tripsService.search(dto as any);
-        return JSON.stringify(results.slice(0, dto.limit));
+        const items = Array.isArray(results.data) ? results.data : [];
+        return JSON.stringify(items.slice(0, dto.limit));
       } catch (err) {
         this.logger.error('searchTrips tool error', err as any);
         return 'Invalid input for search_trips. Expected JSON {origin,destination,date}';
