@@ -35,8 +35,16 @@ import { GetReviewsQueryDto } from './dto/get-reviews-query.dto';
 import { 
   ReviewResponseDto, 
   ReviewsListResponseDto, 
-  ReviewStatsResponseDto 
+  ReviewStatsResponseDto,
+  ReviewApiResponseDto
 } from './dto/review-response.dto';
+import {
+  ErrorResponseDto,
+  UnauthorizedErrorDto,
+  ForbiddenErrorDto,
+  ConflictErrorDto,
+  BadRequestErrorDto
+} from './dto/error-response.dto';
 
 @ApiTags('Reviews')
 @Controller('reviews')
@@ -44,41 +52,47 @@ export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 
   /**
-   * Create a new review
+   * C1 API Contract: Create a new review
+   * Request: { bookingId, tripId, rating, comment }
+   * Response: { id, rating, comment, createdAt, user: { name } }
    */
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ 
     summary: 'Create a review',
-    description: 'Create a review for a completed booking. User can only review their own bookings that are paid and completed.'
+    description: 'Create a review for a completed booking. C1 API Contract compliance. User can only review their own bookings that are completed.'
   })
   @ApiResponse({ 
     status: HttpStatus.CREATED, 
     description: 'Review created successfully', 
-    type: ReviewResponseDto 
+    type: ReviewApiResponseDto 
   })
   @ApiResponse({ 
-    status: HttpStatus.BAD_REQUEST, 
-    description: 'Invalid input or booking cannot be reviewed' 
+    status: 401, 
+    description: 'Authentication required. Please log in to continue.',
+    type: UnauthorizedErrorDto
   })
   @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'Booking not found or does not belong to user' 
+    status: 403, 
+    description: 'Access denied - booking not completed or not owner',
+    type: ForbiddenErrorDto
   })
   @ApiResponse({ 
-    status: HttpStatus.CONFLICT, 
-    description: 'Review already exists for this booking' 
+    status: 409, 
+    description: 'Review already exists for this booking',
+    type: ConflictErrorDto
   })
   @ApiResponse({ 
-    status: HttpStatus.UNAUTHORIZED, 
-    description: 'Authentication required' 
+    status: 400, 
+    description: 'Validation failed',
+    type: BadRequestErrorDto
   })
   @HttpCode(HttpStatus.CREATED)
   async createReview(
     @Request() req,
     @Body(ValidationPipe) createReviewDto: CreateReviewDto,
-  ): Promise<ReviewResponseDto> {
+  ): Promise<ReviewApiResponseDto> {
     return this.reviewsService.createReview(req.user.userId, createReviewDto);
   }
 

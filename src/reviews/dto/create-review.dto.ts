@@ -11,6 +11,14 @@ export class CreateReviewDto {
   bookingId: string;
 
   @ApiProperty({
+    description: 'Trip ID for the review',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+  })
+  @IsUUID('4', { message: 'Trip ID must be a valid UUID' })
+  @IsNotEmpty({ message: 'Trip ID is required' })
+  tripId: string;
+
+  @ApiProperty({
     description: 'Rating from 1 to 5 stars',
     minimum: 1,
     maximum: 5,

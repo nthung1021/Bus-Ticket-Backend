@@ -1,5 +1,47 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+// C1 API Contract: Simplified response format for FE integration
+export class ReviewApiResponseDto {
+  @ApiProperty({
+    description: 'Review ID',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+  })
+  id: string;
+
+  @ApiProperty({
+    description: 'Rating from 1 to 5 stars',
+    minimum: 1,
+    maximum: 5,
+    example: 5
+  })
+  rating: number;
+
+  @ApiProperty({
+    description: 'Review comment',
+    example: 'Great service and comfortable ride!',
+    nullable: true
+  })
+  comment: string | null;
+
+  @ApiProperty({
+    description: 'Review creation date',
+    example: '2024-12-21T10:00:00Z'
+  })
+  createdAt: string; // ISO string format for FE
+
+  @ApiProperty({
+    description: 'User details',
+    type: 'object',
+    properties: {
+      name: { type: 'string' }
+    }
+  })
+  user: {
+    name: string;
+  };
+}
+
+// Detailed response format for admin/internal use
 export class ReviewResponseDto {
   @ApiProperty({
     description: 'Review ID',

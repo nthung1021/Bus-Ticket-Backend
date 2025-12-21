@@ -18,7 +18,8 @@ import { GetReviewsQueryDto } from './dto/get-reviews-query.dto';
 import { 
   ReviewResponseDto, 
   ReviewsListResponseDto, 
-  ReviewStatsResponseDto 
+  ReviewStatsResponseDto,
+  ReviewApiResponseDto
 } from './dto/review-response.dto';
 import { ProfanityFilter } from './utils/profanity-filter.util';
 
@@ -48,8 +49,8 @@ export class ReviewsService {
    * - Save review
    * - Update trip average rating
    */
-  async createReview(userId: string, createReviewDto: CreateReviewDto): Promise<ReviewResponseDto> {
-    const { bookingId, rating, comment } = createReviewDto;
+  async createReview(userId: string, createReviewDto: CreateReviewDto): Promise<ReviewApiResponseDto> {
+    const { bookingId, tripId, rating, comment } = createReviewDto;
 
     // B2 Requirement: Validate booking belongs to user
     const booking = await this.bookingRepository.findOne({
@@ -59,6 +60,11 @@ export class ReviewsService {
 
     if (!booking) {
       throw new NotFoundException('Booking not found or does not belong to you');
+    }
+
+    // C1 API Contract: Validate tripId matches booking's trip
+    if (booking.tripId !== tripId) {
+      throw new BadRequestException('Trip ID does not match the booking');
     }
 
     // B2 Requirement: Validate booking status = COMPLETED
@@ -164,7 +170,7 @@ export class ReviewsService {
       // Continue - review creation succeeded, rating update can be retried
     }
 
-    return this.mapToResponseDto(savedReview);
+    return this.mapToApiResponseDto(savedReview);
   }
 
   /**
@@ -473,6 +479,24 @@ export class ReviewsService {
     }
   }
 
+  /**
+   * C1 API Contract: Map review entity to simplified API response for FE
+   */
+  private mapToApiResponseDto(review: Review): ReviewApiResponseDto {
+    return {
+      id: review.id,
+      rating: review.rating,
+      comment: review.comment,
+      createdAt: review.createdAt.toISOString(), // ISO string for FE
+      user: {
+        name: review.user?.name || 'Anonymous'
+      }
+    };
+  }
+
+  /**
+   * Map review entity to detailed response DTO (internal/admin use)
+   */
   private mapToResponseDto(review: Review): ReviewResponseDto {
     return {
       id: review.id,

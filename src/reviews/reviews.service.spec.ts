@@ -64,6 +64,7 @@ describe('ReviewsService', () => {
 
   const mockCreateReviewDto: CreateReviewDto = {
     bookingId: mockBookingId,
+    tripId: mockTripId,
     rating: 5,
     comment: 'Great trip!',
   };
@@ -131,21 +132,15 @@ describe('ReviewsService', () => {
 
       const result = await service.createReview(mockUserId, mockCreateReviewDto);
 
+      // C1 API Contract: Expect ReviewApiResponseDto format
       expect(result).toEqual({
         id: mockReviewId,
-        userId: mockUserId,
-        tripId: mockTripId,
-        bookingId: mockBookingId,
         rating: 5,
         comment: 'Great trip!',
-        createdAt: expect.any(Date),
+        createdAt: expect.any(String), // ISO string format
         user: {
-          id: mockUserId,
           name: 'John Doe',
-          email: 'john@example.com',
         },
-        trip: mockTrip,
-        booking: mockBooking,
       });
     });
 
@@ -393,6 +388,7 @@ describe('ReviewsService', () => {
       it('should filter profanity from review comments on creation', async () => {
         const createDto: CreateReviewDto = {
           bookingId: mockBookingId,
+          tripId: mockTripId,
           rating: 5,
           comment: 'This trip was damn amazing!'
         };
@@ -440,6 +436,7 @@ describe('ReviewsService', () => {
       it('should handle empty comments without filtering', async () => {
         const createDto: CreateReviewDto = {
           bookingId: mockBookingId,
+          tripId: mockTripId,
           rating: 5,
           comment: ''
         };
@@ -475,6 +472,7 @@ describe('ReviewsService', () => {
 
         const createDto: CreateReviewDto = {
           bookingId: mockBookingId,
+          tripId: mockTripId,
           rating: 5,
           comment: 'Great trip!'
         };
@@ -489,6 +487,7 @@ describe('ReviewsService', () => {
       it('should handle database constraint violations gracefully', async () => {
         const createDto: CreateReviewDto = {
           bookingId: mockBookingId,
+          tripId: mockTripId,
           rating: 5,
           comment: 'Great trip!'
         };
@@ -510,6 +509,7 @@ describe('ReviewsService', () => {
       it('should continue operation if trip rating update fails during creation', async () => {
         const createDto: CreateReviewDto = {
           bookingId: mockBookingId,
+          tripId: mockTripId,
           rating: 5,
           comment: 'Great trip!'
         };
