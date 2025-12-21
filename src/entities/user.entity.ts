@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { Booking } from './booking.entity';
 import { PaymentMethod } from './payment-method.entity';
-import { Feedback } from './feedback.entity';
+import { Review } from './review.entity';
 import { RefreshToken } from './refresh-token.entity';
 import { Notification } from './notification.entity';
 
@@ -65,8 +65,8 @@ export class User {
   @OneToMany(() => PaymentMethod, (paymentMethod) => paymentMethod.user)
   paymentMethods: PaymentMethod[];
 
-  @OneToMany(() => Feedback, (feedback) => feedback.user)
-  feedbacks: Feedback[];
+  @OneToMany(() => Review, (review) => review.user)
+  reviews: Review[];
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];

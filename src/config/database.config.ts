@@ -10,7 +10,8 @@ import { Seat } from '../entities/seat.entity';
 import { Booking } from '../entities/booking.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { PaymentMethod } from '../entities/payment-method.entity';
-import { Feedback } from '../entities/feedback.entity';
+
+import { Review } from '../entities/review.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { Payment } from '../entities/payment.entity';
 import { Notification } from '../entities/notification.entity';
@@ -51,7 +52,7 @@ export const databaseConfig = (
     Booking,           // Booking records
     PassengerDetail,   // Passenger information
     PaymentMethod,     // Available payment methods
-    Feedback,          // User feedback
+    Review,            // User reviews for completed bookings
     SeatStatus,        // Status of seats (available, booked, etc.)
     Payment,           // Payment records
     Notification,      // System notifications

@@ -11,7 +11,7 @@ import { Route } from './route.entity';
 import { Bus } from './bus.entity';
 import { Booking } from './booking.entity';
 import { SeatStatus } from './seat-status.entity';
-import { Feedback } from './feedback.entity';
+import { Review } from './review.entity';
 
 export enum TripStatus {
   SCHEDULED = 'scheduled',
@@ -71,6 +71,6 @@ export class Trip {
   @OneToMany(() => SeatStatus, (seatStatus) => seatStatus.trip)
   seatStatuses: SeatStatus[];
 
-  @OneToMany(() => Feedback, (feedback) => feedback.trip)
-  feedbacks: Feedback[];
+  @OneToMany(() => Review, (review) => review.trip)
+  reviews: Review[];
 }

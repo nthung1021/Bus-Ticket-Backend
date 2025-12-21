@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
   CreateDateColumn,
   Index,
@@ -14,6 +15,7 @@ import { PassengerDetail } from './passenger-detail.entity';
 import { SeatStatus } from './seat-status.entity';
 import { Payment } from './payment.entity';
 import { Notification } from './notification.entity';
+import { Review } from './review.entity';
 
 export enum BookingStatus {
   PENDING = 'pending',
@@ -95,4 +97,7 @@ export class Booking {
 
   @OneToMany(() => Notification, (notification) => notification.booking)
   notifications: Notification[];
+
+  @OneToOne(() => Review, (review) => review.booking)
+  review: Review;
 }

@@ -1,0 +1,367 @@
+import { 
+  Injectable, 
+  NotFoundException, 
+  BadRequestException, 
+  ForbiddenException,
+  ConflictException,
+  Logger
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
+import { Review } from '../entities/review.entity';
+import { Booking, BookingStatus } from '../entities/booking.entity';
+import { Trip } from '../entities/trip.entity';
+import { User } from '../entities/user.entity';
+import { CreateReviewDto } from './dto/create-review.dto';
+import { UpdateReviewDto } from './dto/update-review.dto';
+import { GetReviewsQueryDto } from './dto/get-reviews-query.dto';
+import { 
+  ReviewResponseDto, 
+  ReviewsListResponseDto, 
+  ReviewStatsResponseDto 
+} from './dto/review-response.dto';
+
+@Injectable()
+export class ReviewsService {
+  private readonly logger = new Logger(ReviewsService.name);
+
+  constructor(
+    @InjectRepository(Review)
+    private reviewRepository: Repository<Review>,
+    
+    @InjectRepository(Booking)
+    private bookingRepository: Repository<Booking>,
+    
+    @InjectRepository(Trip)
+    private tripRepository: Repository<Trip>,
+    
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+  ) {}
+
+  /**
+   * Create a new review for a completed booking
+   */
+  async createReview(userId: string, createReviewDto: CreateReviewDto): Promise<ReviewResponseDto> {
+    const { bookingId, rating, comment } = createReviewDto;
+
+    // Check if booking exists and belongs to user
+    const booking = await this.bookingRepository.findOne({
+      where: { id: bookingId, userId },
+      relations: ['trip', 'user']
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found or does not belong to you');
+    }
+
+    // Check if booking is completed (paid)
+    if (booking.status !== BookingStatus.PAID) {
+      throw new BadRequestException('Can only review completed bookings');
+    }
+
+    // Check if trip is completed
+    if (booking.trip && new Date() < booking.trip.arrivalTime) {
+      throw new BadRequestException('Can only review after trip completion');
+    }
+
+    // Check if review already exists for this booking
+    const existingReview = await this.reviewRepository.findOne({
+      where: { bookingId }
+    });
+
+    if (existingReview) {
+      throw new ConflictException('Review already exists for this booking');
+    }
+
+    // Create review
+    const review = this.reviewRepository.create({
+      userId,
+      tripId: booking.tripId,
+      bookingId,
+      rating,
+      comment: comment || null
+    });
+
+    const savedReview = await this.reviewRepository.save(review);
+
+    this.logger.log(`Review created: ${savedReview.id} for booking ${bookingId} by user ${userId}`);
+
+    return this.mapToResponseDto(savedReview);
+  }
+
+  /**
+   * Get reviews with filtering and pagination
+   */
+  async getReviews(query: GetReviewsQueryDto): Promise<ReviewsListResponseDto> {
+    const { page = 1, limit = 10, sortBy = 'newest', tripId, userId, rating } = query;
+    
+    const queryBuilder = this.createReviewsQuery();
+
+    // Apply filters
+    if (tripId) {
+      queryBuilder.andWhere('review.tripId = :tripId', { tripId });
+    }
+    
+    if (userId) {
+      queryBuilder.andWhere('review.userId = :userId', { userId });
+    }
+    
+    if (rating) {
+      queryBuilder.andWhere('review.rating = :rating', { rating });
+    }
+
+    // Apply sorting
+    this.applySorting(queryBuilder, sortBy);
+
+    // Apply pagination
+    const skip = (page - 1) * limit;
+    queryBuilder.skip(skip).take(limit);
+
+    // Execute query
+    const [reviews, total] = await queryBuilder.getManyAndCount();
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(total / limit);
+    const hasNext = page < totalPages;
+    const hasPrev = page > 1;
+
+    return {
+      reviews: reviews.map(review => this.mapToResponseDto(review)),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNext,
+        hasPrev
+      }
+    };
+  }
+
+  /**
+   * Get reviews for a specific trip
+   */
+  async getTripReviews(tripId: string, query: GetReviewsQueryDto): Promise<ReviewsListResponseDto> {
+    // Verify trip exists
+    const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+    if (!trip) {
+      throw new NotFoundException('Trip not found');
+    }
+
+    return this.getReviews({ ...query, tripId });
+  }
+
+  /**
+   * Get reviews by a specific user
+   */
+  async getUserReviews(userId: string, query: GetReviewsQueryDto): Promise<ReviewsListResponseDto> {
+    // Verify user exists
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.getReviews({ ...query, userId });
+  }
+
+  /**
+   * Get review statistics for a trip or route
+   */
+  async getReviewStats(tripId?: string): Promise<ReviewStatsResponseDto> {
+    const queryBuilder = this.reviewRepository
+      .createQueryBuilder('review');
+
+    if (tripId) {
+      queryBuilder.where('review.tripId = :tripId', { tripId });
+    }
+
+    const reviews = await queryBuilder.getMany();
+    
+    if (reviews.length === 0) {
+      return {
+        totalReviews: 0,
+        averageRating: 0,
+        ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+      };
+    }
+
+    // Calculate statistics
+    const totalReviews = reviews.length;
+    const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+    const averageRating = Math.round((totalRating / totalReviews) * 10) / 10; // Round to 1 decimal
+
+    // Calculate rating distribution
+    const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    reviews.forEach(review => {
+      ratingDistribution[review.rating]++;
+    });
+
+    return {
+      totalReviews,
+      averageRating,
+      ratingDistribution
+    };
+  }
+
+  /**
+   * Update a review (only by the owner)
+   */
+  async updateReview(userId: string, reviewId: string, updateReviewDto: UpdateReviewDto): Promise<ReviewResponseDto> {
+    const review = await this.reviewRepository.findOne({
+      where: { id: reviewId, userId },
+      relations: ['user', 'trip', 'booking']
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found or does not belong to you');
+    }
+
+    // Update fields
+    if (updateReviewDto.rating !== undefined) {
+      review.rating = updateReviewDto.rating;
+    }
+    
+    if (updateReviewDto.comment !== undefined) {
+      review.comment = updateReviewDto.comment || null;
+    }
+
+    const updatedReview = await this.reviewRepository.save(review);
+
+    this.logger.log(`Review updated: ${reviewId} by user ${userId}`);
+
+    return this.mapToResponseDto(updatedReview);
+  }
+
+  /**
+   * Delete a review (only by the owner or admin)
+   */
+  async deleteReview(userId: string, reviewId: string, isAdmin: boolean = false): Promise<void> {
+    const review = await this.reviewRepository.findOne({
+      where: isAdmin ? { id: reviewId } : { id: reviewId, userId }
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found' + (isAdmin ? '' : ' or does not belong to you'));
+    }
+
+    await this.reviewRepository.remove(review);
+
+    this.logger.log(`Review deleted: ${reviewId} by ${isAdmin ? 'admin' : `user ${userId}`}`);
+  }
+
+  /**
+   * Get a single review by ID
+   */
+  async getReviewById(reviewId: string): Promise<ReviewResponseDto> {
+    const review = await this.reviewRepository.findOne({
+      where: { id: reviewId },
+      relations: ['user', 'trip', 'booking']
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found');
+    }
+
+    return this.mapToResponseDto(review);
+  }
+
+  /**
+   * Check if user can review a specific booking
+   */
+  async canUserReview(userId: string, bookingId: string): Promise<{
+    canReview: boolean;
+    reason?: string;
+    bookingStatus?: string;
+    tripStatus?: string;
+  }> {
+    const booking = await this.bookingRepository.findOne({
+      where: { id: bookingId, userId },
+      relations: ['trip']
+    });
+
+    if (!booking) {
+      return {
+        canReview: false,
+        reason: 'Booking not found or does not belong to you'
+      };
+    }
+
+    if (booking.status !== BookingStatus.PAID) {
+      return {
+        canReview: false,
+        reason: 'Booking must be completed (paid) to leave a review',
+        bookingStatus: booking.status
+      };
+    }
+
+    if (booking.trip && new Date() < booking.trip.arrivalTime) {
+      return {
+        canReview: false,
+        reason: 'Trip must be completed to leave a review',
+        tripStatus: 'in_progress'
+      };
+    }
+
+    // Check if review already exists
+    const existingReview = await this.reviewRepository.findOne({
+      where: { bookingId }
+    });
+
+    if (existingReview) {
+      return {
+        canReview: false,
+        reason: 'Review already exists for this booking'
+      };
+    }
+
+    return { canReview: true };
+  }
+
+  // Helper methods
+  private createReviewsQuery(): SelectQueryBuilder<Review> {
+    return this.reviewRepository
+      .createQueryBuilder('review')
+      .leftJoinAndSelect('review.user', 'user')
+      .leftJoinAndSelect('review.trip', 'trip')
+      .leftJoinAndSelect('review.booking', 'booking');
+  }
+
+  private applySorting(queryBuilder: SelectQueryBuilder<Review>, sortBy: string): void {
+    switch (sortBy) {
+      case 'newest':
+        queryBuilder.orderBy('review.createdAt', 'DESC');
+        break;
+      case 'oldest':
+        queryBuilder.orderBy('review.createdAt', 'ASC');
+        break;
+      case 'highest_rating':
+        queryBuilder.orderBy('review.rating', 'DESC');
+        break;
+      case 'lowest_rating':
+        queryBuilder.orderBy('review.rating', 'ASC');
+        break;
+      default:
+        queryBuilder.orderBy('review.createdAt', 'DESC');
+    }
+  }
+
+  private mapToResponseDto(review: Review): ReviewResponseDto {
+    return {
+      id: review.id,
+      userId: review.userId,
+      tripId: review.tripId,
+      bookingId: review.bookingId,
+      rating: review.rating,
+      comment: review.comment,
+      createdAt: review.createdAt,
+      user: review.user ? {
+        id: review.user.id,
+        name: review.user.name,
+        email: review.user.email
+      } : undefined,
+      trip: review.trip,
+      booking: review.booking
+    };
+  }
+}
