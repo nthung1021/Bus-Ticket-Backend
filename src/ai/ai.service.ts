@@ -53,6 +53,21 @@ export class AiService {
     const msgs = [systemMsg, ...(Array.isArray(messages) ? messages : [messages])];
     const raw = await this.llm?.invoke(msgs);
     this.logger.log('LLM raw response:', raw);
+    const parsed = JSON.parse(raw);
+    if (parsed.tool_calls && parsed.tool_calls.length > 0) {
+      for (const toolCall of parsed.tool_calls) {
+        if (toolCall.tool_name === 'search_trips') {
+          const toolResult = await this.tripsService.search(toolCall.parameters);
+          const aiMsg = new AIMessage(JSON.stringify({
+            content: `Here are the search results: ${JSON.stringify(toolResult)}`,  
+          }));
+          msgs.push(aiMsg);
+        }
+      }
+    }
+    const finalResponse = await this.llm?.invoke(msgs);
+    this.logger.log('LLM final response after tool calls:', finalResponse);
+    const rawFinal = finalResponse;
     return raw;
   }
 }
