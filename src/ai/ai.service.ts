@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ChatOllama } from '@langchain/ollama';
 import { SystemMessage, AIMessage, HumanMessage } from '@langchain/core/messages';
 import { TripsService } from 'src/trips/trips.service';
+import { BookingService } from 'src/booking/booking.service';
 
 @Injectable()
 export class AiService {
@@ -9,7 +10,10 @@ export class AiService {
 
   private readonly logger = new Logger(AiService.name);
 
-  constructor(private readonly tripsService: TripsService) {
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly bookingService: BookingService,
+  ) {
     this.llm = new ChatOllama({
       baseUrl: 'http://localhost:11434',
       model: 'llama3.1:8b',
@@ -18,7 +22,10 @@ export class AiService {
     });
   }
 
-  async invoke(messages: any) {
+  async invoke(messages: any, metadata?: { userId?: string }) {
+    // Lấy userId từ metadata nếu có
+    const userId = metadata?.userId;
+    this.logger.log('AI invoked by user:', userId);
     // Prepend system message to the messages array
     const systemMsg = new SystemMessage(`
       You are an AI assistant for a bus ticket booking service.
@@ -33,9 +40,11 @@ export class AiService {
           }
         ]
       }
+      
       Tools you can use:
       1. search_trips: Use this tool to search for bus trips based on user criteria.
-      Do not search for trips without using this tool.
+      If you already called this tool and got results, you can use that information to answer the user's query.
+      Otherwise, call this tool with appropriate parameters.  
       Parameters for search_trips:
       {
         origin: string, // Optional, The starting location of the trip
@@ -51,6 +60,32 @@ export class AiService {
         limit: number // Optional, Number of results per page
       }
 
+      2. book_ticket: Use this tool to book a bus ticket for the user.
+      If the user hasn't provided all necessary information, ask for the missing details before calling this tool.
+      Parameters for book_ticket:
+      {
+        tripId: string, // The ID of the trip to book
+        seats: [{
+          id: string, // Seat ID
+          code: string, // Seat code
+          type: 'normal' | 'vip' | 'business', // Seat type
+          price: number // Seat price
+        }], // Array of seat objects to book, each with id, code, type, price
+        passengers: [{
+          fullName: string, // Passenger's full name
+          documentId: string, // Passenger's document ID
+          seatCode: string, // Seat code assigned to the passenger
+          documentType?: string, // Optional, Type of document (id, passport, license)
+          phoneNumber?: string, // Optional, Passenger's phone number
+          email?: string // Optional, Passenger's email address
+        }], // Array of passenger objects with necessary details
+        totalPrice: number, // Total price for the booking
+        paymentMethod?: string, // Optional, Payment method (e.g., credit card, paypal)
+        isGuestCheckout?: boolean, // Optional, Whether the user is checking out as a guest
+        contactEmail?: string, // Optional, Contact email for booking confirmation
+        contactPhone?: string // Optional, Contact phone number for booking confirmation
+      }
+
       If after the tool call, you have enough information to answer the user's query, respond with the final answer in the "content" field and an empty "tool_calls" array.
       If you don't have enough information, output something like "I don't have enough information to answer that question."
     `);
@@ -64,14 +99,33 @@ export class AiService {
           const toolResult = await this.tripsService.search(toolCall.parameters);
           console.log("AI Service - Tool Result:", toolResult); 
           const aiMsg = new HumanMessage(JSON.stringify({
-            content: `Here are the search results: ${JSON.stringify(toolResult)}`,  
+            content: `Here are the search results: ${JSON.stringify(toolResult, null, 2 )}`,  
           }));
           msgs.push(aiMsg);
+        }
+        else if (toolCall.tool_name === 'book_ticket') {
+          // Book ticket using BookingService
+          const bookingParams = toolCall.parameters;
+          // userId from metadata
+          const bookingUserId = userId || bookingParams.userId || null;
+          try {
+            const bookingResult = await this.bookingService.createBooking(bookingUserId, bookingParams);
+            const aiMsg = new HumanMessage(JSON.stringify({
+              content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}`,
+            }));
+            msgs.push(aiMsg);
+          } catch (err) {
+            const aiMsg = new HumanMessage(JSON.stringify({
+              content: `Booking failed: ${err.message}`,
+            }));
+            msgs.push(aiMsg);
+          }
         }
       }
     }
     const finalResponse = await this.llm?.invoke(msgs);
     const rawFinal = finalResponse.content;
+    console.log("AI Service - Final Response:", rawFinal);
     return rawFinal;
   }
 }

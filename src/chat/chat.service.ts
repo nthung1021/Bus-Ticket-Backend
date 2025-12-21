@@ -18,7 +18,7 @@ export class ChatService {
     private readonly msgRepo: Repository<Message>,
   ) {}
 
-  async sendMessage(dto: SendMessageDto) {
+  async sendMessage(dto: SendMessageDto, userId?: string) {
     const conversationId =
       dto.conversationId ?? `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
     const now = new Date().toISOString();
@@ -53,7 +53,7 @@ export class ChatService {
 
     let aiResponseText = '';
     try {
-      const aiRes = await this.aiService.invoke(llmInput);
+      const aiRes = await this.aiService.invoke(llmInput, { userId });
       aiResponseText = (aiRes ? JSON.parse(aiRes) : { content: '' }).content;
     } catch (err) {
       this.logger.error('AI call failed', err as any);

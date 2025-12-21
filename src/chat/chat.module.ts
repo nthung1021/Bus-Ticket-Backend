@@ -4,11 +4,12 @@ import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { AiService } from '../ai/ai.service';
 import { TripsModule } from '../trips/trips.module';
+import { BookingModule } from '../booking/booking.module';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Conversation, Message]), TripsModule],
+  imports: [TypeOrmModule.forFeature([Conversation, Message]), TripsModule, BookingModule],
   controllers: [ChatController],
   providers: [ChatService, AiService],
   exports: [ChatService],
