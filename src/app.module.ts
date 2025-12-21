@@ -22,6 +22,7 @@ import { GatewaysModule } from './gateways/gateways.module';
 import { SeatStatusModule } from './seat-status/seat-status.module';
 import { SeatModule } from './seat/seat.module';
 import { PayosModule } from './payos/payos.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { PayosModule } from './payos/payos.module';
     SeatStatusModule,
     SeatModule,
     PayosModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService, DatabaseService],
