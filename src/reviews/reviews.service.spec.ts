@@ -14,6 +14,7 @@ import { User } from '../entities/user.entity';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { GetReviewsQueryDto } from './dto/get-reviews-query.dto';
+import { ProfanityFilter } from './utils/profanity-filter.util';
 
 describe('ReviewsService', () => {
   let service: ReviewsService;
@@ -383,6 +384,200 @@ describe('ReviewsService', () => {
         canReview: false,
         reason: 'Review already exists for this booking',
       });
+    });
+  });
+
+  // B4 Safety Feature Tests
+  describe('B4 Safety Features', () => {
+    describe('profanity filtering', () => {
+      it('should filter profanity from review comments on creation', async () => {
+        const createDto: CreateReviewDto = {
+          bookingId: mockBookingId,
+          rating: 5,
+          comment: 'This trip was damn amazing!'
+        };
+
+        jest.spyOn(bookingRepository, 'findOne').mockResolvedValue(mockBooking as Booking);
+        jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(null);
+        jest.spyOn(reviewRepository, 'create').mockReturnValue(mockReview as Review);
+        jest.spyOn(reviewRepository, 'save').mockResolvedValue({ 
+          ...mockReview, 
+          comment: '****' 
+        } as Review);
+        // Mock trip rating update by mocking find and update calls
+        jest.spyOn(reviewRepository, 'find').mockResolvedValue([mockReview] as Review[]);
+        jest.spyOn(tripRepository, 'update').mockResolvedValue({} as any);
+
+        const result = await service.createReview(mockUserId, createDto);
+
+        expect(reviewRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            comment: 'This trip was **** amazing!'
+          })
+        );
+      });
+
+      it('should filter profanity from review comments on update', async () => {
+        const updateDto: UpdateReviewDto = {
+          comment: 'Updated comment with damn profanity'
+        };
+
+        jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(mockReview as Review);
+        jest.spyOn(reviewRepository, 'save').mockResolvedValue({
+          ...mockReview,
+          comment: 'Updated comment with **** profanity'
+        } as Review);
+
+        const result = await service.updateReview(mockUserId, mockReviewId, updateDto);
+
+        expect(reviewRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            comment: 'Updated comment with **** profanity'
+          })
+        );
+      });
+
+      it('should handle empty comments without filtering', async () => {
+        const createDto: CreateReviewDto = {
+          bookingId: mockBookingId,
+          rating: 5,
+          comment: ''
+        };
+
+        jest.spyOn(bookingRepository, 'findOne').mockResolvedValue(mockBooking as Booking);
+        jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(null);
+        jest.spyOn(reviewRepository, 'create').mockReturnValue(mockReview as Review);
+        jest.spyOn(reviewRepository, 'save').mockResolvedValue({ 
+          ...mockReview, 
+          comment: null 
+        } as Review);
+        // Mock trip rating update by mocking find and update calls
+        jest.spyOn(reviewRepository, 'find').mockResolvedValue([mockReview] as Review[]);
+        jest.spyOn(tripRepository, 'update').mockResolvedValue({} as any);
+
+        const result = await service.createReview(mockUserId, createDto);
+
+        expect(reviewRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            comment: null
+          })
+        );
+      });
+    });
+
+    describe('enhanced duplicate prevention', () => {
+      it('should provide detailed error message for duplicate reviews', async () => {
+        const existingReview = {
+          ...mockReview,
+          userId: 'other-user-123',
+          user: { id: 'other-user-123', name: 'Other User' }
+        };
+
+        const createDto: CreateReviewDto = {
+          bookingId: mockBookingId,
+          rating: 5,
+          comment: 'Great trip!'
+        };
+
+        jest.spyOn(bookingRepository, 'findOne').mockResolvedValue(mockBooking as Booking);
+        jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(existingReview as Review);
+
+        await expect(service.createReview(mockUserId, createDto))
+          .rejects.toThrow('Review already exists for this booking. Each booking can only have one review.');
+      });
+
+      it('should handle database constraint violations gracefully', async () => {
+        const createDto: CreateReviewDto = {
+          bookingId: mockBookingId,
+          rating: 5,
+          comment: 'Great trip!'
+        };
+
+        const constraintError = new Error('duplicate key violation');
+        (constraintError as any).code = '23505'; // PostgreSQL unique violation
+
+        jest.spyOn(bookingRepository, 'findOne').mockResolvedValue(mockBooking as Booking);
+        jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(null);
+        jest.spyOn(reviewRepository, 'create').mockReturnValue(mockReview as Review);
+        jest.spyOn(reviewRepository, 'save').mockRejectedValue(constraintError);
+
+        await expect(service.createReview(mockUserId, createDto))
+          .rejects.toThrow('Review already exists for this booking. Database constraint prevented duplicate.');
+      });
+    });
+
+    describe('enhanced error handling', () => {
+      it('should continue operation if trip rating update fails during creation', async () => {
+        const createDto: CreateReviewDto = {
+          bookingId: mockBookingId,
+          rating: 5,
+          comment: 'Great trip!'
+        };
+
+        jest.spyOn(bookingRepository, 'findOne').mockResolvedValue(mockBooking as Booking);
+        jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(null);
+        jest.spyOn(reviewRepository, 'create').mockReturnValue(mockReview as Review);
+        jest.spyOn(reviewRepository, 'save').mockResolvedValue(mockReview as Review);
+        // Mock trip rating update to fail
+        jest.spyOn(reviewRepository, 'find').mockResolvedValue([mockReview] as Review[]);
+        jest.spyOn(tripRepository, 'update').mockRejectedValue(new Error('Rating update failed'));
+
+        // Should not throw, despite rating update failure
+        const result = await service.createReview(mockUserId, createDto);
+        
+        expect(result).toBeDefined();
+        expect(result.id).toBe(mockReviewId);
+      });
+
+      it('should continue operation if trip rating update fails during update', async () => {
+        const updateDto: UpdateReviewDto = {
+          rating: 4
+        };
+
+        jest.spyOn(reviewRepository, 'findOne').mockResolvedValue(mockReview as Review);
+        jest.spyOn(reviewRepository, 'save').mockResolvedValue({
+          ...mockReview,
+          rating: 4
+        } as Review);
+        // Mock trip rating update to fail
+        jest.spyOn(reviewRepository, 'find').mockResolvedValue([{ ...mockReview, rating: 4 }] as Review[]);
+        jest.spyOn(tripRepository, 'update').mockRejectedValue(new Error('Rating update failed'));
+
+        // Should not throw, despite rating update failure
+        const result = await service.updateReview(mockUserId, mockReviewId, updateDto);
+        
+        expect(result).toBeDefined();
+        expect(result.rating).toBe(4);
+      });
+    });
+  });
+
+  // Profanity Filter Utility Tests
+  describe('ProfanityFilter Utility', () => {
+    it('should detect profanity in text', () => {
+      expect(ProfanityFilter.containsProfanity('This is damn bad')).toBe(true);
+      expect(ProfanityFilter.containsProfanity('This is great')).toBe(false);
+      expect(ProfanityFilter.containsProfanity('')).toBe(false);
+      expect(ProfanityFilter.containsProfanity(null)).toBe(false);
+    });
+
+    it('should filter profanity with asterisks', () => {
+      expect(ProfanityFilter.filterProfanity('This is damn bad')).toBe('This is **** bad');
+      expect(ProfanityFilter.filterProfanity('This is great')).toBe('This is great');
+      expect(ProfanityFilter.filterProfanity('')).toBe('');
+    });
+
+    it('should provide comprehensive profanity analysis', () => {
+      const result = ProfanityFilter.analyzeProfanity('This damn thing is shit');
+      
+      expect(result.hasProfanity).toBe(true);
+      expect(result.filteredText).toBe('This **** thing is ****');
+      expect(result.originalText).toBe('This damn thing is shit');
+    });
+
+    it('should handle case-insensitive profanity detection', () => {
+      expect(ProfanityFilter.containsProfanity('This is DAMN bad')).toBe(true);
+      expect(ProfanityFilter.filterProfanity('This is DAMN bad')).toBe('This is **** bad');
     });
   });
 });

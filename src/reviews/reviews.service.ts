@@ -20,6 +20,7 @@ import {
   ReviewsListResponseDto, 
   ReviewStatsResponseDto 
 } from './dto/review-response.dto';
+import { ProfanityFilter } from './utils/profanity-filter.util';
 
 @Injectable()
 export class ReviewsService {
@@ -70,14 +71,47 @@ export class ReviewsService {
       throw new BadRequestException('Can only review after trip completion');
     }
 
-    // Check if review already exists for this booking (1 booking → 1 review constraint)
+    // B4 Safety: Enhanced duplicate checking with detailed logging
     const existingReview = await this.reviewRepository.findOne({
-      where: { bookingId }
+      where: { bookingId },
+      relations: ['user']
     });
 
     if (existingReview) {
-      throw new ConflictException('Review already exists for this booking');
+      this.logger.warn(
+        `Duplicate review attempt blocked - Booking: ${bookingId}, User: ${userId}, ` +
+        `Existing review: ${existingReview.id} by user: ${existingReview.userId}`
+      );
+      throw new ConflictException(
+        'Review already exists for this booking. Each booking can only have one review.'
+      );
     }
+
+    // B4 Safety: Basic profanity filtering (optional)
+    let filteredComment = comment;
+    if (comment) {
+      const profanityAnalysis = ProfanityFilter.analyzeProfanity(comment);
+      
+      if (profanityAnalysis.hasProfanity) {
+        // Log profanity attempt
+        this.logger.warn(
+          `Profanity detected in review comment - User: ${userId}, Booking: ${bookingId}, ` +
+          `Original length: ${comment.length}, Filtered: ${profanityAnalysis.filteredText.length}`
+        );
+        
+        // Use filtered comment
+        filteredComment = profanityAnalysis.filteredText;
+        
+        // Optional: Could throw error instead of filtering
+        // throw new BadRequestException('Comment contains inappropriate content');
+      }
+    }
+
+    // B4 Safety: Log review creation attempt
+    this.logger.log(
+      `Creating review - User: ${userId}, Booking: ${bookingId}, Trip: ${booking.tripId}, ` +
+      `Rating: ${rating}, Has comment: ${!!filteredComment}`
+    );
 
     // B2 Requirement: Save review
     const review = this.reviewRepository.create({
@@ -85,15 +119,50 @@ export class ReviewsService {
       tripId: booking.tripId,
       bookingId,
       rating,
-      comment: comment || null
+      comment: filteredComment || null
     });
 
-    const savedReview = await this.reviewRepository.save(review);
+    let savedReview: Review;
+    try {
+      savedReview = await this.reviewRepository.save(review);
+      
+      // B4 Safety: Log successful creation
+      this.logger.log(
+        `Review created successfully - ID: ${savedReview.id}, User: ${userId}, ` +
+        `Booking: ${bookingId}, Rating: ${rating}`
+      );
+    } catch (error) {
+      // B4 Safety: Handle database constraint violations
+      if (error.code === '23505') { // PostgreSQL unique violation
+        this.logger.error(
+          `Database constraint violation - duplicate review attempt - User: ${userId}, ` +
+          `Booking: ${bookingId}, Error: ${error.message}`
+        );
+        throw new ConflictException(
+          'Review already exists for this booking. Database constraint prevented duplicate.'
+        );
+      }
+      
+      // B4 Safety: Log unexpected errors
+      this.logger.error(
+        `Failed to create review - User: ${userId}, Booking: ${bookingId}, ` +
+        `Error: ${error.message}`, error.stack
+      );
+      throw error;
+    }
 
     // B2 Requirement: Update trip average rating
-    await this.updateTripAverageRating(booking.tripId);
-
-    this.logger.log(`Review created: ${savedReview.id} for booking ${bookingId} by user ${userId}`);
+    try {
+      await this.updateTripAverageRating(booking.tripId);
+      this.logger.log(`Trip rating updated for trip: ${booking.tripId} after review: ${savedReview.id}`);
+    } catch (error) {
+      // B4 Safety: Log rating update failures but don't fail the whole operation
+      this.logger.error(
+        `Failed to update trip rating - Trip: ${booking.tripId}, Review: ${savedReview.id}, ` +
+        `Error: ${error.message}`, error.stack
+      );
+      // Continue - review creation succeeded, rating update can be retried
+    }
 
     return this.mapToResponseDto(savedReview);
   }
@@ -228,20 +297,61 @@ export class ReviewsService {
     // Update fields
     if (updateReviewDto.rating !== undefined) {
       review.rating = updateReviewDto.rating;
+      this.logger.log(`Review rating updated: ${reviewId} - Old: ${review.rating}, New: ${updateReviewDto.rating}`);
     }
     
     if (updateReviewDto.comment !== undefined) {
-      review.comment = updateReviewDto.comment || null;
+      let updatedComment = updateReviewDto.comment || null;
+      
+      // B4 Safety: Apply profanity filtering to updated comment
+      if (updatedComment) {
+        const profanityAnalysis = ProfanityFilter.analyzeProfanity(updatedComment);
+        
+        if (profanityAnalysis.hasProfanity) {
+          // Log profanity attempt
+          this.logger.warn(
+            `Profanity detected in review update - Review: ${reviewId}, User: ${userId}, ` +
+            `Original length: ${updatedComment.length}, Filtered: ${profanityAnalysis.filteredText.length}`
+          );
+          
+          // Use filtered comment
+          updatedComment = profanityAnalysis.filteredText;
+        }
+      }
+      
+      review.comment = updatedComment;
+      this.logger.log(`Review comment updated: ${reviewId} - Has comment: ${!!updatedComment}`);
     }
 
-    const updatedReview = await this.reviewRepository.save(review);
+    let updatedReview: Review;
+    try {
+      updatedReview = await this.reviewRepository.save(review);
+      
+      this.logger.log(
+        `Review updated successfully - ID: ${reviewId}, User: ${userId}, ` +
+        `Rating changed: ${updateReviewDto.rating !== undefined}, Comment changed: ${updateReviewDto.comment !== undefined}`
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to update review - ID: ${reviewId}, User: ${userId}, ` +
+        `Error: ${error.message}`, error.stack
+      );
+      throw error;
+    }
 
     // Update trip average rating if rating was changed
     if (updateReviewDto.rating !== undefined) {
-      await this.updateTripAverageRating(review.tripId);
+      try {
+        await this.updateTripAverageRating(review.tripId);
+        this.logger.log(`Trip rating updated for trip: ${review.tripId} after review update: ${reviewId}`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to update trip rating after review update - Trip: ${review.tripId}, Review: ${reviewId}, ` +
+          `Error: ${error.message}`, error.stack
+        );
+        // Continue - review update succeeded, rating update can be retried
+      }
     }
-
-    this.logger.log(`Review updated: ${reviewId} by user ${userId}`);
 
     return this.mapToResponseDto(updatedReview);
   }
