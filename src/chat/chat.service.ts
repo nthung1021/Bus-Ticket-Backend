@@ -80,4 +80,11 @@ export class ChatService {
   getHistory(conversationId: string) {
     return this.msgRepo.find({ where: { conversation: { id: conversationId } }, order: { createdAt: 'ASC' } });
   }
+
+  async deleteHistory(conversationId: string) {
+    // Delete messages belonging to the conversation, then delete the conversation
+    await this.msgRepo.createQueryBuilder().delete().where('"conversationId" = :id', { id: conversationId }).execute();
+    await this.convRepo.delete(conversationId);
+    return { deleted: true, conversationId };
+  }
 }
