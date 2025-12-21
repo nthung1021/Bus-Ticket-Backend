@@ -54,8 +54,7 @@ export class ChatService {
     let aiResponseText = '';
     try {
       const aiRes = await this.aiService.invoke(llmInput);
-      const raw = aiRes?.content ?? aiRes;
-      aiResponseText = typeof raw === 'string' ? raw : JSON.stringify(raw);
+      aiResponseText = (aiRes ? JSON.parse(aiRes) : { content: '' }).content;
     } catch (err) {
       this.logger.error('AI call failed', err as any);
       aiResponseText = 'Error: failed to get response from AI';

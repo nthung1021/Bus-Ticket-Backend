@@ -396,7 +396,6 @@ export class TripsService {
 
   // GET /trips/search 
   async search(dto: SearchTripsDto) {
-    console.log("trips.service.ts", "search function called");
     const page = dto.page || 1;
     const limit = Math.min(dto.limit || 20, 100);
     const offset = (page - 1) * limit;
@@ -410,22 +409,27 @@ export class TripsService {
 
     // Required: origin/destination/date - assume route has origin/destination,
     // trip has departureTime (timestamp)
-    qb.andWhere('LOWER(route.origin) = LOWER(:origin)', { origin: dto.origin.trim() });
-    qb.andWhere('LOWER(route.destination) = LOWER(:destination)', { destination: dto.destination.trim() });
+    if (dto.origin) {
+      qb.andWhere('LOWER(route.origin) = LOWER(:origin)', { origin: dto?.origin?.trim() });
+    }
+    if (dto.destination) {
+      qb.andWhere('LOWER(route.destination) = LOWER(:destination)', { destination: dto?.destination?.trim() });
+    }
 
-    // date filter: trips whose departure date = dto.date (timezone note: store timestamps in UTC)
-    // We compare date part by bounding between start and end of the day in UTC or DB timezone.
-    const startDate = new Date(dto.date);
-    startDate.setUTCHours(0, 0, 0, 0);
-    const startOfDay = startDate.toISOString();
-    // console.log(startOfDay);
-    const endDate = new Date(dto.date);
-    endDate.setUTCHours(23, 59, 59, 999);
-    const endOfDay = endDate.toISOString();
-    // console.log(endOfDay);
-    qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
+    if( dto.date ) {
 
-
+      // date filter: trips whose departure date = dto.date (timezone note: store timestamps in UTC)
+      // We compare date part by bounding between start and end of the day in UTC or DB timezone.
+      const startDate = new Date(dto?.date);
+      startDate.setUTCHours(0, 0, 0, 0);
+      const startOfDay = startDate.toISOString();
+      // console.log(startOfDay);
+      const endDate = new Date(dto?.date);
+      endDate.setUTCHours(23, 59, 59, 999);
+      const endOfDay = endDate.toISOString();
+      // console.log(endOfDay);
+      qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
+    }
 
     // optional filters
     if (dto.busType) {
