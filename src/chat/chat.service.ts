@@ -53,7 +53,7 @@ export class ChatService {
 
     let aiResponseText = '';
     try {
-      const aiRes = await this.aiService.llm.invoke(llmInput);
+      const aiRes = await this.aiService.invoke(llmInput);
       const raw = aiRes?.content ?? aiRes;
       aiResponseText = typeof raw === 'string' ? raw : JSON.stringify(raw);
     } catch (err) {
