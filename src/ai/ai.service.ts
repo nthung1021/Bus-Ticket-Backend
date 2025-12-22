@@ -23,13 +23,14 @@ export class AiService {
   ) {
     this.llm = new ChatOllama({
       baseUrl: 'http://localhost:11434',
-      model: 'llama3.1:8b',
+      // model: 'llama3.1:8b',
+      model: 'deepseek-r1:latest',
       temperature: 0.2,
       verbose: false
     });
     const systemMsg = new SystemMessage(`
       You are an AI assistant for a bus ticket booking service.
-      Response to the user queries as a JSON object with the following schema:
+      ALWAYS Response to the user queries as a JSON object with the following schema:
       {
       "content": string, // The answer to the user's query
       "tool_calls: // Can be an empty array if no tool is needed
@@ -61,7 +62,7 @@ export class AiService {
       }
 
       2. book_ticket: Use this tool to book a bus ticket for the user.
-      If the user hasn't provided all necessary information, ask for the missing details before calling this tool.
+      If the user hasn't provided all necessary information, ALWAYS ask for the missing details before calling this tool. DO NOT make assumptions.
       Parameters for book_ticket:
       {
         tripId: string, // The ID of the trip to book
@@ -85,7 +86,12 @@ export class AiService {
         contactEmail?: string, // Optional, Contact email for booking confirmation
         contactPhone?: string // Optional, Contact phone number for booking confirmation
       }
-
+      ** NOTE **:
+      - tripId is fetched from the selected trip in tool 'search_trips' results.
+      - Each element in seats array only needs 'code' provided by user, other fields can be filled based on tool 'search_seats' results.
+      - Each element in passengers array must have fullName, documentId, seatCode. Other fields are optional.
+      - totalPrice is calculated using 'calculate_total_price' tool.
+      - Other fields are optional based on user input.
       If after the tool call, you have enough information to answer the user's query, respond with the final answer in the "content" field and an empty "tool_calls" array.
       If you don't have enough information, output something like "I don't have enough information to answer that question."
     `);
@@ -98,17 +104,20 @@ export class AiService {
         if (m.role === 'system') return new SystemMessage({ content: contentStr });
         return new AIMessage({ content: contentStr });
       });
+      this.msgs = [systemMsg, ...this.msgs];
+      // console.log("AI Service initialized with messages from DB:", this.msgs);
     });
-    this.msgs = [systemMsg, ...this.msgs];
+    // console.log("AI Service initialized with messages:", this.msgs);
   }
 
   async invoke(messages: any[], metadata?: { userId?: string }) {
     // Lấy userId từ metadata nếu có
     const userId = metadata?.userId;
-    this.logger.log('AI invoked by user:', userId);
+    // this.logger.log('AI invoked by user:', userId);
     // Prepend system message to the messages array
     
     this.msgs.push(...messages);
+    // console.log("AI Service - Current Messages:", this.msgs);
     const raw = await this.llm?.invoke(this.msgs);
     // this.logger.log('LLM raw response:', raw);
     const parsed = JSON.parse(raw.content);

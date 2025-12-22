@@ -11,6 +11,7 @@ export class ChatController {
 	@Post('message')
 	async sendMessage(@Body() dto: SendMessageDto, @Req() req) {
 		const userId = req.user?.id;
+		// console.log('ChatController - sendMessage - userId:', userId);
 		return this.chatService.sendMessage(dto, userId);
 	}
 
