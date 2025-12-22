@@ -1,0 +1,17 @@
+{
+  "content": "You have two options for trips:\nTrip 1: Departing from Ho Chi Minh on December 13th at 17:00, arriving in Nha Trang on December 14th at 13:00. The base price is 20 VND.\nTrip 2: Departing from Ho Chi Minh on December 14th at 17:00, arriving in Nha Trang on December 15th at 13:00. The base price is 2000 VND.",
+  "tool_calls": [
+    {
+      "tool_name": "search_seat_statuses",
+      "parameters": {
+        "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395"
+      }
+    },
+    {
+      "tool_name": "search_seat_statuses",
+      "parameters": {
+        "tripId": "9d41d498-cdf5-433b-8d17-88cb7989c88e"
+      }
+    }
+  ]
+}

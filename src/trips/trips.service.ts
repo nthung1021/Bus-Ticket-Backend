@@ -407,9 +407,8 @@ export class TripsService {
       .leftJoinAndSelect('trip.bus', 'bus')
       .leftJoinAndSelect('bus.operator', 'operator');
 
-    // Required: origin/destination/date - assume route has origin/destination,
-    // trip has departureTime (timestamp)
     if (dto.origin) {
+      // console.log("Filtering by origin:", dto.origin);
       qb.andWhere('LOWER(route.origin) = LOWER(:origin)', { origin: dto?.origin?.trim() });
     }
     if (dto.destination) {
