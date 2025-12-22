@@ -14,6 +14,7 @@ import { RefreshToken } from '../entities/refresh-token.entity';
 import * as bcrypt from 'bcrypt';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
+import { SendOtpDto, VerifyOtpDto } from './dto/phone-otp.dto';
 
 // Enhanced Google profile type with provider mapping
 type GoogleProfile = {
@@ -36,6 +37,9 @@ type FacebookProfile = {
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  
+  // DEV/DEMO OTP storage - In production, use Redis or database with TTL
+  private readonly otpStore = new Map<string, { otp: string; expiresAt: Date; attempts: number }>();
 
   constructor(
     @InjectRepository(User)
@@ -256,6 +260,11 @@ export class AuthService {
       throw new BadRequestException('Invalid credentials');
     }
 
+    // Handle phone-only users who don't have passwords
+    if (!user.passwordHash) {
+      throw new BadRequestException('Invalid credentials - phone users should use OTP login');
+    }
+    
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       throw new BadRequestException('Invalid credentials');
@@ -271,7 +280,7 @@ export class AuthService {
         refreshToken,
         user: {
           userId: user.id,
-          email: user.email,
+          email: user.email || '',
           fullName: user.name,
           role: user.role,
         },
@@ -317,7 +326,7 @@ export class AuthService {
           refreshToken: tokens.refreshToken,
           user: {
             userId: user.id,
-            email: user.email,
+            email: user.email || '',
             fullName: user.name,
             role: user.role,
           },
@@ -337,7 +346,7 @@ export class AuthService {
     const accessToken = this.jwtService.sign(
       {
         sub: user.id,
-        email: user.email,
+        email: user.email || '',
         fullName: user.name,
         role: user.role,
       },
@@ -373,5 +382,123 @@ export class AuthService {
     await this.refreshTokenRepository.save(tokenEntity);
 
     return { accessToken, refreshToken };
+  }
+
+  /**
+   * Phone/OTP Authentication - DEV/DEMO Mode
+   * TODO: Replace with real SMS provider for production
+   */
+
+  /**
+   * Send OTP to phone number (DEV mode - returns OTP in response)
+   */
+  async sendOtp(sendOtpDto: SendOtpDto) {
+    const { phone } = sendOtpDto;
+    
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes TTL
+    
+    // Store OTP with rate limiting
+    const existingEntry = this.otpStore.get(phone);
+    if (existingEntry && existingEntry.expiresAt > new Date()) {
+      // OTP still valid, don't generate new one yet
+      throw new BadRequestException('OTP already sent. Please wait before requesting again.');
+    }
+    
+    // Store OTP in memory (DEV mode)
+    this.otpStore.set(phone, {
+      otp,
+      expiresAt,
+      attempts: 0
+    });
+    
+    this.logger.log(`[DEV MODE] OTP generated for ${phone}: ${otp}`);
+    
+    // TODO: In production, integrate with SMS provider here
+    // await this.smsService.sendOtp(phone, otp);
+    
+    return {
+      success: true,
+      message: 'OTP sent successfully',
+      data: {
+        phone,
+        expiresAt,
+        // DEV MODE: Return OTP in response for testing
+        otp: process.env.NODE_ENV === 'development' ? otp : undefined,
+      },
+    };
+  }
+
+  /**
+   * Verify OTP and authenticate user
+   */
+  async verifyOtp(verifyOtpDto: VerifyOtpDto) {
+    const { phone, otp } = verifyOtpDto;
+    
+    // Get stored OTP
+    const storedEntry = this.otpStore.get(phone);
+    if (!storedEntry) {
+      throw new BadRequestException('OTP not found or expired. Please request a new OTP.');
+    }
+    
+    // Check expiration
+    if (storedEntry.expiresAt < new Date()) {
+      this.otpStore.delete(phone);
+      throw new BadRequestException('OTP has expired. Please request a new OTP.');
+    }
+    
+    // Rate limiting - max 3 attempts
+    if (storedEntry.attempts >= 3) {
+      this.otpStore.delete(phone);
+      throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
+    }
+    
+    // Verify OTP
+    if (storedEntry.otp !== otp) {
+      storedEntry.attempts++;
+      this.otpStore.set(phone, storedEntry);
+      throw new BadRequestException(`Invalid OTP. ${3 - storedEntry.attempts} attempts remaining.`);
+    }
+    
+    // OTP verified - clean up
+    this.otpStore.delete(phone);
+    this.logger.log(`[DEV MODE] OTP verified successfully for ${phone}`);
+    
+    // Find or create user by phone
+    let user = await this.usersRepository.findOne({ where: { phone } });
+    
+    if (!user) {
+      // Create new user with phone number
+      const userRole = this.determineUserRole(''); // Default role for phone users
+      user = this.usersRepository.create({
+        phone,
+        name: `User ${phone.slice(-4)}`, // Default name
+        role: userRole,
+        // Email is optional for phone-only users
+      });
+      
+      user = await this.usersRepository.save(user);
+      this.logger.log(`Created new user via phone auth: ${user.id}`);
+    }
+    
+    // Generate tokens using existing logic
+    const tokens = await this.generateAndStoreTokens(user);
+    
+    return {
+      success: true,
+      message: 'Phone authentication successful',
+      data: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        user: {
+          userId: user.id,
+          phone: user.phone,
+          fullName: user.name,
+          email: user.email || null,
+          role: user.role,
+        },
+      },
+    };
   }
 }

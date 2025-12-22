@@ -509,7 +509,7 @@ export class ReviewsService {
       user: review.user ? {
         id: review.user.id,
         name: review.user.name,
-        email: review.user.email
+        email: review.user.email || ''
       } : undefined,
       trip: review.trip,
       booking: review.booking

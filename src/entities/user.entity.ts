@@ -40,9 +40,12 @@ export class User {
   @Index('idx_users_facebook_id')
   facebookId: string | null;
 
-  @Column()
+  @Column({
+    type: 'varchar',
+    nullable: true,
+  })
   @Index('idx_users_email') // Email is unique but also needs index for fast lookups
-  email: string;
+  email: string | null;
 
   @Column()
   @Index('idx_users_name')
@@ -52,8 +55,8 @@ export class User {
   @Index('idx_users_phone')
   phone: string;
 
-  @Column({ name: 'password_hash' })
-  passwordHash: string;
+  @Column({ name: 'password_hash', nullable: true })
+  passwordHash: string | null;
 
   @Column({
     type: 'enum',

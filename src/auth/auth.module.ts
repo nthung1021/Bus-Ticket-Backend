@@ -32,7 +32,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     JwtAuthGuard,
     JwtConfigService,
     GoogleStrategy,
-    FacebookStrategy,
+    // FacebookStrategy, // Temporarily disabled for OTP testing
   ],
   exports: [
     PassportModule,

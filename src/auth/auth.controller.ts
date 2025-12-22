@@ -16,6 +16,7 @@ import { AuthService } from './auth.service';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { SendOtpDto, VerifyOtpDto } from './dto/phone-otp.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 
@@ -215,6 +216,49 @@ export class AuthController {
     return {
       success: true,
       message: 'Logged out successfully',
+    };
+  }
+
+  /**
+   * Phone/OTP Authentication Endpoints - DEV/DEMO Mode
+   */
+
+  @Post('phone/send-otp')
+  @HttpCode(HttpStatus.OK)
+  async sendOtp(@Body() sendOtpDto: SendOtpDto) {
+    this.logger.log(`[DEV MODE] Sending OTP to phone: ${sendOtpDto.phone}`);
+    return this.authService.sendOtp(sendOtpDto);
+  }
+
+  @Post('phone/verify-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyOtp(
+    @Body() verifyOtpDto: VerifyOtpDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    this.logger.log(`[DEV MODE] Verifying OTP for phone: ${verifyOtpDto.phone}`);
+    
+    const response = await this.authService.verifyOtp(verifyOtpDto);
+
+    const cookieOptions = this.getCookieOptions();
+
+    // Set HTTP-only cookies for both tokens
+    res.cookie('access_token', response.data.accessToken, {
+      ...cookieOptions,
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
+    res.cookie('refresh_token', response.data.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    // Return user data without tokens (same pattern as email/password login)
+    return {
+      success: true,
+      message: response.message,
+      data: {
+        user: response.data.user,
+      },
     };
   }
 }
