@@ -31,9 +31,7 @@ export class AiService {
       // model: 'deepseek-r1:latest',
       temperature: 0,
       verbose: false,
-      think: false,
-      keepAlive: "0s",
-      
+      think: false,      
     });
     const systemMsg = new SystemMessage(`
       You are an AI assistant for a bus ticket booking service.

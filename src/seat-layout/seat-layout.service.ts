@@ -115,6 +115,14 @@ export class SeatLayoutService {
       id: createdSeats[index].id,
     }));
 
+    // Add seat status objects for each seat
+    for (const seat of updatedSeats) {
+      await this.seatStatusRepository.save({
+        seatId: seat.id,
+        status: 'available', // or your default status value
+      });
+    }
+
     const seatLayout = this.seatLayoutRepository.create({
       busId: createFromTemplateDto.busId,
       layoutType: createFromTemplateDto.layoutType,

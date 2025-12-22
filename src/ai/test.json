@@ -1,17 +1,102 @@
-{
-  "content": "You have two options for trips:\nTrip 1: Departing from Ho Chi Minh on December 13th at 17:00, arriving in Nha Trang on December 14th at 13:00. The base price is 20 VND.\nTrip 2: Departing from Ho Chi Minh on December 14th at 17:00, arriving in Nha Trang on December 15th at 13:00. The base price is 2000 VND.",
-  "tool_calls": [
-    {
-      "tool_name": "search_seat_statuses",
-      "parameters": {
-        "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395"
-      }
+[
+  {
+    "id": "f790598d-ecc2-4536-af33-380b1509ff43",
+    "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
+    "seatId": "663e90bc-1ae4-4a34-a17b-378a77275676",
+    "bookingId": null,
+    "state": "available",
+    "lockedUntil": null,
+    "trip": {
+      "id": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
+      "routeId": "d18b012a-adc2-4cbb-b376-b69915c9f058",
+      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
+      "departureTime": "2025-12-13T17:00:00.000Z",
+      "arrivalTime": "2025-12-14T13:00:00.000Z",
+      "basePrice": 20,
+      "status": "scheduled"
     },
-    {
-      "tool_name": "search_seat_statuses",
-      "parameters": {
-        "tripId": "9d41d498-cdf5-433b-8d17-88cb7989c88e"
-      }
-    }
-  ]
-}
+    "seat": {
+      "id": "663e90bc-1ae4-4a34-a17b-378a77275676",
+      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
+      "seatCode": "1A",
+      "seatType": "business",
+      "isActive": true
+    },
+    "booking": null
+  },
+  {
+    "id": "0317835e-3b42-4c13-af7d-3d43c38ba10f",
+    "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
+    "seatId": "663e90bc-1ae4-4a34-a17b-378a77275676",
+    "bookingId": null,
+    "state": "available",
+    "lockedUntil": null,
+    "trip": {
+      "id": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
+      "routeId": "d18b012a-adc2-4cbb-b376-b69915c9f058",
+      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
+      "departureTime": "2025-12-13T17:00:00.000Z",
+      "arrivalTime": "2025-12-14T13:00:00.000Z",
+      "basePrice": 20,
+      "status": "scheduled"
+    },
+    "seat": {
+      "id": "663e90bc-1ae4-4a34-a17b-378a77275676",
+      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
+      "seatCode": "1A",
+      "seatType": "business",
+      "isActive": true
+    },
+    "booking": null
+  },
+  {
+    "id": "fa2e9f25-5947-4197-88b5-8a26d8d34369",
+    "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
+    "seatId": "bd41d182-1148-4409-8b88-b1009477daf8",
+    "bookingId": null,
+    "state": "available",
+    "lockedUntil": null,
+    "trip": {
+      "id": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
+      "routeId": "d18b012a-adc2-4cbb-b376-b69915c9f058",
+      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
+      "departureTime": "2025-12-13T17:00:00.000Z",
+      "arrivalTime": "2025-12-14T13:00:00.000Z",
+      "basePrice": 20,
+      "status": "scheduled"
+    },
+    "seat": {
+      "id": "bd41d182-1148-4409-8b88-b1009477daf8",
+      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
+      "seatCode": "2B",
+      "seatType": "business",
+      "isActive": true
+    },
+    "booking": null
+  },
+  {
+    "id": "daf88aa4-e63c-4ada-845c-90ebc5cb6da7",
+    "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
+    "seatId": "bd41d182-1148-4409-8b88-b1009477daf8",
+    "bookingId": null,
+    "state": "available",
+    "lockedUntil": null,
+    "trip": {
+      "id": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
+      "routeId": "d18b012a-adc2-4cbb-b376-b69915c9f058",
+      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
+      "departureTime": "2025-12-13T17:00:00.000Z",
+      "arrivalTime": "2025-12-14T13:00:00.000Z",
+      "basePrice": 20,
+      "status": "scheduled"
+    },
+    "seat": {
+      "id": "bd41d182-1148-4409-8b88-b1009477daf8",
+      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
+      "seatCode": "2B",
+      "seatType": "business",
+      "isActive": true
+    },
+    "booking": null
+  }
+]
