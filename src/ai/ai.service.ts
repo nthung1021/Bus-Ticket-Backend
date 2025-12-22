@@ -52,6 +52,7 @@ export class AiService {
       }
       You MUST ALWAYS use human's input language in your response.
       You MUST put your thinking process in the "thinking" field.
+      If a booking requires payment and a payment link is available, you MUST include a clear, clickable payment URL in your response so the user can click to complete payment. Provide the link both inside 'content' and as a 'payment_url' field in the JSON output when applicable.
       You CAN use multiple tools in a single response if needed.
       You MUST NEVER assume any information about the user or their request that is not explicitly provided by the user. For example: if the user does not provide seat codes, you MUST NOT assume any seat codes. Ask the user for more details if needed.
       DO NOT include code comments. For example, do NOT include '//' or '/* ... */' in your response.
@@ -350,7 +351,16 @@ export class AiService {
             try {
               const bookingResult = await this.bookingService.createBooking(bookingUserId, bookingParams);
               this.logger.log('AI Service - Booking Result: ' + JSON.stringify(bookingResult));
-              const aiMsg = new HumanMessage(JSON.stringify({ content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}` }));
+              // If bookingResult contains a paymentUrl, include it explicitly so the AI can present it to the user
+              const messageObj: any = {
+                content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}`,
+              };
+              if ((bookingResult as any).paymentUrl) {
+                messageObj.payment_url = (bookingResult as any).paymentUrl;
+                // also append a short instruction to content for clarity
+                messageObj.content += `\n\nClick here to complete payment: ${(bookingResult as any).paymentUrl}`;
+              }
+              const aiMsg = new HumanMessage(JSON.stringify(messageObj));
               this.msgs.push(aiMsg);
             } catch (err) {
               const aiMsg = new HumanMessage(JSON.stringify({ content: `Booking failed: ${err?.message || String(err)}` }));

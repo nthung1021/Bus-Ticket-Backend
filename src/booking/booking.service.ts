@@ -177,7 +177,7 @@ export class BookingService {
         bookingReference,
         tripId,
         totalAmount: finalTotal,
-        status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
+        status: BookingStatus.PENDING, // Set to PENDING
       };
 
       if (!isGuestCheckout && userId) {
@@ -225,8 +225,33 @@ export class BookingService {
         }
       }
 
-      // 9. Set expiration time (null for PAID bookings, they don't expire)
-      const expirationTimestamp = null; // PAID bookings don't need expiration
+      // 9. Set expiration time: pending bookings expire after 15 minutes
+      let expirationTimestamp: Date | null = null;
+      if (savedBooking.status === BookingStatus.PENDING && savedBooking.bookedAt) {
+        expirationTimestamp = new Date(savedBooking.bookedAt.getTime() + 15 * 60 * 1000);
+      }
+
+      // 9b. Generate payment URL for pending bookings using PayOS helper (lazy require to avoid circular deps in tests)
+      let paymentUrl: string | null = null;
+      if (savedBooking.status === BookingStatus.PENDING) {
+        try {
+          // dynamic import to avoid modifying module graph heavily
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { PayosService } = require('../payment/payos.service');
+          const payos = new PayosService();
+          paymentUrl = await payos.createPaymentUrl({
+            amount: savedBooking.totalAmount,
+            orderId: savedBooking.bookingReference || savedBooking.id,
+            description: `Payment for booking ${savedBooking.bookingReference || savedBooking.id}`,
+            contactEmail: bookingData.contactEmail,
+            contactPhone: bookingData.contactPhone,
+          });
+        } catch (err) {
+          // Log but do not fail booking creation if payment URL generation fails
+          this.logger.error('Failed to generate payment URL: ' + String(err));
+          paymentUrl = null;
+        }
+      }
 
       // 10. Prepare response
       return {
@@ -237,6 +262,7 @@ export class BookingService {
         status: savedBooking.status,
         bookedAt: savedBooking.bookedAt,
         expirationTimestamp,
+        paymentUrl,
         passengers: savedPassengers.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
