@@ -71,6 +71,37 @@ export class BookingService {
     return `${prefix}${datePart}-${randomPart()}`;
   }
 
+  /**
+   * Calculate total price for a booking.
+   * Pricing model:
+   *  - `tripBasePrice` (if provided) is treated as the base fare per seat.
+   *  - Each `seat.price` is treated as a supplement (can be 0).
+   *  - subtotal = sum((tripBasePrice || 0) + (seat.price || 0)) for each seat
+   *  - serviceFee: flat fee applied once
+   *  - taxPercent: percentage applied to subtotal (before serviceFee)
+   *  - discount: flat discount applied at the end
+   */
+  async calculateTotalPrice(
+    seats: Array<{ price: number }>,
+    options?: { tripBasePrice?: number; serviceFee?: number; taxPercent?: number; discount?: number },
+  ): Promise<number> {
+    const tripBase = options?.tripBasePrice ?? 0;
+
+    const subtotal = (seats || []).reduce((s, seat) => {
+      const seatPrice = seat?.price ?? 0;
+      return s + seatPrice;
+    }, 0);
+
+    const serviceFee = options?.serviceFee ?? 0;
+    const tax = ((options?.taxPercent ?? 0) / 100) * subtotal;
+    const discount = options?.discount ?? 0;
+
+    const total = subtotal + tripBase + serviceFee + tax - discount;
+
+    // Ensure non-negative and round to nearest integer (VND)
+    return Math.max(0, Math.round(total));
+  }
+
   async createBooking(userId: string | null, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
     const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
 
@@ -135,10 +166,17 @@ export class BookingService {
 
       // 6. Create booking with PAID status since payment is bypassed
       const bookingReference = await this.generateBookingReference();
+
+      // If client did not provide `totalPrice`, calculate it using trip.basePrice + seat supplements
+      let finalTotal = totalPrice;
+      if (finalTotal == null) {
+        finalTotal = await this.calculateTotalPrice(seats, { tripBasePrice: trip.basePrice });
+      }
+
       const bookingData: any = {
         bookingReference,
         tripId,
-        totalAmount: totalPrice,
+        totalAmount: finalTotal,
         status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
       };
 

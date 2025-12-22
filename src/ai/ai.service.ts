@@ -6,6 +6,7 @@ import { BookingService } from 'src/booking/booking.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Message } from '../chat/entities/message.entity';
 import { Repository } from 'typeorm';
+import { Seat } from '../entities/seat.entity';
 import { push } from 'langchain/hub';
 
 @Injectable()
@@ -20,6 +21,8 @@ export class AiService {
     private readonly bookingService: BookingService,
     @InjectRepository(Message)
     private readonly msgRepo: Repository<Message>,
+    @InjectRepository(Seat)
+    private readonly seatRepo: Repository<Seat>,
   ) {
     this.llm = new ChatOllama({
       baseUrl: 'http://localhost:11434',
@@ -60,8 +63,22 @@ export class AiService {
         page: number, // Optional, Pagination page number
         limit: number // Optional, Number of results per page
       }
-
-      2. book_ticket: Use this tool to book a bus ticket for the user.
+      2. search_seats: Use this tool to search for information about a seat.
+      Parameters for search_seats:
+      {
+        busId: string, // The ID of the bus
+        seatCode: string // The code of the seat
+      }
+      ** NOTE **:
+      - busId is fetched from the selected trip in tool 'search_trips' results.
+      - seatCode is provided by the user.
+      3. calculate_total_price: Use this tool to calculate the total price for a booking.
+      Parameters for calculate_total_price:
+      {
+        options: { tripBasePrice?: number; }, // The base price of the trip
+        seats: {price: number}[], // Array of seat prices
+      }
+      4. book_ticket: Use this tool to book a bus ticket for the user.
       If the user hasn't provided all necessary information, ALWAYS ask for the missing details before calling this tool. DO NOT make assumptions.
       Parameters for book_ticket:
       {
@@ -125,7 +142,7 @@ export class AiService {
       for (const toolCall of parsed.tool_calls) {
         if (toolCall.tool_name === 'search_trips') {
           const toolResult = await this.tripsService.search(toolCall.parameters);
-          console.log("AI Service - Tool Result:", toolResult); 
+          // console.log("AI Service - Tool Result:", toolResult); 
           const aiMsg = new HumanMessage(JSON.stringify({
             content: `Here are the search results: ${JSON.stringify(toolResult, null, 2 )}`,  
           }));
@@ -148,6 +165,30 @@ export class AiService {
             }));
             this.msgs.push(aiMsg);
           }
+        }
+        else if(toolCall.tool_name === 'search_seats') {
+          const { busId, seatCode } = toolCall.parameters || {};
+          if (!busId || !seatCode) {
+            const aiMsg = new HumanMessage(JSON.stringify({ content: 'search_seats missing parameters: busId and seatCode required' }));
+            this.msgs.push(aiMsg);
+          } else {
+            try {
+              const seat = await this.seatRepo.findOne({ where: { busId, seatCode } });
+              if (seat) {
+                const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seat: ${JSON.stringify(seat)}` }));
+                this.msgs.push(aiMsg);
+              } else {
+                const aiMsg = new HumanMessage(JSON.stringify({ content: `Seat ${seatCode} not found on bus ${busId}` }));
+                this.msgs.push(aiMsg);
+              }
+            } catch (err) {
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Error searching seat: ${err.message}` }));
+              this.msgs.push(aiMsg);
+            }
+          }
+        }
+        else if(toolCall.tool_name === 'calculate_total_price') {
+          // Implement calculate_total_price tool call handling here
         }
       }
     }
