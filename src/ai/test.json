@@ -1,48 +1,127 @@
 {
-  "lc": 1,
-  "type": "constructor",
-  "id": [
-    "langchain_core",
-    "messages",
-    "AIMessage"
-  ],
-  "kwargs": {
-    "content": "",
-    "additional_kwargs": {
-      "reasoning_content": "The user wants to book a ticket from Ho Chi Minh to Nha Trang on 2025-12-22 for 1 passenger. We need to search trips. Use search_trips with origin: 'Ho Chi Minh', destination: 'Nha Trang', date: '2025-12-22', passengers: 1. Then we need to present options. We should call search_trips."
-    },
-    "tool_calls": [
-      {
-        "name": "search_trips",
-        "args": {
-          "date": "2025-12-22",
-          "destination": "Nha Trang",
-          "origin": "Ho Chi Minh",
-          "passengers": 1
-        },
-        "id": "c4573ae1-3983-48af-a785-1e5cbd1d2743",
-        "type": "tool_call"
+  "thinking": "The user wants to add two more seats (2B and 3A) for two passengers (Nguyễn Tuấn Minh and Nguyễn Trọng Nhân) and wants a payment link. I need to first confirm the trip details and then use the `book_ticket` tool to add these seats to the existing booking or create a new one if necessary. However, the previous turn indicated that seats 2A and 1B were already added to booking BK20251222-VF4JJB and were awaiting payment. The user's request to add seats 2B and 3A for Nguyễn Tuấn Minh and Nguyễn Trọng Nhân seems to imply adding to the existing booking or creating a new one. Since Nguyễn Trọng Nhân already has a seat (1B) in the pending booking, I need to clarify if they want to add another seat for him or if this is a new booking for different people. Also, the user provided CCCD for both, which is good. I will assume they want to add these seats to the existing booking if possible, or create a new booking if not. The previous response indicated that seats 2A and 1B were booked for Nguyễn Tuấn Minh and Nguyễn Trọng Nhân, and the total price was 4000 VND. Now they want to add 2B and 3A. I need to call `search_trips` to get the trip details again to calculate the price for the new seats and then potentially update the booking or create a new one. However, I don't have the `tripId` from the previous `search_trips` call. I will first try to book the new seats and then provide a payment link. I need to know if these seats are for the same trip. Assuming it's the same trip from Ho Chi Minh to Nha Trang on 2025-12-22. I will use the `book_ticket` tool to add these seats. I need to know which seat belongs to whom. The user said 'Nguyễn Tuấn Minh(CCCD 111111111) and Nguyễn Trọng Nhân(CCCD 222222222222). Ghế 2B và 3A.' I will assign 2B to Nguyễn Tuấn Minh and 3A to Nguyễn Trọng Nhân. I also need the `tripId`. Since I don't have it, I will have to assume it's the same trip and try to book. If it fails, I will ask the user to search for trips again.
+
+Let's re-evaluate. The user wants to add seats 2B and 3A for Nguyễn Tuấn Minh (CCCD 111111111) and Nguyễn Trọng Nhân (CCCD 222222222222). The previous booking BK20251222-VF4JJB had seats 2A and 1B for these two people, and was awaiting payment. It's unclear if the user wants to add these *new* seats (2B, 3A) to the *existing* pending booking (BK20251222-VF4JJB) or create a *new* booking. Given the phrasing "Đặt thêm ghế" (Add more seats), it's likely they want to add to the existing booking. However, the `book_ticket` tool doesn't support adding seats to an existing booking directly. It's for booking a new ticket.
+
+Therefore, the best approach is to:
+1.  Acknowledge the request to add seats 2B and 3A for Nguyễn Tuấn Minh and Nguyễn Trọng Nhân.
+2.  Clarify if they want to create a *new* booking for these two seats, or if they want to modify the existing pending booking (BK20251222-VF4JJB) which already has seats 2A and 1B.
+3.  If they want to create a new booking, I will need to search for the trip again to get the `tripId` and then use `book_ticket`.
+4.  If they want to modify the existing booking, I need to inform them that modification isn't directly supported and they might need to cancel the pending one and rebook all seats.
+
+Given the user asked for a payment link for the *new* seats, it implies a new transaction or an updated total for the existing pending booking. The `book_ticket` tool is for booking, not modifying.
+
+Let's assume the user wants to book these two additional seats as a *new* booking, and then they will pay for both bookings separately or I need to combine the payment if possible (which the tool doesn't support directly).
+
+I need the `tripId` to book. I don't have it. I will first search for the trip again.
+Origin: Ho Chi Minh
+Destination: Nha Trang
+Date: 2025-12-22
+Passengers: 2 (for these new seats)
+
+After getting the `tripId`, I will call `book_ticket`.
+Seats:
+- Seat 2B for Nguyễn Tuấn Minh (CCCD 111111111)
+- Seat 3A for Nguyễn Trọng Nhân (CCCD 222222222222)
+
+I will need to calculate the total price for these two seats using `calculate_total_price` before calling `book_ticket`. However, `calculate_total_price` requires `tripBasePrice` and seat prices, which I don't have from a `search_trips` call in this turn.
+
+Let's try to use `search_trips` first to get the `tripId` and price information.
+Since the user is asking to add seats, and the previous booking was for 2 people, and now they are asking for 2 more seats for the same people (or at least one of them), it's confusing.
+
+Let's assume the user wants to book *two more seats* for the *same trip*.
+I will search for the trip again to get the `tripId` and price.
+Then I will call `book_ticket` for these two new seats.
+After booking, I will provide a payment link for this *new* booking.
+
+The previous booking was BK20251222-VF4JJB for seats 2A and 1B.
+Now they want seats 2B and 3A for Nguyễn Tuấn Minh (CCCD 111111111) and Nguyễn Trọng Nhân (CCCD 222222222222).
+
+It's possible they want to add these seats to the *same trip*.
+I need to get the `tripId` for the trip from Ho Chi Minh to Nha Trang on 2025-12-22.
+I will use `search_trips` for this.
+I will assume `passengers=2` for this search, as they are booking 2 seats.
+I will not specify `departureTime`, `minPrice`, `maxPrice` for now, to get a general list.
+Then I will need to extract the `tripId` and seat prices from the search results to call `book_ticket`.
+
+Let's assume the first trip found by `search_trips` is the one they want.
+I will need to extract `tripId` and `tripBasePrice` from the `search_trips` result.
+Then I will need to find the prices for seats 2B and 3A. This information is usually available from `search_seats` or within the `search_trips` result if seat details are included. The `book_ticket` tool requires seat `price`.
+
+Let's try to call `search_trips` first.
+Parameters:
+origin: Ho Chi Minh
+destination: Nha Trang
+date: 2025-12-22
+passengers: 2 (for these new seats)
+
+If `search_trips` returns results, I will pick the first one, get its `tripId`, and then I will need to know the price of seats 2B and 3A. The `book_ticket` tool requires seat `price`. The `search_trips` tool definition doesn't explicitly mention returning seat prices. The `search_seats` tool takes `tripId` and returns seat information, which might include prices.
+
+So the plan is:
+1. Call `search_trips` to find the trip from Ho Chi Minh to Nha Trang on 2025-12-22.
+2. From the results, get the `tripId`.
+3. Call `search_seats` using the `tripId` to get details and prices for seats 2B and 3A.
+4. Once I have the seat prices, I will call `calculate_total_price` to get the total for these two seats.
+5. Then, I will call `book_ticket` with the `tripId`, seat details (code, type, price), passenger details (fullName, documentId, seatCode), and the calculated `totalPrice`.
+6. Finally, I will provide the payment link for this new booking.
+
+Let's start with `search_trips`.
+Origin: Ho Chi Minh
+Destination: Nha Trang
+Date: 2025-12-22
+Passengers: 2 (for these new seats)
+Departure Time: Not specified, so I'll omit it.
+Min/Max Price: Not specified.
+Page/Limit: Default or reasonable values.
+
+I will use page=1 and limit=1 for simplicity to get one trip.
+The user mentioned "Nguyễn Tuấn Minh(CCCD 111111111) and Nguyễn Trọng Nhân(CCCD 222222222222). Ghế 2B và 3A."
+I'll assign seat 2B to Nguyễn Tuấn Minh and seat 3A to Nguyễn Trọng Nhân.
+The `book_ticket` tool requires `seats` as an array of objects with `id`, `code`, `type`, `price`. I will get `code` from user input, `price` from `search_seats`, and `type` might be inferred or default to 'normal'. `id` is usually obtained from `search_seats` as well.
+
+Let's refine the plan:
+1. Call `search_trips` with origin='Ho Chi Minh', destination='Nha Trang', date='2025-12-22', passengers=2, page=1, limit=1.
+2. If successful, extract `tripId` from the first result.
+3. Call `search_seats` with the `tripId` to get details for seats 2B and 3A. I need to check if these seats are available and get their `id`, `type`, and `price`.
+4. If `search_seats` is successful and seats are available, I will have the necessary information to call `book_ticket`.
+5. Prepare the `seats` array for `book_ticket`:
+   - For seat 2B: code='2B', price=<price from search_seats>, type=<type from search_seats>, id=<id from search_seats>
+   - For seat 3A: code='3A', price=<price from search_seats>, type=<type from search_seats>, id=<id from search_seats>
+6. Prepare the `passengers` array for `book_ticket`:
+   - For Nguyễn Tuấn Minh: fullName='Nguyễn Tuấn Minh', documentId='111111111', seatCode='2B'
+   - For Nguyễn Trọng Nhân: fullName='Nguyễn Trọng Nhân', documentId='222222222222', seatCode='3A'
+7. Call `calculate_total_price` using the `tripBasePrice` from `search_trips` result and the prices of seats 2B and 3A.
+8. Call `book_ticket` with `tripId`, `seats`, `passengers`, and `totalPrice`.
+9. Extract the payment URL from the `book_ticket` response.
+
+However, the `book_ticket` tool definition states:
+`seats: [{ id: string, code: string, type: 'normal' | 'vip' | 'business', price: number }]`
+`id` and `type` can be filled based on `search_seats` results.
+`price` is also from `search_seats`.
+
+The `search_seats` tool definition is:
+`search_seats(tripId: string)`
+It returns information about a seat. I assume it returns `id`, `code`, `type`, `price`.
+
+Let's proceed with calling `search_trips` first.
+Origin: Ho Chi Minh
+Destination: Nha Trang
+Date: 2025-12-22
+Passengers: 2
+Page: 1
+Limit: 1",
+  "content": "",
+  "tool_calls": [
+    {
+      "tool_name": "search_trips",
+      "parameters": {
+        "origin": "Ho Chi Minh",
+        "destination": "Nha Trang",
+        "date": "2025-12-22",
+        "passengers": 2,
+        "page": 1,
+        "limit": 1
       }
-    ],
-    "response_metadata": {
-      "model": "gpt-oss:20b",
-      "created_at": "2025-12-22T11:38:57.6226013Z",
-      "done": true,
-      "done_reason": "stop",
-      "total_duration": 13449081200,
-      "load_duration": 438292100,
-      "prompt_eval_count": 1529,
-      "prompt_eval_duration": 1658710800,
-      "eval_count": 128,
-      "eval_duration": 11023590100
-    },
-    "usage_metadata": {
-      "input_tokens": 1529,
-      "output_tokens": 128,
-      "total_tokens": 1657,
-      "input_token_details": {},
-      "output_token_details": {}
-    },
-    "invalid_tool_calls": []
-  }
+    }
+  ]
 }

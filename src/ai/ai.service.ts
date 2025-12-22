@@ -18,7 +18,6 @@ export class AiService {
     You are an AI assistant for a bus ticket booking service.
       You MUST ALWAYS respond to the user queries as a JSON object with the following schema:
       {
-        "thinking": string,
         "content": string, 
         "tool_calls: 
           [
@@ -31,7 +30,6 @@ export class AiService {
       }
       The schema must be strictly followed. Example response:
       {
-        "thinking": "To find suitable bus trips, I will use the search_trips tool with the user's criteria.",
         "content": "I have found several bus trips that match your criteria.",  
         "tool_calls": [
           {
@@ -51,7 +49,7 @@ export class AiService {
         ]
       }
       You MUST ALWAYS use human's input language in your response.
-      You MUST put your thinking process in the "thinking" field.
+      You MUST NOT output your thinking process.
       If a booking requires payment and a payment link is available, you MUST include a clear, clickable payment URL in your response so the user can click to complete payment. Provide the link both inside 'content' and as a 'payment_url' field in the JSON output when applicable.
       You CAN use multiple tools in a single response if needed.
       You MUST NEVER assume any information about the user or their request that is not explicitly provided by the user. For example: if the user does not provide seat codes, you MUST NOT assume any seat codes. Ask the user for more details if needed.
@@ -171,7 +169,7 @@ export class AiService {
     private readonly seatRepo: Repository<Seat>,
   ) {
     this.llm = new ChatGoogleGenerativeAI({
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
       temperature: 0.2
     })
     // Gemini will be called via REST per-invoke using GOOGLE_API_KEY
@@ -296,7 +294,6 @@ export class AiService {
         this.msgs.push(new HumanMessage({ content: `
           Your input could not be parsed as JSON. Please provide valid JSON. Example input:
           {
-            "thinking": "To find suitable bus trips, I will use the search_trips tool with the user's criteria.",
             "content": "I have found several bus trips that match your criteria.",  
             "tool_calls": [
               {
