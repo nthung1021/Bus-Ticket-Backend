@@ -4,20 +4,53 @@ export class AddCompletedBookingStatusAndTripRating1766285709612 implements Migr
     name = 'AddCompletedBookingStatusAndTripRating1766285709612'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT "fk_reviews_user_id"`);
-        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT "fk_reviews_trip_id"`);
-        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT "fk_reviews_booking_id"`);
-        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT "chk_rating_range"`);
-        await queryRunner.query(`ALTER TABLE "trips" ADD "average_rating" numeric(3,2) NOT NULL DEFAULT '0'`);
-        await queryRunner.query(`ALTER TABLE "trips" ADD "review_count" integer NOT NULL DEFAULT '0'`);
-        await queryRunner.query(`ALTER TABLE "payments" ADD "payos_order_code" integer`);
-        await queryRunner.query(`ALTER TABLE "notifications" ADD "user_id" uuid NOT NULL`);
-        await queryRunner.query(`ALTER TABLE "notifications" ADD "title" character varying`);
-        await queryRunner.query(`ALTER TABLE "notifications" ADD "message" character varying NOT NULL`);
-        await queryRunner.query(`ALTER TABLE "notifications" ADD "type" character varying`);
-        await queryRunner.query(`ALTER TABLE "notifications" ADD "data" jsonb`);
-        await queryRunner.query(`ALTER TABLE "bookings" ADD "last_modified_at" TIMESTAMP WITH TIME ZONE`);
-        await queryRunner.query(`ALTER TABLE "bookings" ADD "expires_at" TIMESTAMP WITH TIME ZONE`);
+        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT IF EXISTS "fk_reviews_user_id"`);
+        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT IF EXISTS "fk_reviews_trip_id"`);
+        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT IF EXISTS "fk_reviews_booking_id"`);
+        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT IF EXISTS "chk_rating_range"`);
+        await queryRunner.query(`ALTER TABLE "trips" ADD COLUMN IF NOT EXISTS "average_rating" numeric(3,2) NOT NULL DEFAULT '0'`);
+        await queryRunner.query(`ALTER TABLE "trips" ADD COLUMN IF NOT EXISTS "review_count" integer NOT NULL DEFAULT '0'`);
+        await queryRunner.query(`ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "payos_order_code" integer`);
+        await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "user_id" uuid`);
+        
+        // Handle user_id NOT NULL constraint - only if column exists and has no constraint
+        await queryRunner.query(`
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'user_id') THEN
+                    BEGIN
+                        ALTER TABLE "notifications" ALTER COLUMN "user_id" SET NOT NULL;
+                    EXCEPTION
+                        WHEN others THEN
+                            -- Column might already be NOT NULL or have data issues, ignore error
+                            NULL;
+                    END;
+                END IF;
+            END $$;
+        `);
+        
+        await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "title" character varying`);
+        await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "message" character varying`);
+        
+        // Handle message NOT NULL constraint - only if column exists
+        await queryRunner.query(`
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'message') THEN
+                    BEGIN
+                        ALTER TABLE "notifications" ALTER COLUMN "message" SET NOT NULL;
+                    EXCEPTION
+                        WHEN others THEN
+                            -- Column might already be NOT NULL or have data issues, ignore error
+                            NULL;
+                    END;
+                END IF;
+            END $$;
+        `);
+        await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "type" character varying`);
+        await queryRunner.query(`ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "data" jsonb`);
+        await queryRunner.query(`ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "last_modified_at" TIMESTAMP WITH TIME ZONE`);
+        await queryRunner.query(`ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMP WITH TIME ZONE`);
         await queryRunner.query(`COMMENT ON COLUMN "reviews"."rating" IS 'Rating from 1 to 5 stars'`);
         await queryRunner.query(`COMMENT ON COLUMN "reviews"."comment" IS 'Optional review comment'`);
         await queryRunner.query(`ALTER TABLE "notifications" DROP CONSTRAINT "FK_3f5c2196c2b2af99a4697e51741"`);
@@ -32,9 +65,9 @@ export class AddCompletedBookingStatusAndTripRating1766285709612 implements Migr
         await queryRunner.query(`DROP TYPE "public"."bookings_status_enum_old"`);
         await queryRunner.query(`COMMENT ON COLUMN "reviews"."rating" IS 'Rating from 1 to 5 stars'`);
         await queryRunner.query(`COMMENT ON COLUMN "reviews"."comment" IS 'Optional review comment'`);
-        await queryRunner.query(`CREATE INDEX "idx_reviews_user_id_single" ON "reviews" ("user_id") `);
-        await queryRunner.query(`CREATE INDEX "idx_reviews_trip_id_single" ON "reviews" ("trip_id") `);
-        await queryRunner.query(`CREATE INDEX "idx_bookings_status_expires_at" ON "bookings" ("status", "expires_at") `);
+        await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_reviews_user_id_single" ON "reviews" ("user_id") `);
+        await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_reviews_trip_id_single" ON "reviews" ("trip_id") `);
+        await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_bookings_status_expires_at" ON "bookings" ("status", "expires_at") `);
         await queryRunner.query(`CREATE INDEX "idx_bookings_user_status" ON "bookings" ("user_id", "status") `);
         await queryRunner.query(`CREATE INDEX "idx_bookings_trip_status" ON "bookings" ("trip_id", "status") `);
         await queryRunner.query(`ALTER TABLE "reviews" ADD CONSTRAINT "FK_728447781a30bc3fcfe5c2f1cdf" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
