@@ -3,7 +3,8 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
-  Inject
+  Inject,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -20,14 +21,16 @@ import {
 import { Trip, TripStatus } from '../entities/trip.entity';
 import { Route } from '../entities/route.entity';
 import { Bus } from '../entities/bus.entity';
-import { SeatStatus } from '../entities/seat-status.entity';
+import { SeatState, SeatStatus } from '../entities/seat-status.entity';
 import { SearchTripsDto } from './dto/search-trips.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { start } from 'repl';
+import { SeatInfo } from 'src/entities/seat-layout.entity';
 
 @Injectable()
 export class TripsService {
+  private readonly logger = new Logger(TripsService.name);
   constructor(
     @InjectRepository(Trip)
     private readonly tripRepo: Repository<Trip>,
@@ -177,8 +180,43 @@ export class TripsService {
       throw new ConflictException('Bus is already scheduled for this time period');
     }
 
-    const trip = this.tripRepo.create(createTripDto);
-    return await this.tripRepo.save(trip);
+    // create seat statuses for this trip based on bus layout or seat capacity
+    let savedTrip: Trip | null = null;
+    try {
+      const bus = await this.busRepository.findOne({ where: { id: busId } });
+      if (!bus) {
+        throw new NotFoundException(`Bus with ID ${busId} not found`);
+      }
+
+      let seatsList: SeatInfo[] = [];
+      // prefer explicit layout arrays if present (could be JSON string or array)
+      if (bus.seatLayout) {
+        const layout = bus.seatLayout;
+        const seatLayoutConfig = layout.layoutConfig;
+        seatsList = seatLayoutConfig.seats || [];
+        this.logger.log(`Creating seat statuses from bus layout config with seats: ${seatsList.length}`);
+      } else {
+        throw new Error('No seat layout found on bus');
+      }
+
+      const trip = this.tripRepo.create(createTripDto);
+      savedTrip = await this.tripRepo.save(trip);
+
+      const seatStatusEntities = seatsList.map((seat) => {
+        // create minimal SeatStatus record (cast to any to avoid strict typing issues)
+        return this.seatStatusRepo.create({ tripId: savedTrip!.id, state: SeatState.AVAILABLE });
+      });
+
+      if (seatStatusEntities.length) {
+        await this.seatStatusRepo.save(seatStatusEntities);
+      }
+
+      return savedTrip as Trip;
+    } catch (err) {
+      // Log and rethrow so caller is aware that seat status creation failed
+      this.logger.error(`Failed to create seat statuses for trip ${savedTrip?.id ?? 'N/A'}: ${err?.message || err}`, err as any);
+      throw err;
+    }
   }
 
   // GET /trips
@@ -244,6 +282,7 @@ export class TripsService {
   // DELETE /trips/{:tripId}
   async remove(id: string): Promise<void> {
     const trip = await this.findOne(id);
+    await this.seatStatusRepo.delete({ tripId: trip.id });
 
     if (trip.bookings && trip.bookings.length > 0) {
       throw new ConflictException('Cannot delete trip with existing bookings');
