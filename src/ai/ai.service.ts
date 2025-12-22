@@ -188,7 +188,21 @@ export class AiService {
           }
         }
         else if(toolCall.tool_name === 'calculate_total_price') {
-          // Implement calculate_total_price tool call handling here
+          const { seats, options } = toolCall.parameters || {};
+          if (!Array.isArray(seats)) {
+            const aiMsg = new HumanMessage(JSON.stringify({ content: 'calculate_total_price missing or invalid `seats` array' }));
+            this.msgs.push(aiMsg);
+          } else {
+            try {
+              // Use bookingService helper to compute total
+              const total = await this.bookingService.calculateTotalPrice(seats, options || {});
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Calculated total price: ${total}`, totalPrice: total }));
+              this.msgs.push(aiMsg);
+            } catch (err) {
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Error calculating price: ${err?.message || String(err)}` }));
+              this.msgs.push(aiMsg);
+            }
+          }
         }
       }
     }
