@@ -221,6 +221,7 @@ export class SeatLayoutService {
           seatType: this.mapSeatType(newSeat.type),
           isActive: true,
         });
+        await this.seatStatusRepository.update({ seatId: existingSeat.id }, { status: 'available' } as any);
         newSeat.id = existingSeat.id;
       } else {
         // Create new seat
@@ -232,6 +233,10 @@ export class SeatLayoutService {
         });
         const savedSeat = await this.seatRepository.save(seat);
         // console.log(savedSeat);
+        await this.seatStatusRepository.save({
+          seatId: savedSeat.id,
+          status: 'available', // or your default status value
+        });
         newSeat.id = savedSeat.id; // Update with actual database ID
       }
     }
