@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ChatOllama } from '@langchain/ollama';
+// Note: switching from Ollama to Google Gemini via REST
 import { SystemMessage, AIMessage, HumanMessage } from '@langchain/core/messages';
 import { TripsService } from 'src/trips/trips.service';
 import { BookingService } from 'src/booking/booking.service';
@@ -8,117 +8,57 @@ import { Message } from '../chat/entities/message.entity';
 import { Repository } from 'typeorm';
 import { Seat } from '../entities/seat.entity';
 import { SeatStatusService } from 'src/seat-status/seat-status.service';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 
 @Injectable()
 export class AiService {
   private llm: any;
   private msgs: any[] = [];
-
-  private readonly logger = new Logger(AiService.name);
-
-  constructor(
-    private readonly tripsService: TripsService,
-    private readonly bookingService: BookingService,
-    private readonly seatStatusService: SeatStatusService,
-    @InjectRepository(Message)
-    private readonly msgRepo: Repository<Message>,
-    @InjectRepository(Seat)
-    private readonly seatRepo: Repository<Seat>,
-  ) {
-    this.llm = new ChatOllama({
-      baseUrl: 'http://localhost:11434',
-      model: 'llama3.1:8b',
-      // model: 'deepseek-r1:latest',
-      temperature: 0,
-      verbose: false,
-      think: false,      
-    });
-    const systemMsg = new SystemMessage(`
-      You are an AI assistant for a bus ticket booking service.
-      ALWAYS Response to the user queries as a JSON object with the following schema:
+  private systemPrompt = `
+    You are an AI assistant for a bus ticket booking service.
+      You MUST ALWAYS respond to the user queries as a JSON object with the following schema:
       {
-      "content": string, 
-      "tool_calls: 
-        [
+        "thinking": string,
+        "content": string, 
+        "tool_calls: 
+          [
+            {
+              "tool_name": string, 
+              "parameters": object 
+            },
+            ...
+          ]
+      }
+      The schema must be strictly followed. Example response:
+      {
+        "thinking": "To find suitable bus trips, I will use the search_trips tool with the user's criteria.",
+        "content": "I have found several bus trips that match your criteria.",  
+        "tool_calls": [
           {
-            "tool_name": string, 
-            "parameters": object 
+            "tool_name": "search_trips",
+            "parameters": {
+              "origin": "Ha Noi",
+              "destination": "Da Nang",
+              "date": "2024-12-25",
+              "passengers": 2,
+              "departureTime": "morning",
+              "minPrice": 100,
+              "maxPrice": 200,
+              "page": 1,
+              "limit": 5
+            }
           }
         ]
       }
-      DO NOT include code comments.
-      DO NOT output your thinking process.
+      You MUST ALWAYS use human's input language in your response.
+      You MUST put your thinking process in the "thinking" field.
+      You CAN use multiple tools in a single response if needed.
+      You MUST NEVER assume any information about the user or their request that is not explicitly provided by the user. For example: if the user does not provide seat codes, you MUST NOT assume any seat codes. Ask the user for more details if needed.
+      DO NOT include code comments. For example, do NOT include '//' or '/* ... */' in your response.
       If you miss information that can be fetched from using one of the tools, use that tool to get information. 
       For example: If the user asks for seat status of a trip, you first need to call 'search_trips' to get the tripId, then use that tripId to call 'search_seat_statuses' tool to get the seat status information.
       If the information you miss is not available from the tools, ask the user for more details.
       If the user does not provide enough information to call a tool, ask the user again for more details.
-      ---
-      Here are some wrong outputs and reasons:
-      WRONG:
-      {
-        "content": "I've found a trip from Ho Chi Minh to Nha Trang on December 14, 2025. I need more information about your seat preferences.",
-        "tool_calls": [
-          {
-            "tool_name": "search_seats",
-            "parameters": {
-              "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-              "seatCode": "" // User needs to provide seat code
-            }
-          }
-        ]
-      }
-      REASON: There is comment "// User needs to provide seat code" in the output, which is not allowed.
-      
-      WRONG: 
-      {
-        content: 'We have two available trips from Ho Chi Minh to Nha Trang.',  
-        tooltips: [
-          {
-            tripId: 'af3f0f0a-78c2-4248-9de3-2d660c2ad395',
-            departureTime: '2025-12-13T17:00:00.000Z',
-            arrivalTime: '2025-12-14T13:00:00.000Z'
-          },
-          {
-            tripId: '9d41d498-cdf5-433b-8d17-88cb7989c88e',
-            departureTime: '2025-12-14T17:00:00.000Z',
-            arrivalTime: '2025-12-15T13:00:00.000Z'
-          }
-        ]
-      }
-      REASON: Missing "tool_calls" field, and "tooltips" is not a valid field.
-
-      WRONG: 
-      {
-        content: 'You have two options for trips: \n' +
-          'Trip 1: Departing from Ho Chi Minh on December 13th at 17:00, arriving in Nha Trang on December 14th at 13:00. The base price is 20 VND.\n' +  
-          'Trip 2: Departing from Ho Chi Minh on December 14th at 17:00, arriving in Nha Trang on December 15th at 13:00. The base price is 2000 VND.',   
-        tool: 'trip_options',
-        data: { trips: [ [Object], [Object] ] }
-      }
-      REASON: Missing "tool_calls" field, and "tool" and "data" are not valid fields.
-      
-      WRONG: 
-      {
-        "content": "You have two options for trips: 
-      Trip 1: Departing from Ho Chi Minh on December 13th at 17:00, arriving in Nha Trang on December 14th at 13:00. The base price is 20 VND.
-      Trip 2: Departing from Ho Chi Minh on December 14th at 17:00, arriving in Nha Trang on December 15th at 13:00. The base price is 2000 VND.",
-        "tool_calls": [
-          {
-            "tool_name": "search_seat_statuses",
-            "parameters": {
-              "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395"
-            }
-          },
-          {
-            "tool_name": "search_seat_statuses",
-            "parameters": {
-              "tripId": "9d41d498-cdf5-433b-8d17-88cb7989c88e"
-            }
-          }
-        ]
-      }
-
-      REASON: The content field contains multiple lines. It should be a single string using \\n for new lines.
       ---
       Here is a list of tools you can use:
       1. search_trips: Use this tool to search for bus trips based on user criteria.
@@ -139,6 +79,15 @@ export class AiService {
       }
       origin: Optional, The starting location of the trip
       destination: Optional, The ending location of the trip
+      origin and destination MUST be one of the available locations in the system:
+        [
+          'Ha Noi', 'Ho Chi Minh', 'Da Nang', 'Hai Phong', 'Can Tho',
+          'Bien Hoa', 'Hue', 'Nha Trang', 'Buon Ma Thuot', 'Vung Tau',
+          'Quy Nhon', 'Thu Dau Mot', 'Nam Dinh', 'Phan Thiet', 'Long Xuyen',
+          'Ha Long', 'Thai Nguyen', 'Thanh Hoa', 'Rach Gia', 'Ca Mau',
+          'Vinh', 'My Tho', 'Tay Ninh', 'Soc Trang', 'Kon Tum',
+          'Hoi An', 'Sapa', 'Da Lat', 'Phu Quoc', 'Bac Lieu'
+        ]
       date: Optional, The date of the trip in YYYY-MM-DD format
       passengers: Optional, Number of passengers
       departureTime: Optional, Preferred departure time (morning, afternoon, evening, night)
@@ -207,7 +156,25 @@ export class AiService {
       - Each element in passengers array must have fullName, documentId, seatCode. Other fields are optional.
       - totalPrice is calculated using 'calculate_total_price' tool.
       - Other fields are optional based on user input.
-    `);
+  `;
+
+  private readonly logger = new Logger(AiService.name);
+
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly bookingService: BookingService,
+    private readonly seatStatusService: SeatStatusService,
+    @InjectRepository(Message)
+    private readonly msgRepo: Repository<Message>,
+    @InjectRepository(Seat)
+    private readonly seatRepo: Repository<Seat>,
+  ) {
+    this.llm = new ChatGoogleGenerativeAI({
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      temperature: 0.2
+    })
+    // Gemini will be called via REST per-invoke using GOOGLE_API_KEY
+    const systemMsg = new SystemMessage(this.systemPrompt);
 
     // Fetch all messages from DB and build LLM input
     this.msgRepo.find({ order: { createdAt: 'ASC' } }).then(messages => {
@@ -223,13 +190,79 @@ export class AiService {
     // console.log("AI Service initialized with messages:", this.msgs);
   }
 
+  private robustParseJson(raw: string) {
+    const sanitize = (s: string) => {
+      if (!s) return '';
+      let r = String(s).trim();
+      const fenceMatch = r.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (fenceMatch) r = fenceMatch[1].trim();
+      if (r.startsWith('`') && r.endsWith('`')) r = r.slice(1, -1).trim();
+      // remove control characters except common whitespace
+      r = r.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]+/g, '');
+      return r;
+    };
+
+    const tryJsonParse = (s: string) => {
+      try {
+        return JSON.parse(s);
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const s = sanitize(raw);
+
+    // 1) strict JSON.parse
+    let parsed = tryJsonParse(s);
+    if (parsed !== null) return parsed;
+
+    // 2) try strip-json-comments if available
+    try {
+      // dynamic require so package is optional
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const strip = require('strip-json-comments');
+      const withoutComments = strip(s, { whitespace: false });
+      parsed = tryJsonParse(withoutComments);
+      if (parsed !== null) return parsed;
+    } catch (e) {
+      // ignore if package not installed
+    }
+
+    // 3) try JSON5 if available
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const JSON5 = require('json5');
+      parsed = JSON5.parse(s);
+      if (parsed !== null) return parsed;
+    } catch (e) {
+      // ignore
+    }
+
+    // 4) heuristic repairs: remove line comments, trailing commas, convert single quotes
+    try {
+      let t = s.replace(/\/\/.*$/gm, ''); // remove // comments
+      t = t.replace(/,\s*([}\]])/g, '$1'); // remove trailing commas
+      // naive single-quote -> double-quote for strings
+      t = t.replace(/'([^']*)'/g, (_m, g1) => '"' + g1.replace(/"/g, '\\"') + '"');
+      parsed = tryJsonParse(t);
+      if (parsed !== null) return parsed;
+    } catch (e) {
+      // ignore
+    }
+
+    // fallback: return object with raw content so caller can handle it
+    return { content: raw };
+  }
+
   async invoke(messages: any[], metadata?: { userId?: string }) {
     // Lấy userId từ metadata nếu có
     const userId = metadata?.userId;
     // this.logger.log('AI invoked by user:', userId);
     // Prepend system message to the messages array
     
+    // Build messages for this invocation and ensure system instruction is first
     this.msgs.push(...messages);
+    // const messagesToSend = [...this.msgs, sys, ...messages];
     // console.log("AI Service - Current Messages:", this.msgs);
     // Loop: invoke LLM, handle any tool_calls it returns, and repeat until no tool_calls remain.
     let finalRaw: string = '';
@@ -238,7 +271,10 @@ export class AiService {
     let iteration = 0;
 
     while (iteration < MAX_ITERATIONS) {
-      const response = await this.llm?.invoke(this.msgs);
+      const response = await this.llm.invoke(this.msgs);
+      console.log('AI Service - Gemini Response:', response);
+      // break;
+      // this.logger.log(`AI Service - LLM Response (iteration ${iteration + 1}): ${JSON.stringify(response, null, 2)}`);
       lastResponse = response;
 
       // Normalize and clean raw content (strip code fences like ```json ... ``` and surrounding backticks)
@@ -253,18 +289,33 @@ export class AiService {
         rawContent = JSON.stringify(response);
       }
 
-      rawContent = rawContent.trim();
-      const fenceMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-      if (fenceMatch) rawContent = fenceMatch[1].trim();
-      if (rawContent.startsWith('`') && rawContent.endsWith('`')) rawContent = rawContent.slice(1, -1).trim();
-
-      let parsed: any;
-      try {
-        parsed = JSON.parse(rawContent);
-      } catch (err) {
-        this.logger.warn('Failed to parse LLM raw content as JSON, using raw text fallback');
+      const parsed: any = this.robustParseJson(rawContent);
+      if (parsed && typeof parsed === 'object' && parsed.content === rawContent) {
+        this.logger.warn('LLM output could not be parsed as JSON; using raw text fallback');
+        this.msgs.push(new HumanMessage({ content: `
+          Your input could not be parsed as JSON. Please provide valid JSON. Example input:
+          {
+            "thinking": "To find suitable bus trips, I will use the search_trips tool with the user's criteria.",
+            "content": "I have found several bus trips that match your criteria.",  
+            "tool_calls": [
+              {
+                "tool_name": "search_trips",
+                "parameters": {
+                  "origin": "Ha Noi",
+                  "destination": "Da Nang",
+                  "date": "2024-12-25",
+                  "passengers": 2,
+                  "departureTime": "morning",
+                  "minPrice": 100,
+                  "maxPrice": 200,
+                  "page": 1,
+                  "limit": 5
+                }
+              }
+            ]
+          }
+          `}));
         try {
-          // Log helpful debug details to trace why parsing failed
           this.logger.debug('LLM rawContent (trimmed 2000 chars): ' + rawContent.slice(0, 2000));
         } catch (e) {
           // ignore
@@ -279,12 +330,11 @@ export class AiService {
         } catch (e) {
           // ignore
         }
-        this.logger.error('JSON.parse error while parsing LLM output', err as any);
-        parsed = { content: rawContent };
       }
 
       // If the model requested tools, execute them and continue the loop.
       if (parsed.tool_calls && parsed.tool_calls.length > 0) {
+        console.log('AI Service - Tool Calls Detected:', parsed.tool_calls);  
         for (const toolCall of parsed.tool_calls) {
           console.log('AI Service - Tool Call Requested:', toolCall.tool_name);
           if (toolCall.tool_name === 'search_trips') {
@@ -314,9 +364,9 @@ export class AiService {
             } else {
               try {
                 const seats = await this.seatStatusService.findByTripId(tripId);
-                this.logger.log('AI Service - search_seats Result: ' + JSON.stringify(seats));
+                this.logger.log('AI Service - search_seats Result: \n' + JSON.stringify(seats, null, 2));
                 if (seats && seats.length > 0) {
-                  const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seats: ${JSON.stringify(seats)}` }));
+                  const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seats: \n${JSON.stringify(seats, null, 2)}` }));
                   this.msgs.push(aiMsg);
                 } else {
                   const aiMsg = new HumanMessage(JSON.stringify({ content: `No seats found on trip ${tripId}` }));

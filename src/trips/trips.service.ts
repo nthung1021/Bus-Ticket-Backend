@@ -183,7 +183,11 @@ export class TripsService {
     // create seat statuses for this trip based on bus layout or seat capacity
     let savedTrip: Trip | null = null;
     try {
-      const bus = await this.busRepository.findOne({ where: { id: busId } });
+      // load relations so nested properties (seatLayout, seats, operator) are populated
+      const bus = await this.busRepository.findOne({
+        where: { id: busId },
+        relations: ['seatLayout', 'seats', 'operator'],
+      });
       if (!bus) {
         throw new NotFoundException(`Bus with ID ${busId} not found`);
       }
@@ -204,7 +208,7 @@ export class TripsService {
 
       const seatStatusEntities = seatsList.map((seat) => {
         // create minimal SeatStatus record (cast to any to avoid strict typing issues)
-        return this.seatStatusRepo.create({ tripId: savedTrip!.id, state: SeatState.AVAILABLE });
+        return this.seatStatusRepo.create({ seatId: seat.id, tripId: savedTrip!.id, state: SeatState.AVAILABLE });
       });
 
       if (seatStatusEntities.length) {
@@ -473,11 +477,11 @@ export class TripsService {
       qb.andWhere('operator.id = :operatorId', { operatorId: dto.operatorId });
     }
 
-    if (dto.minPrice != null) {
+    if (dto.minPrice) {
       qb.andWhere('trip.base_price >= :minPrice', { minPrice: dto.minPrice });
     }
 
-    if (dto.maxPrice != null) {
+    if (dto.maxPrice) {
       qb.andWhere('trip.base_price <= :maxPrice', { maxPrice: dto.maxPrice });
     }
 

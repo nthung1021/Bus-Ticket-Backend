@@ -1,102 +1,48 @@
-[
-  {
-    "id": "f790598d-ecc2-4536-af33-380b1509ff43",
-    "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
-    "seatId": "663e90bc-1ae4-4a34-a17b-378a77275676",
-    "bookingId": null,
-    "state": "available",
-    "lockedUntil": null,
-    "trip": {
-      "id": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
-      "routeId": "d18b012a-adc2-4cbb-b376-b69915c9f058",
-      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-      "departureTime": "2025-12-13T17:00:00.000Z",
-      "arrivalTime": "2025-12-14T13:00:00.000Z",
-      "basePrice": 20,
-      "status": "scheduled"
+{
+  "lc": 1,
+  "type": "constructor",
+  "id": [
+    "langchain_core",
+    "messages",
+    "AIMessage"
+  ],
+  "kwargs": {
+    "content": "",
+    "additional_kwargs": {
+      "reasoning_content": "The user wants to book a ticket from Ho Chi Minh to Nha Trang on 2025-12-22 for 1 passenger. We need to search trips. Use search_trips with origin: 'Ho Chi Minh', destination: 'Nha Trang', date: '2025-12-22', passengers: 1. Then we need to present options. We should call search_trips."
     },
-    "seat": {
-      "id": "663e90bc-1ae4-4a34-a17b-378a77275676",
-      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-      "seatCode": "1A",
-      "seatType": "business",
-      "isActive": true
+    "tool_calls": [
+      {
+        "name": "search_trips",
+        "args": {
+          "date": "2025-12-22",
+          "destination": "Nha Trang",
+          "origin": "Ho Chi Minh",
+          "passengers": 1
+        },
+        "id": "c4573ae1-3983-48af-a785-1e5cbd1d2743",
+        "type": "tool_call"
+      }
+    ],
+    "response_metadata": {
+      "model": "gpt-oss:20b",
+      "created_at": "2025-12-22T11:38:57.6226013Z",
+      "done": true,
+      "done_reason": "stop",
+      "total_duration": 13449081200,
+      "load_duration": 438292100,
+      "prompt_eval_count": 1529,
+      "prompt_eval_duration": 1658710800,
+      "eval_count": 128,
+      "eval_duration": 11023590100
     },
-    "booking": null
-  },
-  {
-    "id": "0317835e-3b42-4c13-af7d-3d43c38ba10f",
-    "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
-    "seatId": "663e90bc-1ae4-4a34-a17b-378a77275676",
-    "bookingId": null,
-    "state": "available",
-    "lockedUntil": null,
-    "trip": {
-      "id": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
-      "routeId": "d18b012a-adc2-4cbb-b376-b69915c9f058",
-      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-      "departureTime": "2025-12-13T17:00:00.000Z",
-      "arrivalTime": "2025-12-14T13:00:00.000Z",
-      "basePrice": 20,
-      "status": "scheduled"
+    "usage_metadata": {
+      "input_tokens": 1529,
+      "output_tokens": 128,
+      "total_tokens": 1657,
+      "input_token_details": {},
+      "output_token_details": {}
     },
-    "seat": {
-      "id": "663e90bc-1ae4-4a34-a17b-378a77275676",
-      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-      "seatCode": "1A",
-      "seatType": "business",
-      "isActive": true
-    },
-    "booking": null
-  },
-  {
-    "id": "fa2e9f25-5947-4197-88b5-8a26d8d34369",
-    "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
-    "seatId": "bd41d182-1148-4409-8b88-b1009477daf8",
-    "bookingId": null,
-    "state": "available",
-    "lockedUntil": null,
-    "trip": {
-      "id": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
-      "routeId": "d18b012a-adc2-4cbb-b376-b69915c9f058",
-      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-      "departureTime": "2025-12-13T17:00:00.000Z",
-      "arrivalTime": "2025-12-14T13:00:00.000Z",
-      "basePrice": 20,
-      "status": "scheduled"
-    },
-    "seat": {
-      "id": "bd41d182-1148-4409-8b88-b1009477daf8",
-      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-      "seatCode": "2B",
-      "seatType": "business",
-      "isActive": true
-    },
-    "booking": null
-  },
-  {
-    "id": "daf88aa4-e63c-4ada-845c-90ebc5cb6da7",
-    "tripId": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
-    "seatId": "bd41d182-1148-4409-8b88-b1009477daf8",
-    "bookingId": null,
-    "state": "available",
-    "lockedUntil": null,
-    "trip": {
-      "id": "af3f0f0a-78c2-4248-9de3-2d660c2ad395",
-      "routeId": "d18b012a-adc2-4cbb-b376-b69915c9f058",
-      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-      "departureTime": "2025-12-13T17:00:00.000Z",
-      "arrivalTime": "2025-12-14T13:00:00.000Z",
-      "basePrice": 20,
-      "status": "scheduled"
-    },
-    "seat": {
-      "id": "bd41d182-1148-4409-8b88-b1009477daf8",
-      "busId": "87bf7d3f-54c4-47de-9d6f-825a8e3e6fa0",
-      "seatCode": "2B",
-      "seatType": "business",
-      "isActive": true
-    },
-    "booking": null
+    "invalid_tool_calls": []
   }
-]
+}
