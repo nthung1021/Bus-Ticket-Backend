@@ -141,119 +141,132 @@ export class AiService {
     
     this.msgs.push(...messages);
     // console.log("AI Service - Current Messages:", this.msgs);
-    const raw = await this.llm?.invoke(this.msgs);
-    // Normalize and clean raw content (strip code fences like ```json ... ``` and surrounding backticks)
-    let rawContent = '';
-    if (raw == null) {
-      rawContent = '';
-    } else if (typeof raw === 'string') {
-      rawContent = raw;
-    } else if (raw.content != null) {
-      rawContent = String(raw.content);
-    } else {
-      rawContent = JSON.stringify(raw);
-    }
+    // Loop: invoke LLM, handle any tool_calls it returns, and repeat until no tool_calls remain.
+    let finalRaw: string = '';
+    let lastResponse: any = null;
+    const MAX_ITERATIONS = 6;
+    let iteration = 0;
 
-    rawContent = rawContent.trim();
-    const fenceMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (fenceMatch) rawContent = fenceMatch[1].trim();
-    if (rawContent.startsWith('`') && rawContent.endsWith('`')) rawContent = rawContent.slice(1, -1).trim();
+    while (iteration < MAX_ITERATIONS) {
+      const response = await this.llm?.invoke(this.msgs);
+      lastResponse = response;
 
-    let parsed: any;
-    try {
-      parsed = JSON.parse(rawContent);
-    } catch (err) {
-      this.logger.warn('Failed to parse LLM raw content as JSON, using raw text fallback');
-      parsed = { content: rawContent };
-    }
-    if (parsed.tool_calls && parsed.tool_calls.length > 0) {
-      for (const toolCall of parsed.tool_calls) {
-        if (toolCall.tool_name === 'search_trips') {
-          console.log("AI Service - Invoking search_trips with params:", toolCall.parameters);
-          const toolResult = await this.tripsService.search(toolCall.parameters);
-          console.log("AI Service - Tool Result:", toolResult); 
-          const aiMsg = new HumanMessage(JSON.stringify({
-            content: `Here are the search results: ${JSON.stringify(toolResult, null, 2 )}`,  
-          }));
-          this.msgs.push(aiMsg);
-        }
-        else if (toolCall.tool_name === 'book_ticket') {
-          // Book ticket using BookingService
-          const bookingParams = toolCall.parameters;
-          // userId from metadata
-          const bookingUserId = userId || bookingParams.userId || null;
-          try {
-            const bookingResult = await this.bookingService.createBooking(bookingUserId, bookingParams);
-            const aiMsg = new HumanMessage(JSON.stringify({
-              content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}`,
-            }));
+      // Normalize and clean raw content (strip code fences like ```json ... ``` and surrounding backticks)
+      let rawContent = '';
+      if (response == null) {
+        rawContent = '';
+      } else if (typeof response === 'string') {
+        rawContent = response;
+      } else if (response.content != null) {
+        rawContent = String(response.content);
+      } else {
+        rawContent = JSON.stringify(response);
+      }
+
+      rawContent = rawContent.trim();
+      const fenceMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (fenceMatch) rawContent = fenceMatch[1].trim();
+      if (rawContent.startsWith('`') && rawContent.endsWith('`')) rawContent = rawContent.slice(1, -1).trim();
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(rawContent);
+      } catch (err) {
+        this.logger.warn('Failed to parse LLM raw content as JSON, using raw text fallback');
+        parsed = { content: rawContent };
+      }
+
+      // If the model requested tools, execute them and continue the loop.
+      if (parsed.tool_calls && parsed.tool_calls.length > 0) {
+        for (const toolCall of parsed.tool_calls) {
+          if (toolCall.tool_name === 'search_trips') {
+            this.logger.log('AI Service - Invoking search_trips with params: ' + JSON.stringify(toolCall.parameters));
+            const toolResult = await this.tripsService.search(toolCall.parameters);
+            this.logger.log('AI Service - Tool Result: ' + JSON.stringify(toolResult));
+            const aiMsg = new HumanMessage(JSON.stringify({ content: `Here are the search results: ${JSON.stringify(toolResult, null, 2)}` }));
             this.msgs.push(aiMsg);
-          } catch (err) {
-            const aiMsg = new HumanMessage(JSON.stringify({
-              content: `Booking failed: ${err.message}`,
-            }));
-            this.msgs.push(aiMsg);
-          }
-        }
-        else if(toolCall.tool_name === 'search_seats') {
-          const { busId, seatCode } = toolCall.parameters || {};
-          if (!busId || !seatCode) {
-            const aiMsg = new HumanMessage(JSON.stringify({ content: 'search_seats missing parameters: busId and seatCode required' }));
-            this.msgs.push(aiMsg);
-          } else {
+          } else if (toolCall.tool_name === 'book_ticket') {
+            const bookingParams = toolCall.parameters;
+            const bookingUserId = userId || bookingParams.userId || null;
             try {
-              const seat = await this.seatRepo.findOne({ where: { busId, seatCode } });
-              if (seat) {
-                const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seat: ${JSON.stringify(seat)}` }));
-                this.msgs.push(aiMsg);
-              } else {
-                const aiMsg = new HumanMessage(JSON.stringify({ content: `Seat ${seatCode} not found on bus ${busId}` }));
+              const bookingResult = await this.bookingService.createBooking(bookingUserId, bookingParams);
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}` }));
+              this.msgs.push(aiMsg);
+            } catch (err) {
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Booking failed: ${err?.message || String(err)}` }));
+              this.msgs.push(aiMsg);
+            }
+          } else if (toolCall.tool_name === 'search_seats') {
+            const { busId, seatCode } = toolCall.parameters || {};
+            if (!busId || !seatCode) {
+              const aiMsg = new HumanMessage(JSON.stringify({ content: 'search_seats missing parameters: busId and seatCode required' }));
+              this.msgs.push(aiMsg);
+            } else {
+              try {
+                const seat = await this.seatRepo.findOne({ where: { busId, seatCode } });
+                if (seat) {
+                  const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seat: ${JSON.stringify(seat)}` }));
+                  this.msgs.push(aiMsg);
+                } else {
+                  const aiMsg = new HumanMessage(JSON.stringify({ content: `Seat ${seatCode} not found on bus ${busId}` }));
+                  this.msgs.push(aiMsg);
+                }
+              } catch (err) {
+                const aiMsg = new HumanMessage(JSON.stringify({ content: `Error searching seat: ${err?.message || String(err)}` }));
                 this.msgs.push(aiMsg);
               }
-            } catch (err) {
-              const aiMsg = new HumanMessage(JSON.stringify({ content: `Error searching seat: ${err.message}` }));
+            }
+          } else if (toolCall.tool_name === 'calculate_total_price') {
+            const { seats, options } = toolCall.parameters || {};
+            if (!Array.isArray(seats)) {
+              const aiMsg = new HumanMessage(JSON.stringify({ content: 'calculate_total_price missing or invalid `seats` array' }));
               this.msgs.push(aiMsg);
+            } else {
+              try {
+                const total = await this.bookingService.calculateTotalPrice(seats, options || {});
+                const aiMsg = new HumanMessage(JSON.stringify({ content: `Calculated total price: ${total}`, totalPrice: total }));
+                this.msgs.push(aiMsg);
+              } catch (err) {
+                const aiMsg = new HumanMessage(JSON.stringify({ content: `Error calculating price: ${err?.message || String(err)}` }));
+                this.msgs.push(aiMsg);
+              }
+            }
+          } else if (toolCall.tool_name === 'search_seat_statuses') {
+            const { tripId } = toolCall.parameters || {};
+            if (!tripId) {
+              const aiMsg = new HumanMessage(JSON.stringify({ content: 'search_seat_statuses missing parameter: tripId required' }));
+              this.msgs.push(aiMsg);
+            } else {
+              try {
+                const seatStatuses = await this.seatStatusService.findByTripId(tripId);
+                const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seat statuses: ${JSON.stringify(seatStatuses)}` }));
+                this.msgs.push(aiMsg);
+              } catch (err) {
+                const aiMsg = new HumanMessage(JSON.stringify({ content: `Error searching seat statuses: ${err?.message || String(err)}` }));
+                this.msgs.push(aiMsg);
+              }
             }
           }
         }
-        else if(toolCall.tool_name === 'calculate_total_price') {
-          const { seats, options } = toolCall.parameters || {};
-          if (!Array.isArray(seats)) {
-            const aiMsg = new HumanMessage(JSON.stringify({ content: 'calculate_total_price missing or invalid `seats` array' }));
-            this.msgs.push(aiMsg);
-          } else {
-            try {
-              // Use bookingService helper to compute total
-              const total = await this.bookingService.calculateTotalPrice(seats, options || {});
-              const aiMsg = new HumanMessage(JSON.stringify({ content: `Calculated total price: ${total}`, totalPrice: total }));
-              this.msgs.push(aiMsg);
-            } catch (err) {
-              const aiMsg = new HumanMessage(JSON.stringify({ content: `Error calculating price: ${err?.message || String(err)}` }));
-              this.msgs.push(aiMsg);
-            }
-          }
-        }
-        else if(toolCall.tool_name === 'search_seat_statuses') {
-          const { tripId } = toolCall.parameters || {};
-          if (!tripId) {
-            const aiMsg = new HumanMessage(JSON.stringify({ content: 'search_seat_statuses missing parameter: tripId required' }));
-            this.msgs.push(aiMsg);
-          } else {
-            try {
-              const seatStatuses = await this.seatStatusService.findByTripId(tripId);
-              const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seat statuses: ${JSON.stringify(seatStatuses)}` }));
-              this.msgs.push(aiMsg);
-            } catch (err) {
-              const aiMsg = new HumanMessage(JSON.stringify({ content: `Error searching seat statuses: ${err.message}` }));
-              this.msgs.push(aiMsg);
-            }
-          }
-        }
+
+        // continue the loop so the model can respond to results of the tool calls
+        iteration++;
+        continue;
       }
+
+      // No tool calls requested: use this response as the final answer
+      finalRaw = rawContent || (typeof response === 'string' ? response : response?.content ?? JSON.stringify(response));
+      break;
     }
-    const finalResponse = await this.llm?.invoke(this.msgs);
-    const rawFinal = finalResponse.content;
-    console.log("AI Service - Final Response:", rawFinal);
-    return rawFinal;
+
+    if (!finalRaw && lastResponse) {
+      finalRaw = typeof lastResponse === 'string' ? lastResponse : lastResponse.content ?? JSON.stringify(lastResponse);
+    }
+    if (iteration >= MAX_ITERATIONS) {
+      this.logger.warn('Max iterations reached while processing tool_calls; returning last model response');
+    }
+
+    console.log('AI Service - Final Response:', finalRaw);
+    return finalRaw;
   }
 }
