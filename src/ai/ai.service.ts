@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Message } from '../chat/entities/message.entity';
 import { Repository } from 'typeorm';
 import { Seat } from '../entities/seat.entity';
-import { push } from 'langchain/hub';
+import { SeatStatusService } from 'src/seat-status/seat-status.service';
 
 @Injectable()
 export class AiService {
@@ -19,6 +19,7 @@ export class AiService {
   constructor(
     private readonly tripsService: TripsService,
     private readonly bookingService: BookingService,
+    private readonly seatStatusService: SeatStatusService,
     @InjectRepository(Message)
     private readonly msgRepo: Repository<Message>,
     @InjectRepository(Seat)
@@ -78,7 +79,12 @@ export class AiService {
         options: { tripBasePrice?: number; }, // The base price of the trip
         seats: {price: number}[], // Array of seat prices
       }
-      4. book_ticket: Use this tool to book a bus ticket for the user.
+      4. search_seat_statuses: Use this tool to check the availability status of seats for a given trip.
+      Parameters for search_seat_statuses:
+      {
+        tripId: string, // The ID of the trip
+      }
+      5. book_ticket: Use this tool to book a bus ticket for the user.
       If the user hasn't provided all necessary information, ALWAYS ask for the missing details before calling this tool. DO NOT make assumptions.
       Parameters for book_ticket:
       {
@@ -200,6 +206,22 @@ export class AiService {
               this.msgs.push(aiMsg);
             } catch (err) {
               const aiMsg = new HumanMessage(JSON.stringify({ content: `Error calculating price: ${err?.message || String(err)}` }));
+              this.msgs.push(aiMsg);
+            }
+          }
+        }
+        else if(toolCall.tool_name === 'search_seat_statuses') {
+          const { tripId } = toolCall.parameters || {};
+          if (!tripId) {
+            const aiMsg = new HumanMessage(JSON.stringify({ content: 'search_seat_statuses missing parameter: tripId required' }));
+            this.msgs.push(aiMsg);
+          } else {
+            try {
+              const seatStatuses = await this.seatStatusService.findByTripId(tripId);
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seat statuses: ${JSON.stringify(seatStatuses)}` }));
+              this.msgs.push(aiMsg);
+            } catch (err) {
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Error searching seat statuses: ${err.message}` }));
               this.msgs.push(aiMsg);
             }
           }
