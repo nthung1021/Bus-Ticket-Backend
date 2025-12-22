@@ -3,16 +3,23 @@ import { ChatOllama } from '@langchain/ollama';
 import { SystemMessage, AIMessage, HumanMessage } from '@langchain/core/messages';
 import { TripsService } from 'src/trips/trips.service';
 import { BookingService } from 'src/booking/booking.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Message } from '../chat/entities/message.entity';
+import { Repository } from 'typeorm';
+import { push } from 'langchain/hub';
 
 @Injectable()
 export class AiService {
   private llm: any;
+  private msgs: any[] = [];
 
   private readonly logger = new Logger(AiService.name);
 
   constructor(
     private readonly tripsService: TripsService,
     private readonly bookingService: BookingService,
+    @InjectRepository(Message)
+    private readonly msgRepo: Repository<Message>,
   ) {
     this.llm = new ChatOllama({
       baseUrl: 'http://localhost:11434',
@@ -20,13 +27,6 @@ export class AiService {
       temperature: 0.2,
       verbose: false
     });
-  }
-
-  async invoke(messages: any, metadata?: { userId?: string }) {
-    // Lấy userId từ metadata nếu có
-    const userId = metadata?.userId;
-    this.logger.log('AI invoked by user:', userId);
-    // Prepend system message to the messages array
     const systemMsg = new SystemMessage(`
       You are an AI assistant for a bus ticket booking service.
       Response to the user queries as a JSON object with the following schema:
@@ -89,8 +89,27 @@ export class AiService {
       If after the tool call, you have enough information to answer the user's query, respond with the final answer in the "content" field and an empty "tool_calls" array.
       If you don't have enough information, output something like "I don't have enough information to answer that question."
     `);
-    const msgs = [systemMsg, ...(Array.isArray(messages) ? messages : [messages])];
-    const raw = await this.llm?.invoke(msgs);
+
+    // Fetch all messages from DB and build LLM input
+    this.msgRepo.find({ order: { createdAt: 'ASC' } }).then(messages => {
+      this.msgs = messages.map((m: any) => {
+        const contentStr = typeof m.content === 'string' ? m.content : String(m.content);
+        if (m.role === 'human') return new HumanMessage({ content: contentStr });
+        if (m.role === 'system') return new SystemMessage({ content: contentStr });
+        return new AIMessage({ content: contentStr });
+      });
+    });
+    this.msgs = [systemMsg, ...this.msgs];
+  }
+
+  async invoke(messages: any[], metadata?: { userId?: string }) {
+    // Lấy userId từ metadata nếu có
+    const userId = metadata?.userId;
+    this.logger.log('AI invoked by user:', userId);
+    // Prepend system message to the messages array
+    
+    this.msgs.push(...messages);
+    const raw = await this.llm?.invoke(this.msgs);
     // this.logger.log('LLM raw response:', raw);
     const parsed = JSON.parse(raw.content);
     if (parsed.tool_calls && parsed.tool_calls.length > 0) {
@@ -101,7 +120,7 @@ export class AiService {
           const aiMsg = new HumanMessage(JSON.stringify({
             content: `Here are the search results: ${JSON.stringify(toolResult, null, 2 )}`,  
           }));
-          msgs.push(aiMsg);
+          this.msgs.push(aiMsg);
         }
         else if (toolCall.tool_name === 'book_ticket') {
           // Book ticket using BookingService
@@ -113,17 +132,17 @@ export class AiService {
             const aiMsg = new HumanMessage(JSON.stringify({
               content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}`,
             }));
-            msgs.push(aiMsg);
+            this.msgs.push(aiMsg);
           } catch (err) {
             const aiMsg = new HumanMessage(JSON.stringify({
               content: `Booking failed: ${err.message}`,
             }));
-            msgs.push(aiMsg);
+            this.msgs.push(aiMsg);
           }
         }
       }
     }
-    const finalResponse = await this.llm?.invoke(msgs);
+    const finalResponse = await this.llm?.invoke(this.msgs);
     const rawFinal = finalResponse.content;
     console.log("AI Service - Final Response:", rawFinal);
     return rawFinal;

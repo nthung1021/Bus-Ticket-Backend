@@ -41,15 +41,10 @@ export class ChatService {
     });
     await this.msgRepo.save(userMessage);
 
-    // fetch ordered history
-    const historyEntities = await this.msgRepo.find({ where: { conversation: { id: conversation.id } }, order: { createdAt: 'ASC' } });
 
-    const llmInput = historyEntities.map((m) => {
-      const contentStr = typeof m.content === 'string' ? m.content : String(m.content);
-      if (m.role === 'human') return new HumanMessage({ content: contentStr });
-      if (m.role === 'system') return new SystemMessage({ content: contentStr });
-      return new AIMessage({ content: contentStr });
-    });
+    // Chỉ lấy tin nhắn gần nhất của user
+    const lastUserMessage = new HumanMessage({ content: dto.message });
+    const llmInput = [lastUserMessage];
 
     let aiResponseText = '';
     try {
