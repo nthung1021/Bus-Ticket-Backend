@@ -30,7 +30,8 @@ export class AiService {
       // model: 'llama3.1:8b',
       model: 'deepseek-r1:latest',
       temperature: 0.2,
-      verbose: false
+      verbose: false,
+      think: false,
     });
     const systemMsg = new SystemMessage(`
       You are an AI assistant for a bus ticket booking service.
@@ -56,7 +57,6 @@ export class AiService {
         destination: string, // Optional, The ending location of the trip
         date: string, // Optional, The date of the trip in YYYY-MM-DD format
         passengers: number, // Optional, Number of passengers
-        busType: string, // Optional, Type of bus (standard, limousine, sleeper)
         departureTime: string, // Optional, Preferred departure time (morning, afternoon, evening, night)
         minPrice: number, // Optional, Minimum price
         maxPrice: number, // Optional, Maximum price
@@ -142,13 +142,36 @@ export class AiService {
     this.msgs.push(...messages);
     // console.log("AI Service - Current Messages:", this.msgs);
     const raw = await this.llm?.invoke(this.msgs);
-    // this.logger.log('LLM raw response:', raw);
-    const parsed = JSON.parse(raw.content);
+    // Normalize and clean raw content (strip code fences like ```json ... ``` and surrounding backticks)
+    let rawContent = '';
+    if (raw == null) {
+      rawContent = '';
+    } else if (typeof raw === 'string') {
+      rawContent = raw;
+    } else if (raw.content != null) {
+      rawContent = String(raw.content);
+    } else {
+      rawContent = JSON.stringify(raw);
+    }
+
+    rawContent = rawContent.trim();
+    const fenceMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenceMatch) rawContent = fenceMatch[1].trim();
+    if (rawContent.startsWith('`') && rawContent.endsWith('`')) rawContent = rawContent.slice(1, -1).trim();
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(rawContent);
+    } catch (err) {
+      this.logger.warn('Failed to parse LLM raw content as JSON, using raw text fallback');
+      parsed = { content: rawContent };
+    }
     if (parsed.tool_calls && parsed.tool_calls.length > 0) {
       for (const toolCall of parsed.tool_calls) {
         if (toolCall.tool_name === 'search_trips') {
+          console.log("AI Service - Invoking search_trips with params:", toolCall.parameters);
           const toolResult = await this.tripsService.search(toolCall.parameters);
-          // console.log("AI Service - Tool Result:", toolResult); 
+          console.log("AI Service - Tool Result:", toolResult); 
           const aiMsg = new HumanMessage(JSON.stringify({
             content: `Here are the search results: ${JSON.stringify(toolResult, null, 2 )}`,  
           }));

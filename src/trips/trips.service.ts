@@ -399,7 +399,7 @@ export class TripsService {
     const page = dto.page || 1;
     const limit = Math.min(dto.limit || 20, 100);
     const offset = (page - 1) * limit;
-    console.log(dto.date);
+    // console.log(dto.date);
 
     const qb = this.tripRepo.createQueryBuilder('trip')
       // join route, bus, operator — adapt relation names to your entities
@@ -416,7 +416,7 @@ export class TripsService {
       qb.andWhere('LOWER(route.destination) = LOWER(:destination)', { destination: dto?.destination?.trim() });
     }
 
-    if( dto.date ) {
+    if(dto.date && dto.date.trim() !== '') {
 
       // date filter: trips whose departure date = dto.date (timezone note: store timestamps in UTC)
       // We compare date part by bounding between start and end of the day in UTC or DB timezone.
@@ -428,12 +428,7 @@ export class TripsService {
       endDate.setUTCHours(23, 59, 59, 999);
       const endOfDay = endDate.toISOString();
       // console.log(endOfDay);
-      qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
-    }
-
-    // optional filters
-    if (dto.busType) {
-      qb.andWhere('bus.busType = :busType', { busType: dto.busType });
+      qb.andWhere('trip.departure_time BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
     }
 
     if (dto.operatorId) {
@@ -441,11 +436,11 @@ export class TripsService {
     }
 
     if (dto.minPrice != null) {
-      qb.andWhere('trip.basePrice >= :minPrice', { minPrice: dto.minPrice });
+      qb.andWhere('trip.base_price >= :minPrice', { minPrice: dto.minPrice });
     }
 
     if (dto.maxPrice != null) {
-      qb.andWhere('trip.basePrice <= :maxPrice', { maxPrice: dto.maxPrice });
+      qb.andWhere('trip.base_price <= :maxPrice', { maxPrice: dto.maxPrice });
     }
 
     // departureTime bucket (morning/afternoon/evening/night)
@@ -453,21 +448,22 @@ export class TripsService {
       const range = this.getTimeRangeForBucket(dto.departureTime);
       if (range) {
         if (dto.departureTime !== 'night') {
-          qb.andWhere(`to_char(trip.departureTime::time, 'HH24:MI:SS') BETWEEN :start AND :end`, {
+          qb.andWhere(`to_char(trip.departure_time::time, 'HH24:MI:SS') BETWEEN :start AND :end`, {
             start: range.start,
             end: range.end,
           });
         } else {
           // night spans midnight: accept times >= 21:00 OR <= 04:59:59
           qb.andWhere(new Brackets(q => {
-            q.where(`to_char(trip.departureTime::time, 'HH24:MI:SS') >= :start`, { start: range.start })
-              .orWhere(`to_char(trip.departureTime::time, 'HH24:MI:SS') <= :end`, { end: range.end });
+            q.where(`to_char(trip.departure_time::time, 'HH24:MI:SS') >= :start`, { start: range.start })
+              .orWhere(`to_char(trip.departure_time::time, 'HH24:MI:SS') <= :end`, { end: range.end });
           }));
         }
       }
     }
 
     // ordering — cheapest first as example, then departureTime
+    // Use dot notation (no double quotes) to avoid driver/metadata mapping issues
     qb.orderBy('trip.basePrice', 'ASC')
       .addOrderBy('trip.departureTime', 'ASC');
 

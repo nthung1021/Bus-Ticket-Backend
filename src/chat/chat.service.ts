@@ -49,7 +49,20 @@ export class ChatService {
     let aiResponseText = '';
     try {
       const aiRes = await this.aiService.invoke(llmInput, { userId });
-      aiResponseText = (aiRes ? JSON.parse(aiRes) : { content: '' }).content;
+
+      // Clean up possible code fences (e.g. ```json ... ``` ) returned by the LLM
+      let cleaned = aiRes == null ? '' : String(aiRes).trim();
+      const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (fenceMatch) cleaned = fenceMatch[1].trim();
+      if (cleaned.startsWith('`') && cleaned.endsWith('`')) cleaned = cleaned.slice(1, -1).trim();
+
+      try {
+        const parsed = JSON.parse(cleaned);
+        aiResponseText = parsed?.content ?? (typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
+      } catch (err) {
+        this.logger.warn('Failed to parse AI response as JSON, returning cleaned text');
+        aiResponseText = cleaned;
+      }
     } catch (err) {
       this.logger.error('AI call failed', err as any);
       aiResponseText = 'Error: failed to get response from AI';
