@@ -32,6 +32,14 @@ export class User {
   @Index('idx_users_google_id')
   googleId: string | null;
 
+  @Column({
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
+  @Index('idx_users_facebook_id')
+  facebookId: string | null;
+
   @Column()
   @Index('idx_users_email') // Email is unique but also needs index for fast lookups
   email: string;

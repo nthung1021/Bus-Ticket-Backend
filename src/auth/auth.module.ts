@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
+import { FacebookStrategy } from './strategies/facebook.strategy';
 import { User } from '../entities/user.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
 import { JwtConfigService } from '../config/jwt.config.service';
@@ -31,6 +32,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     JwtAuthGuard,
     JwtConfigService,
     GoogleStrategy,
+    FacebookStrategy,
   ],
   exports: [
     PassportModule,

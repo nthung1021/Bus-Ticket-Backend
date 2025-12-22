@@ -78,6 +78,46 @@ export class AuthController {
     }
   }
 
+  @Get('facebook')
+  @UseGuards(AuthGuard('facebook'))
+  async facebookAuth(@Req() req) {
+    // Facebook OAuth flow initiation - handled by Passport
+    this.logger.log('Initiating Facebook OAuth flow');
+  }
+
+  @Get('facebook/callback')
+  @UseGuards(AuthGuard('facebook'))
+  async facebookAuthRedirect(@Req() req, @Res() res: Response) {
+    try {
+      this.logger.log(`Facebook callback received for user: ${req.user?.email}`);
+      
+      const response = await this.authService.facebookLogin(req.user);
+
+      if (!response) {
+        this.logger.error('Facebook login failed - invalid response');
+        return res.redirect(`${process.env.FRONTEND_URL}/?error=auth_failed`);
+      }
+
+      const cookieOptions = this.getCookieOptions();
+
+      // Set authentication cookies - same pattern as Google
+      res.cookie('access_token', response.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 60 * 60 * 1000, // 1 hour
+      });
+      res.cookie('refresh_token', response.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      this.logger.log(`Facebook OAuth successful for user: ${response.data.user.userId}`);
+      res.redirect(`${process.env.FRONTEND_URL}/`);
+    } catch (error) {
+      this.logger.error(`Facebook OAuth error: ${error.message}`, error.stack);
+      res.redirect(`${process.env.FRONTEND_URL}/?error=auth_failed`);
+    }
+  }
+
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   async signUp(@Body() signUpDto: SignUpDto) {

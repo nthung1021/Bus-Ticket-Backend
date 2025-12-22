@@ -24,6 +24,15 @@ type GoogleProfile = {
   provider: 'google';
 };
 
+// Enhanced Facebook profile type with provider mapping
+type FacebookProfile = {
+  facebookId: string; // provider_user_id
+  email?: string;
+  name?: string;
+  avatar?: string;
+  provider: 'facebook';
+};
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -112,12 +121,78 @@ export class AuthService {
   }
 
   /**
+   * Facebook OAuth login handler with enhanced user linking logic
+   * Maps Facebook profile to internal user with proper provider tracking
+   */
+  async facebookLogin(profile?: FacebookProfile | null) {
+    if (!profile || !profile.facebookId) {
+      this.logger.warn('Facebook login attempt with invalid profile');
+      return null;
+    }
+
+    this.logger.log(`Facebook OAuth login attempt for email: ${profile.email}`);
+
+    let existingUser: User | null = null;
+
+    // Step 1: Check if provider_user_id (facebookId) already exists
+    if (profile.facebookId) {
+      existingUser = await this.usersRepository.findOne({
+        where: { facebookId: profile.facebookId },
+      });
+      
+      if (existingUser) {
+        this.logger.log(`Existing Facebook user found: ${existingUser.id}`);
+        return this.generateAuthResponse(existingUser, 'facebook_login_existing');
+      }
+    }
+
+    // Step 2: Check if email exists (link Facebook account to existing user)
+    if (profile.email) {
+      existingUser = await this.usersRepository.findOne({
+        where: { email: profile.email },
+      });
+
+      if (existingUser) {
+        // Link Facebook account to existing email user
+        this.logger.log(`Linking Facebook account to existing user: ${existingUser.id}`);
+        existingUser.facebookId = profile.facebookId;
+        await this.usersRepository.save(existingUser);
+        
+        return this.generateAuthResponse(existingUser, 'facebook_account_linked');
+      }
+    }
+
+    // Step 3: Create new user with Facebook profile
+    this.logger.log(`Creating new user from Facebook profile`);
+    
+    const salt = await bcrypt.genSalt();
+    const passwordHash = await bcrypt.hash(Math.random().toString(), salt);
+    const userRole = this.determineUserRole(profile.email || '');
+
+    existingUser = this.usersRepository.create({
+      facebookId: profile.facebookId,
+      email: profile.email,
+      name: profile.name || 'Facebook User',
+      passwordHash: passwordHash,
+      role: userRole,
+    } as Partial<User> as User);
+
+    await this.usersRepository.save(existingUser);
+    this.logger.log(`New Facebook user created: ${existingUser.id}`);
+
+    return this.generateAuthResponse(existingUser, 'facebook_user_created');
+  }
+
+  /**
    * Generate authentication response with logging
    */
   private async generateAuthResponse(user: User, event: string) {
     const { accessToken, refreshToken } = await this.generateAndStoreTokens(user);
     
-    this.logger.log(`Google OAuth ${event} for user: ${user.id}`);
+    const provider = event.includes('google') ? 'Google' : 
+                    event.includes('facebook') ? 'Facebook' : 'OAuth';
+    
+    this.logger.log(`${provider} OAuth ${event} for user: ${user.id}`);
 
     return {
       success: true,
