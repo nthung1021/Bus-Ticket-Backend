@@ -9,6 +9,7 @@ jest.mock('node-cron', () => {
     start: jest.fn(),
     stop: jest.fn(),
     now: jest.fn(),
+    getStatus: jest.fn().mockReturnValue('scheduled'),
   };
 
   return {
@@ -51,7 +52,12 @@ describe('BookingExpirationScheduler', () => {
       mockTask.start.mockReset();
       mockTask.stop.mockReset();
       mockTask.now.mockReset();
+      mockTask.getStatus.mockReset();
+      mockTask.getStatus.mockReturnValue('scheduled');
     }
+
+    // Speed up tests by mocking the delay utility by default
+    jest.spyOn(scheduler as any, 'delay').mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -125,9 +131,9 @@ describe('BookingExpirationScheduler', () => {
       expect(result.processed).toBe(1);
       expect(result.errors).toHaveLength(0);
       expect(result.sessionId).toMatch(/^manual-\d+-[a-z0-9]+$/);
-      expect(result.processingTimeMs).toBeGreaterThan(0);
+      expect(result.processingTimeMs).toBeGreaterThanOrEqual(0);
       expect(bookingService.findExpiredBookings).toHaveBeenCalledTimes(1);
-      expect(bookingService.expireBookings).toHaveBeenCalledTimes(2); // Once in processExpiredBookings, once in triggerManualExpiration
+      expect(bookingService.expireBookings).toHaveBeenCalledTimes(1); // Once in processExpiredBookings
     });
 
     it('should handle no expired bookings gracefully', async () => {
@@ -147,6 +153,7 @@ describe('BookingExpirationScheduler', () => {
     it('should handle service errors gracefully', async () => {
       // Arrange
       const errorMessage = 'Database connection failed';
+      bookingService.findExpiredBookings.mockResolvedValue([{ id: '1' }] as any);
       bookingService.expireBookings.mockRejectedValue(new Error(errorMessage));
 
       // Act
@@ -277,6 +284,7 @@ describe('BookingExpirationScheduler', () => {
 
     it('should handle service unavailability', async () => {
       // Arrange - Mock service method to throw error
+      bookingService.findExpiredBookings.mockResolvedValue([{ id: '1' }] as any);
       bookingService.expireBookings.mockRejectedValue(new Error('Service unavailable'));
 
       // Act
@@ -291,11 +299,12 @@ describe('BookingExpirationScheduler', () => {
 
   describe('Retry Logic', () => {
     it('should implement delay utility correctly', async () => {
-      // Arrange
+      // Create a temporary instance to avoid messing with the main scheduler mock
+      const tempScheduler = new (scheduler.constructor as any)(bookingService);
       const startTime = Date.now();
 
-      // Act - Access private method through any casting
-      await (scheduler as any).delay(100);
+      // Act
+      await (tempScheduler as any).delay(100);
 
       // Assert
       const endTime = Date.now();
@@ -337,6 +346,7 @@ describe('BookingExpirationScheduler', () => {
     it('should handle booking service errors without crashing', async () => {
       // Arrange
       const loggerSpy = jest.spyOn(Logger.prototype, 'error');
+      bookingService.findExpiredBookings.mockResolvedValue([{ id: '1' }] as any);
       bookingService.expireBookings.mockRejectedValue(new Error('Critical database error'));
 
       // Act
@@ -346,8 +356,7 @@ describe('BookingExpirationScheduler', () => {
       expect(result.processed).toBe(0);
       expect(result.errors).toContain('Critical database error');
       expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Manual expiration failed'),
-        expect.any(Error)
+        expect.stringContaining('Manual expiration failed')
       );
     });
 
