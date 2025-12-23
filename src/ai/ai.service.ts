@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { Seat } from '../entities/seat.entity';
 import { SeatStatusService } from 'src/seat-status/seat-status.service';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { PayosService } from 'src/payos/payos.service';
 
 @Injectable()
 export class AiService {
@@ -149,6 +150,7 @@ export class AiService {
       isGuestCheckout: Optional, Whether the user is checking out as a guest
       contactEmail: Optional, Contact email for booking confirmation
       contactPhone: Optional, Contact phone number for booking confirmation
+      ---
       ** NOTE **:
       - tripId is fetched from the selected trip in tool 'search_trips' results.
       - Each element in seats array only needs 'code' provided by user, other fields can be filled based on tool 'search_seats' results.
@@ -162,6 +164,7 @@ export class AiService {
   constructor(
     private readonly tripsService: TripsService,
     private readonly bookingService: BookingService,
+    private readonly payosService: PayosService,
     private readonly seatStatusService: SeatStatusService,
     @InjectRepository(Message)
     private readonly msgRepo: Repository<Message>,
@@ -332,7 +335,7 @@ export class AiService {
 
       // If the model requested tools, execute them and continue the loop.
       if (parsed.tool_calls && parsed.tool_calls.length > 0) {
-        console.log('AI Service - Tool Calls Detected:', parsed.tool_calls);  
+        console.log('AI Service - Tool Calls Detected:', parsed.tool_calls);
         for (const toolCall of parsed.tool_calls) {
           console.log('AI Service - Tool Call Requested:', toolCall.tool_name);
           if (toolCall.tool_name === 'search_trips') {
@@ -348,13 +351,11 @@ export class AiService {
             try {
               const bookingResult = await this.bookingService.createBooking(bookingUserId, bookingParams);
               this.logger.log('AI Service - Booking Result: ' + JSON.stringify(bookingResult));
-              // If bookingResult contains a paymentUrl, include it explicitly so the AI can present it to the user
               const messageObj: any = {
                 content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}`,
               };
               if ((bookingResult as any).paymentUrl) {
                 messageObj.payment_url = (bookingResult as any).paymentUrl;
-                // also append a short instruction to content for clarity
                 messageObj.content += `\n\nClick here to complete payment: ${(bookingResult as any).paymentUrl}`;
               }
               const aiMsg = new HumanMessage(JSON.stringify(messageObj));
@@ -399,9 +400,8 @@ export class AiService {
                 this.msgs.push(aiMsg);
               }
             }
-          }
+          } 
         }
-
         // continue the loop so the model can respond to results of the tool calls
         iteration++;
         continue;
@@ -412,11 +412,32 @@ export class AiService {
       break;
     }
 
+    if (iteration >= MAX_ITERATIONS) {
+      this.logger.warn('Max iterations reached while processing tool_calls; attempting one final LLM invoke to include tool results');
+      try {
+        const finalResponse = await this.llm.invoke(this.msgs);
+        this.logger.debug('AI Service - Final LLM invoke after max iterations: ' + JSON.stringify(finalResponse));
+        lastResponse = finalResponse;
+        let finalRawCandidate = '';
+        if (finalResponse == null) {
+          finalRawCandidate = '';
+        } else if (typeof finalResponse === 'string') {
+          finalRawCandidate = finalResponse;
+        } else if (finalResponse.content != null) {
+          finalRawCandidate = String(finalResponse.content);
+        } else {
+          finalRawCandidate = JSON.stringify(finalResponse);
+        }
+        if (finalRawCandidate) {
+          finalRaw = finalRawCandidate;
+        }
+      } catch (err) {
+        this.logger.warn('Final LLM invoke failed: ' + (err?.message ?? String(err)));
+      }
+    }
+
     if (!finalRaw && lastResponse) {
       finalRaw = typeof lastResponse === 'string' ? lastResponse : lastResponse.content ?? JSON.stringify(lastResponse);
-    }
-    if (iteration >= MAX_ITERATIONS) {
-      this.logger.warn('Max iterations reached while processing tool_calls; returning last model response');
     }
 
     console.log('AI Service - Final Response:', finalRaw);

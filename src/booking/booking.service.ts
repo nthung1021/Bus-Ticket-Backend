@@ -242,10 +242,11 @@ export class BookingService {
           paymentUrl = await payos.createPaymentUrl({
             amount: savedBooking.totalAmount,
             orderId: savedBooking.bookingReference || savedBooking.id,
-            description: `Payment for booking ${savedBooking.bookingReference || savedBooking.id}`,
+            description: ``,
             contactEmail: bookingData.contactEmail,
             contactPhone: bookingData.contactPhone,
           });
+          console.log('Generated payment URL:', paymentUrl);
         } catch (err) {
           // Log but do not fail booking creation if payment URL generation fails
           this.logger.error('Failed to generate payment URL: ' + String(err));
