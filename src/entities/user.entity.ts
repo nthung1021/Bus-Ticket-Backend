@@ -55,7 +55,11 @@ export class User {
   @Index('idx_users_phone')
   phone: string;
 
-  @Column({ name: 'password_hash', nullable: true })
+  @Column({ 
+    name: 'password_hash', 
+    type: 'varchar',
+    nullable: true 
+  })
   passwordHash: string | null;
 
   @Column({
