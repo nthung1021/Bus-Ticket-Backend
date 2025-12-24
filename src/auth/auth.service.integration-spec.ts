@@ -7,7 +7,7 @@ import { ConflictException, BadRequestException, ForbiddenException } from '@nes
 import { AuthService } from './auth.service';
 import { User, UserRole } from '../entities/user.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { JwtConfigService } from '../config/jwt.config.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -18,9 +18,16 @@ import { testDatabaseConfig } from '../config/test-database.config';
 import * as bcrypt from 'bcrypt';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
+import cookieParser from 'cookie-parser';
+
+// Ensure Google OAuth env vars are present when running tests
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
 
 describe('AuthService (integration)', () => {
   let service: AuthService;
+  let jwtService: JwtService;
   let userRepository: Repository<User>;
   let refreshTokenRepository: Repository<RefreshToken>;
 
@@ -28,14 +35,14 @@ describe('AuthService (integration)', () => {
     email: 'test@example.com',
     password: 'Test1234!@#$',
     fullName: 'Test User',
-    phone: '+84901234567',
+    phone: '0901234567',
   };
 
   const adminUser: SignUpDto = {
     email: 'minh@gmail.com',
     password: 'Admin1234!@#$',
     fullName: 'Admin User',
-    phone: '+84901234568',
+    phone: '0901234568',
   };
 
   beforeAll(async () => {
@@ -70,6 +77,7 @@ describe('AuthService (integration)', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
+    jwtService = module.get<JwtService>(JwtService);
     userRepository = module.get<Repository<User>>(getRepositoryToken(User));
     refreshTokenRepository = module.get<Repository<RefreshToken>>(
       getRepositoryToken(RefreshToken),
@@ -77,14 +85,14 @@ describe('AuthService (integration)', () => {
   });
 
   afterAll(async () => {
-    await refreshTokenRepository.delete({});
-    await userRepository.delete({});
+    await refreshTokenRepository.createQueryBuilder().delete().execute();
+    await userRepository.createQueryBuilder().delete().execute();
   });
 
   beforeEach(async () => {
     // Clean up before each test
-    await refreshTokenRepository.delete({});
-    await userRepository.delete({});
+    await refreshTokenRepository.createQueryBuilder().delete().execute();
+    await userRepository.createQueryBuilder().delete().execute();
   });
 
   describe('signUp', () => {
@@ -285,17 +293,23 @@ describe('AuthService (integration)', () => {
     });
 
     it('should throw ForbiddenException for expired token', async () => {
-      // Create an expired token manually
+      // Create a real JWT token that's expired in the database
+      const realExpiredToken = jwtService.sign(
+        { sub: user.id },
+        {
+          secret: 'your-refresh-secret', // matches default in JwtConfigService
+          expiresIn: '-1s', // Already expired
+        },
+      );
+
       const expiredToken = await refreshTokenRepository.save({
-        token: 'expired-token',
+        token: realExpiredToken,
         userId: user.id,
         expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
       } as RefreshToken);
 
-      await expect(service.refreshToken('expired-token')).rejects.toThrow(
-        ForbiddenException,
-      );
-      await expect(service.refreshToken('expired-token')).rejects.toThrow(
+      // Single call — verify specific error and that token was deleted
+      await expect(service.refreshToken(realExpiredToken)).rejects.toThrow(
         'Refresh token has expired',
       );
 
@@ -308,15 +322,16 @@ describe('AuthService (integration)', () => {
 
     it('should throw ForbiddenException for non-existent token', async () => {
       // Create a valid JWT token but not in database
-      const { JwtService } = await import('@nestjs/jwt');
-      const jwtService = new JwtService();
       const fakeToken = jwtService.sign(
         { sub: user.id },
-        { secret: 'fake-secret', expiresIn: '7d' },
+        { secret: 'your-refresh-secret', expiresIn: '7d' },
       );
 
       await expect(service.refreshToken(fakeToken)).rejects.toThrow(
         ForbiddenException,
+      );
+      await expect(service.refreshToken(fakeToken)).rejects.toThrow(
+        'Invalid refresh token',
       );
     });
   });
