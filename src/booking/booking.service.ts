@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, LessThan, QueryRunner } from 'typeorm';
+import { Repository, DataSource, LessThan, QueryRunner, MoreThanOrEqual } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
@@ -145,7 +145,7 @@ export class BookingService {
     // Build where conditions
     const whereConditions: any = {
       tripId,
-      bookedAt: { $gte: tenMinutesAgo }
+      bookedAt: MoreThanOrEqual(tenMinutesAgo)
     };
     
     if (userId) {
