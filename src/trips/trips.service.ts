@@ -182,7 +182,7 @@ export class TripsService {
   async findOne(id: string): Promise<Trip> {
     const trip = await this.tripRepo.findOne({
       where: { id },
-      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'feedbacks'],
+      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'reviews'],
     });
 
     if (!trip) {
