@@ -1,3 +1,4 @@
+
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiService } from './ai.service';
@@ -7,9 +8,17 @@ import { SeatStatusModule } from '../seat-status/seat-status.module';
 import { PayosModule } from '../payos/payos.module';
 import { Message } from '../chat/entities/message.entity';
 import { Seat } from '../entities/seat.entity';
+import { FaqModule } from '../faq/faq.module';
 
 @Module({
-  imports: [TripsModule, BookingModule, SeatStatusModule, PayosModule, TypeOrmModule.forFeature([Message, Seat])],
+  imports: [
+    TripsModule,
+    BookingModule,
+    SeatStatusModule,
+    PayosModule,
+    FaqModule,
+    TypeOrmModule.forFeature([Message, Seat]),
+  ],
   providers: [AiService],
   exports: [AiService],
 })

@@ -10,6 +10,7 @@ import { Seat } from '../entities/seat.entity';
 import { SeatStatusService } from 'src/seat-status/seat-status.service';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { PayosService } from 'src/payos/payos.service';
+import { FaqService } from 'src/faq/faq.service';
 
 @Injectable()
 export class AiService {
@@ -51,6 +52,7 @@ export class AiService {
       }
       You MUST ALWAYS use human's input language in your response.
       You MUST NOT output your thinking process.
+      You MUST ALWAYS use tool 5 to answer questions related to the bus booking system. DO NOT try to answer FAQ-type questions from your own knowledge.
       If a booking requires payment and a payment link is available, you MUST include a clear, clickable payment URL in your response so the user can click to complete payment. Provide the link both inside 'content' and as a 'payment_url' field in the JSON output when applicable.
       You CAN use multiple tools in a single response if needed.
       You MUST NEVER assume any information about the user or their request that is not explicitly provided by the user. For example: if the user does not provide seat codes, you MUST NOT assume any seat codes. Ask the user for more details if needed.
@@ -157,6 +159,12 @@ export class AiService {
       - Each element in passengers array must have fullName, documentId, seatCode. Other fields are optional.
       - totalPrice is calculated using 'calculate_total_price' tool.
       - Other fields are optional based on user input.
+      ---
+      5. get_faqs: Use this tool to get list of frequently asked questions and answers.
+      No parameters.
+      --- 
+      ** NOTE **: 
+      - Always use this tool to answer FAQ-type questions instead of trying to answer from your own knowledge.
   `;
 
   private readonly logger = new Logger(AiService.name);
@@ -165,6 +173,7 @@ export class AiService {
     private readonly tripsService: TripsService,
     private readonly bookingService: BookingService,
     private readonly payosService: PayosService,
+    private readonly faqService: FaqService,
     private readonly seatStatusService: SeatStatusService,
     @InjectRepository(Message)
     private readonly msgRepo: Repository<Message>,
@@ -400,7 +409,19 @@ export class AiService {
                 this.msgs.push(aiMsg);
               }
             }
-          } 
+          }
+          else if (toolCall.tool_name === 'get_faqs') {
+            console.log('AI Service - Invoking get_faqs');
+            try {
+              const faqs = await this.faqService.getAllFaqs();
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Here are the frequently asked questions and answers: \n${JSON.stringify(faqs, null, 2)}` }));
+              this.msgs.push(aiMsg);
+            } 
+            catch(err) {
+              const aiMsg = new HumanMessage(JSON.stringify({ content: `Error fetching FAQs: ${err?.message || String(err)}` }));
+              this.msgs.push(aiMsg);
+            }
+          }
         }
         // continue the loop so the model can respond to results of the tool calls
         iteration++;
