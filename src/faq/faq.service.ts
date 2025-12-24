@@ -29,32 +29,50 @@ export class FaqService {
     return this.faqs;
   }
 
+
   getFaqByIndex(index: number): FaqItem | undefined {
+    if (isNaN(index) || index < 0 || index >= this.faqs.length) {
+      throw new Error('FAQ index out of range');
+    }
     return this.faqs[index];
   }
 
   addFaq(faq: FaqItem): FaqItem[] {
+    if (!faq || !faq.question || !faq.answer) {
+      throw new Error('Invalid FAQ data');
+    }
     this.faqs.push(faq);
     this.saveFaqs();
     return this.faqs;
   }
 
   updateFaq(index: number, faq: FaqItem): FaqItem[] {
-    if (index < 0 || index >= this.faqs.length) return this.faqs;
+    if (isNaN(index) || index < 0 || index >= this.faqs.length) {
+      throw new Error('FAQ index out of range');
+    }
+    if (!faq || !faq.question || !faq.answer) {
+      throw new Error('Invalid FAQ data');
+    }
     this.faqs[index] = faq;
     this.saveFaqs();
     return this.faqs;
   }
 
   deleteFaq(index: number): FaqItem[] {
-    if (index < 0 || index >= this.faqs.length) return this.faqs;
+    if (isNaN(index) || index < 0 || index >= this.faqs.length) {
+      throw new Error('FAQ index out of range');
+    }
     this.faqs.splice(index, 1);
     this.saveFaqs();
     return this.faqs;
   }
 
   private saveFaqs() {
-    fs.writeFileSync(this.faqFilePath, JSON.stringify(this.faqs, null, 4), 'utf-8');
+    try {
+      fs.writeFileSync(this.faqFilePath, JSON.stringify(this.faqs, null, 4), 'utf-8');
+    } catch (error) {
+      throw new Error('Failed to save FAQ data: ' + (error?.message || error));
+    }
   }
 
   findFaqByQuestion(question: string): FaqItem | undefined {
