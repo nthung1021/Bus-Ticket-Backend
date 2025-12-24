@@ -1,0 +1,22 @@
+[
+    {
+        "question": "How can I book a bus ticket?", 
+        "answer": "You can book a bus ticket through our website or mobile app by selecting your route, date, and seat preferences."
+    },
+    {
+        "question": "What payment methods are accepted?", 
+        "answer": "We accept various payment methods including credit/debit cards, PayPal, and mobile wallets."
+    },
+    {
+        "question": "Can I cancel or change my booking?", 
+        "answer": "Yes, you can cancel or change your booking up to 24 hours before the scheduled departure time. Please refer to our cancellation policy for more details."
+    },
+    {
+        "question": "Are there any discounts available?", 
+        "answer": "We offer seasonal discounts and promotional codes. Please check our website or subscribe to our newsletter for the latest offers."
+    },
+    {
+        "question": "What should I do if I miss my bus?", 
+        "answer": "If you miss your bus, please contact our customer service team for assistance. Depending on availability, we may be able to rebook you on the next available bus."
+    }
+]
