@@ -173,7 +173,7 @@ export class TripsService {
   // GET /trips
   async findAll(): Promise<Trip[]> {
     return await this.tripRepo.find({
-      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'feedbacks'],
+      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'reviews'],
       order: { departureTime: 'ASC' },
     });
   }
