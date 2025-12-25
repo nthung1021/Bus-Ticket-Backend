@@ -52,6 +52,7 @@ export class BookingService {
     private readonly modificationPermissionService: BookingModificationPermissionService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    private readonly payosService: PayosService,
   ) { }
 
   /**
@@ -439,6 +440,26 @@ export class BookingService {
         }
       }
 
+      let paymentUrl: string | null = null;
+      let expirationTimestamp: Date | null = null;
+
+      if (savedBooking.status === BookingStatus.PENDING) {
+        // After transaction commit, create payment link if booking is pending
+        try {
+          const payRes = await this.payosService.createPaymentLink({
+            amount: savedBooking.totalAmount,
+            bookingId: savedBooking.id,
+            description: `Payment for booking ${savedBooking.bookingReference}`,
+          });
+          paymentUrl = payRes?.checkoutUrl || null;
+          expirationTimestamp = savedBooking.expiresAt ?? null;
+        }
+        catch (err) {
+          this.logger.error('Failed to generate payment URL: ' + String(err));
+          // Do not fail booking creation; leave paymentUrl as null
+        }
+      }
+
       // 14. Prepare response
       const response: BookingResponseDto = {
         id: savedBooking.id,
@@ -516,24 +537,7 @@ export class BookingService {
         status: status.state,
       })) || [],
     };
-
-    // After transaction commit, create payment link if booking is pending
-    try {
-      if (result.status === BookingStatus.PENDING) {
-        const payRes = await this.payosService.createPaymentLink({
-          amount: result.totalAmount,
-          bookingId: result.id,
-          description: '',
-        });
-        (result as any).paymentUrl = payRes?.checkoutUrl || null;
-      }
-    } catch (err) {
-      this.logger.error('Failed to generate payment URL: ' + String(err));
-      // Do not fail booking creation; leave paymentUrl as null
-    }
-
-    return result;
-  }
+  } 
 
   async findBookingById(bookingId: string): Promise<Booking> {
     const booking = await this.bookingRepository.findOne({
