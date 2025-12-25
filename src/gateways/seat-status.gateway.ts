@@ -27,7 +27,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { SeatState } from '../entities/seat-status.entity';
-import { Seat } from '../entities/seat.entity';
 
 /**
  * Represents a temporary lock on a seat
@@ -89,8 +88,6 @@ export class SeatStatusGateway
         private readonly configService: ConfigService,
         @InjectRepository(SeatStatus)
         private readonly seatStatusRepository: Repository<SeatStatus>,
-        @InjectRepository(Seat)
-        private readonly seatRepository: Repository<Seat>,
     ) {
         // Configure CORS dynamically based on environment
         this.updateCorsConfiguration();
@@ -738,20 +735,10 @@ export class SeatStatusGateway
                     lockedUntil,
                 });
             } else {
-                // Get seat code for new status
-                const seat = await this.seatRepository.findOne({
-                    where: { id: seatId },
-                });
-                
-                if (!seat) {
-                    throw new Error(`Seat not found with ID: ${seatId}`);
-                }
-                
-                // Create new status with seat_code
+                // Create new status
                 const newStatus = this.seatStatusRepository.create({
                     tripId,
                     seatId,
-                    seatCode: seat.seatCode,
                     state,
                     lockedUntil,
                 });

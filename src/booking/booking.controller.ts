@@ -12,9 +12,6 @@ import {
   Delete,
   Query,
   Res,
-  Logger,
-  ConflictException,
-  BadRequestException
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -53,8 +50,6 @@ interface UpdatePassengerDto {
 
 @Controller('bookings')
 export class BookingController {
-  private readonly logger = new Logger(BookingController.name);
-
   constructor(
     private readonly bookingService: BookingService,
     private readonly bookingSchedulerService: BookingSchedulerService,
@@ -72,22 +67,12 @@ export class BookingController {
     message: string;
     data: BookingResponseDto;
   }> {
-    const requestId = Math.random().toString(36).substring(2, 15);
-    const userId = req.user?.userId ?? null;
-    const userIdentifier = userId || `guest:${createBookingDto.contactEmail}`;
-    const seatCodes = createBookingDto.seats.map(s => s.code).join(', ');
-    
-    this.logger.log(`[${requestId}] Booking request initiated for user ${userIdentifier}, trip ${createBookingDto.tripId}, seats: ${seatCodes}`);
-    
     try {
-      const startTime = Date.now();
+      const userId = req.user?.userId ?? null;
       const booking = await this.bookingService.createBooking(
         userId,
         createBookingDto,
       );
-      const endTime = Date.now();
-      
-      this.logger.log(`[${requestId}] Booking created successfully: ${booking.bookingReference} in ${endTime - startTime}ms`);
 
       return {
         success: true,
@@ -95,40 +80,7 @@ export class BookingController {
         data: booking,
       };
     } catch (error) {
-      const endTime = Date.now();
-      
-      if (error instanceof ConflictException) {
-        this.logger.warn(`[${requestId}] Booking conflict: ${error.message}`);
-        // Return structured 409 response for concurrent booking conflicts
-        throw new ConflictException({
-          success: false,
-          error: {
-            code: 'BOOKING_CONFLICT',
-            message: error.message,
-            details: {
-              tripId: createBookingDto.tripId,
-              requestedSeats: seatCodes,
-              suggestedAction: 'Please select different seats or try again'
-            }
-          },
-          timestamp: new Date().toISOString(),
-          requestId
-        });
-      } else if (error instanceof BadRequestException) {
-        this.logger.warn(`[${requestId}] Booking validation error: ${error.message}`);
-        throw new BadRequestException({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: error.message
-          },
-          timestamp: new Date().toISOString(),
-          requestId
-        });
-      } else {
-        this.logger.error(`[${requestId}] Booking creation failed: ${error.message}`, error.stack);
-        throw error;
-      }
+      throw error;
     }
   }
 

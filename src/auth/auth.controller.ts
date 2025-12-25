@@ -8,7 +8,6 @@ import {
   UseGuards,
   Req,
   Res,
-  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Response, Request, CookieOptions } from 'express';
@@ -16,14 +15,11 @@ import { AuthService } from './auth.service';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { SendOtpDto, VerifyOtpDto } from './dto/phone-otp.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
-  private readonly logger = new Logger(AuthController.name);
-
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
@@ -41,82 +37,29 @@ export class AuthController {
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
-  async googleAuth(@Req() req) {
-    // Google OAuth flow initiation - handled by Passport
-    this.logger.log('Initiating Google OAuth flow');
-  }
+  async googleAuth(@Req() req) {}
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req, @Res() res: Response) {
-    try {
-      this.logger.log(`Google callback received for user: ${req.user?.email}`);
-      
-      const response = await this.authService.googleLogin(req.user);
+    const response = await this.authService.googleLogin(req.user);
 
-      if (!response) {
-        this.logger.error('Google login failed - invalid response');
-        return res.redirect(`${process.env.FRONTEND_URL}/?error=auth_failed`);
-      }
-
-      const cookieOptions = this.getCookieOptions();
-
-      // Set authentication cookies
-      res.cookie('access_token', response.data.accessToken, {
-        ...cookieOptions,
-        maxAge: 60 * 60 * 1000, // 1 hour
-      });
-      res.cookie('refresh_token', response.data.refreshToken, {
-        ...cookieOptions,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
-
-      this.logger.log(`Google OAuth successful for user: ${response.data.user.userId}`);
-      res.redirect(`${process.env.FRONTEND_URL}/`);
-    } catch (error) {
-      this.logger.error(`Google OAuth error: ${error.message}`, error.stack);
-      res.redirect(`${process.env.FRONTEND_URL}/?error=auth_failed`);
+    if (!response) {
+      return res.redirect(`${process.env.FRONTEND_URL}/`);
     }
-  }
 
-  @Get('facebook')
-  @UseGuards(AuthGuard('facebook'))
-  async facebookAuth(@Req() req) {
-    // Facebook OAuth flow initiation - handled by Passport
-    this.logger.log('Initiating Facebook OAuth flow');
-  }
+    const cookieOptions = this.getCookieOptions();
 
-  @Get('facebook/callback')
-  @UseGuards(AuthGuard('facebook'))
-  async facebookAuthRedirect(@Req() req, @Res() res: Response) {
-    try {
-      this.logger.log(`Facebook callback received for user: ${req.user?.email}`);
-      
-      const response = await this.authService.facebookLogin(req.user);
+    res.cookie('access_token', response.data.accessToken, {
+      ...cookieOptions,
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
+    res.cookie('refresh_token', response.data.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
 
-      if (!response) {
-        this.logger.error('Facebook login failed - invalid response');
-        return res.redirect(`${process.env.FRONTEND_URL}/?error=auth_failed`);
-      }
-
-      const cookieOptions = this.getCookieOptions();
-
-      // Set authentication cookies - same pattern as Google
-      res.cookie('access_token', response.data.accessToken, {
-        ...cookieOptions,
-        maxAge: 60 * 60 * 1000, // 1 hour
-      });
-      res.cookie('refresh_token', response.data.refreshToken, {
-        ...cookieOptions,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
-
-      this.logger.log(`Facebook OAuth successful for user: ${response.data.user.userId}`);
-      res.redirect(`${process.env.FRONTEND_URL}/`);
-    } catch (error) {
-      this.logger.error(`Facebook OAuth error: ${error.message}`, error.stack);
-      res.redirect(`${process.env.FRONTEND_URL}/?error=auth_failed`);
-    }
+    res.redirect(`${process.env.FRONTEND_URL}/`);
   }
 
   @Post('register')
@@ -216,49 +159,6 @@ export class AuthController {
     return {
       success: true,
       message: 'Logged out successfully',
-    };
-  }
-
-  /**
-   * Phone/OTP Authentication Endpoints - DEV/DEMO Mode
-   */
-
-  @Post('phone/send-otp')
-  @HttpCode(HttpStatus.OK)
-  async sendOtp(@Body() sendOtpDto: SendOtpDto) {
-    this.logger.log(`[DEV MODE] Sending OTP to phone: ${sendOtpDto.phone}`);
-    return this.authService.sendOtp(sendOtpDto);
-  }
-
-  @Post('phone/verify-otp')
-  @HttpCode(HttpStatus.OK)
-  async verifyOtp(
-    @Body() verifyOtpDto: VerifyOtpDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    this.logger.log(`[DEV MODE] Verifying OTP for phone: ${verifyOtpDto.phone}`);
-    
-    const response = await this.authService.verifyOtp(verifyOtpDto);
-
-    const cookieOptions = this.getCookieOptions();
-
-    // Set HTTP-only cookies for both tokens
-    res.cookie('access_token', response.data.accessToken, {
-      ...cookieOptions,
-      maxAge: 60 * 60 * 1000, // 1 hour
-    });
-    res.cookie('refresh_token', response.data.refreshToken, {
-      ...cookieOptions,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
-    // Return user data without tokens (same pattern as email/password login)
-    return {
-      success: true,
-      message: response.message,
-      data: {
-        user: response.data.user,
-      },
     };
   }
 }

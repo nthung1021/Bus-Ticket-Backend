@@ -25,7 +25,7 @@ import { BookingGateway } from '../gateways/booking.gateway';
 @Injectable()
 export class PayosService {
   private readonly logger = new Logger(PayosService.name);
-  private readonly payos: PayOS | null;
+  private readonly payos: PayOS;
 
   constructor(
     private configService: ConfigService,
@@ -42,31 +42,23 @@ export class PayosService {
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
     const checksumKey = this.configService.get<string>('PAYOS_CHECKSUM_KEY');
 
-    // Check if PayOS credentials are properly configured (not placeholder values)
-    const isPlaceholder = (value: string) => !value || value.startsWith('your_') || value === 'your_payos_client_id' || value === 'your_payos_api_key' || value === 'your_payos_checksum_key';
-    
-    if (!clientId || !apiKey || !checksumKey || 
-        isPlaceholder(clientId) || isPlaceholder(apiKey) || isPlaceholder(checksumKey)) {
-      this.logger.warn('PayOS configuration is using placeholder values. Payment functionality will be disabled.');
-      this.payos = null;
-    } else {
-      this.payos = new PayOS({
-        clientId,
-        apiKey,
-        checksumKey,
-      });
+    if (!clientId || !apiKey || !checksumKey) {
+      throw new Error(
+        'PayOS configuration is missing. Please check environment variables.',
+      );
     }
+
+    this.payos = new PayOS({
+      clientId,
+      apiKey,
+      checksumKey,
+    });
   }
 
   async createPaymentLink(
     createPaymentDto: CreatePaymentDto,
   ): Promise<PaymentResponseDto> {
     try {
-      // Check if PayOS is properly configured
-      if (!this.payos) {
-        throw new Error('PayOS service is not configured. Please check environment variables.');
-      }
-
       const orderCode = this.generateOrderCode();
       // console.log(orderCode);
       // 2147483647
@@ -130,10 +122,6 @@ export class PayosService {
 
   async getPaymentInformation(orderCode: number): Promise<PaymentResponseDto> {
     try {
-      if (!this.payos) {
-        throw new Error('PayOS service is not configured.');
-      }
-
       const paymentInfo = (await this.payos.paymentRequests.get(
         orderCode,
       )) as PaymentLink;
@@ -163,10 +151,6 @@ export class PayosService {
 
   async cancelPayment(orderCode: number): Promise<PaymentResponseDto> {
     try {
-      if (!this.payos) {
-        throw new Error('PayOS service is not configured.');
-      }
-
       const cancelledPayment =
         await this.payos.paymentRequests.cancel(orderCode);
 
@@ -259,10 +243,6 @@ export class PayosService {
 
   async verifyWebhookData(webhookData: any): Promise<WebhookData> {
     try {
-      if (!this.payos) {
-        throw new Error('PayOS service is not configured.');
-      }
-
       // Verify webhook signature using PayOS method
       const verifiedData = await this.payos.webhooks.verify(webhookData);
       this.logger.log('Verified data:', verifiedData);

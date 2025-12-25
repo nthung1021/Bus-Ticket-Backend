@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BookingService } from './booking.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { BookingService } from './booking.service';
 import { Booking, BookingStatus } from '../entities/booking.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
-import { SeatStatus, SeatState } from '../entities/seat-status.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
@@ -12,295 +12,800 @@ import { BookingModificationHistory } from '../entities/booking-modification-his
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { EmailService } from './email.service';
 import { BookingModificationPermissionService } from './booking-modification-permission.service';
-import { NotificationsService } from '../notifications/notifications.service';
-import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
-import { CreateBookingDto } from './dto/create-booking.dto';
-
-// --- Mocks ---
-
-const mockRepo = () => ({
-  find: jest.fn(),
-  findOne: jest.fn(),
-  save: jest.fn(),
-  create: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn(),
-  createQueryBuilder: jest.fn(() => ({
-    leftJoinAndSelect: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    getMany: jest.fn().mockResolvedValue([]),
-    getOne: jest.fn().mockResolvedValue(null),
-  })),
-});
-
-const mockEmailService = {
-  sendBookingConfirmation: jest.fn(),
-  sendTicketEmail: jest.fn(),
-};
-
-const mockNotificationsService = {
-  createInAppNotification: jest.fn(),
-};
-
-const mockModificationPermissionService = {
-  checkPermissions: jest.fn(),
-};
-
-// Mock DataSource manager
-const mockEntityManager = {
-  findOne: jest.fn(),
-  find: jest.fn(),
-  create: jest.fn(),
-  save: jest.fn(),
-  update: jest.fn(),
-  transaction: jest.fn(),
-};
-
-const mockDataSource = {
-  transaction: jest.fn((cb) => cb(mockEntityManager)),
-};
 
 describe('BookingService', () => {
   let service: BookingService;
-  let dataSource: DataSource;
-  // Repositories (we might need to spy on them or the manager)
-  let tripRepo: Repository<Trip>;
-  let seatRepo: Repository<Seat>;
-  let seatStatusRepo: Repository<SeatStatus>;
+  let bookingRepository: Repository<Booking>;
+  let mockQueryBuilder: Partial<SelectQueryBuilder<Booking>>;
+
+  const mockRepository = {
+    findOne: jest.fn(),
+    find: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    update: jest.fn(),
+    createQueryBuilder: jest.fn(),
+  };
+
+  const mockDataSource = {
+    transaction: jest.fn(),
+  };
+
+  const mockEmailService = {
+    sendBookingConfirmation: jest.fn(),
+    sendBookingCancellation: jest.fn(),
+  };
+
+  const mockModificationPermissionService = {
+    checkModificationPermissions: jest.fn(),
+    validateModificationRequest: jest.fn(),
+  };
+
+  const mockBookingData = [
+    {
+      id: 'booking-1',
+      userId: 'user-1',
+      tripId: 'trip-1',
+      totalAmount: 500000,
+      status: BookingStatus.PAID,
+      bookedAt: new Date('2025-12-01T08:00:00Z'),
+      cancelledAt: null,
+      trip: {
+        id: 'trip-1',
+        departureTime: new Date('2025-12-07T08:00:00Z'),
+        arrivalTime: new Date('2025-12-07T18:00:00Z'),
+        basePrice: 450000,
+        status: 'scheduled',
+        route: {
+          id: 'route-1',
+          name: 'Hanoi - Ho Chi Minh City',
+          description: 'Express route',
+          origin: 'Hanoi',
+          destination: 'Ho Chi Minh City',
+          distanceKm: 1700,
+          estimatedMinutes: 600,
+        },
+        bus: {
+          id: 'bus-1',
+          plateNumber: '30A-12345',
+          model: 'Hyundai Universe',
+          seatCapacity: 45,
+        },
+      },
+      passengerDetails: [
+        {
+          id: 'passenger-1',
+          fullName: 'Nguyen Van A',
+          documentId: '123456789',
+          seatCode: 'A1',
+        },
+      ],
+      seatStatuses: [
+        {
+          id: 'seat-status-1',
+          seatId: 'seat-1',
+          state: 'booked',
+          lockedUntil: null,
+          seat: {
+            id: 'seat-1',
+            seatCode: 'A1',
+            seatType: 'vip',
+            isActive: true,
+          },
+        },
+      ],
+    },
+  ];
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    mockQueryBuilder = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn(),
+    };
+
+    mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BookingService,
-        { provide: getRepositoryToken(Booking), useFactory: mockRepo },
-        { provide: getRepositoryToken(PassengerDetail), useFactory: mockRepo },
-        { provide: getRepositoryToken(SeatStatus), useFactory: mockRepo },
-        { provide: getRepositoryToken(Trip), useFactory: mockRepo },
-        { provide: getRepositoryToken(Seat), useFactory: mockRepo },
-        { provide: getRepositoryToken(AuditLog), useFactory: mockRepo },
-        { provide: getRepositoryToken(BookingModificationHistory), useFactory: mockRepo },
-        { provide: getRepositoryToken(SeatLayout), useFactory: mockRepo },
-        { provide: DataSource, useValue: mockDataSource },
-        { provide: EmailService, useValue: mockEmailService },
-        { provide: NotificationsService, useValue: mockNotificationsService },
-        { provide: BookingModificationPermissionService, useValue: mockModificationPermissionService },
+        {
+          provide: getRepositoryToken(Booking),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(PassengerDetail),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(SeatStatus),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(Trip),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(Seat),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(AuditLog),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(BookingModificationHistory),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(SeatLayout),
+          useValue: mockRepository,
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
+        },
+        {
+          provide: EmailService,
+          useValue: mockEmailService,
+        },
+        {
+          provide: BookingModificationPermissionService,
+          useValue: mockModificationPermissionService,
+        },
       ],
     }).compile();
 
     service = module.get<BookingService>(BookingService);
-    dataSource = module.get<DataSource>(DataSource);
-    tripRepo = module.get(getRepositoryToken(Trip));
+    bookingRepository = module.get<Repository<Booking>>(getRepositoryToken(Booking));
   });
 
-  describe('createBooking', () => {
-    const createDto: CreateBookingDto = {
-      tripId: 'trip-1',
-      totalPrice: 200,
-      passengers: [
-        { fullName: 'P1', documentId: '123', seatCode: 'A1' },
-      ],
-      seats: [{ code: 'A1', id: 'seat-1', type: 'normal', price: 200 }],
-      isGuestCheckout: false,
-    };
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
-    it('should throw NotFoundException if trip not found', async () => {
-      mockEntityManager.findOne.mockResolvedValueOnce(null); // Trip lookup
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
 
-      await expect(service.createBooking('user-1', createDto))
-        .rejects.toThrow(NotFoundException);
+  describe('findBookingsByUserWithDetails', () => {
+    it('should return user bookings with all details when no status filter', async () => {
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValue(mockBookingData);
+
+      const result = await service.findBookingsByUserWithDetails('user-1');
+
+      expect(mockRepository.createQueryBuilder).toHaveBeenCalledWith('booking');
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('booking.trip', 'trip');
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('trip.route', 'route');
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('trip.bus', 'bus');
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('booking.passengerDetails', 'passengerDetails');
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('booking.seatStatuses', 'seatStatuses');
+      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith('seatStatuses.seat', 'seat');
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith('booking.userId = :userId', { userId: 'user-1' });
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('booking.bookedAt', 'DESC');
+      expect(mockQueryBuilder.andWhere).not.toHaveBeenCalled();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('booking-1');
+      expect(result[0].trip).toBeDefined();
+      expect(result[0].passengers).toHaveLength(1);
+      expect(result[0].seats).toHaveLength(1);
     });
 
-    it('should throw BadRequestException if seats count mismatch', async () => {
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'trip-1' }); // Trip found
-      const badDto = { ...createDto, seats: [] }; // 0 seats, 1 passenger
+    it('should apply status filter when provided', async () => {
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValue(mockBookingData);
 
-      await expect(service.createBooking('user-1', badDto))
-        .rejects.toThrow(BadRequestException);
+      await service.findBookingsByUserWithDetails('user-1', BookingStatus.PAID);
+
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('booking.status = :status', { status: BookingStatus.PAID });
     });
 
-    it('should successfully create a paid booking and notify', async () => {
-      // 1. Find Trip
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'trip-1', busId: 'bus-1' }); 
-      // 2. Find Seat A1
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: 'A1' });
-      // 3. Find SeatStatuses (Availability Check) -> Return empty (available) or existing but free
-      mockEntityManager.find.mockResolvedValueOnce([]); 
-      // 4. Save Booking
-      const savedBooking = { 
-        id: 'booking-1', 
-        status: BookingStatus.PAID, 
-        bookingReference: 'REF123',
-        totalAmount: 200,
-        bookedAt: new Date(),
-        tripId: 'trip-1'
+    it('should calculate expiration time for pending bookings', async () => {
+      const pendingBooking = {
+        ...mockBookingData[0],
+        status: BookingStatus.PENDING,
+        bookedAt: new Date('2025-12-01T08:00:00Z'),
       };
-      mockEntityManager.create.mockReturnValueOnce(savedBooking); // Create booking entity
-      mockEntityManager.save.mockResolvedValueOnce(savedBooking); // Save booking
-      
-      // 5. Save Passengers
-      mockEntityManager.create.mockReturnValueOnce({}); // Create passengers
-      mockEntityManager.save.mockResolvedValueOnce([{ id: 'p1', fullName: 'P1' }]); // Save passengers
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValue([pendingBooking]);
 
-      // 6. Update/Create SeatStatus
-      // Seat status lookup in loop (step 8 in service)
-      // Since we returned [] in step 3, finding inside loop returns undefined.
-      // So it creates new status.
-      mockEntityManager.create.mockReturnValueOnce({});
-      mockEntityManager.save.mockResolvedValueOnce({});
+      const result = await service.findBookingsByUserWithDetails('user-1');
 
-      // Call
-      const result = await service.createBooking('user-1', createDto);
-
-      expect(result).toBeDefined();
-      expect(result.id).toBe('booking-1');
-      expect(result.status).toBe(BookingStatus.PAID);
-      
-      // Verify notification sent
-      expect(mockNotificationsService.createInAppNotification).toHaveBeenCalledWith(
-        'user-1',
-        'Booking Successful',
-        expect.stringContaining('successfully confirmed'),
-        expect.any(Object),
-        'booking-1'
-      );
+      expect(result[0].expiresAt).toEqual(new Date('2025-12-01T08:15:00Z'));
     });
 
-    it('should throw ConflictException if seat is already booked', async () => {
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'trip-1', busId: 'bus-1' });
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: 'A1' });
-      
-      // Return occupied seat status
-      mockEntityManager.find.mockResolvedValueOnce([
-        { seatId: 'seat-1', state: SeatState.BOOKED }
-      ]);
-      // The service also looks up the seat again to get the code for the error message
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: 'A1' });
+    it('should handle bookings with null trip data', async () => {
+      const bookingWithoutTrip = {
+        ...mockBookingData[0],
+        trip: null,
+      };
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValue([bookingWithoutTrip]);
 
-      await expect(service.createBooking('user-1', createDto))
-        .rejects.toThrow(ConflictException);
-    });
-  });
+      const result = await service.findBookingsByUserWithDetails('user-1');
 
-  describe('findBookingById', () => {
-    it('should return booking if found', async () => {
-      const mockBooking = { id: 'b1', bookingReference: 'REF1' };
-      const repo = (service as any).bookingRepository;
-      repo.findOne.mockResolvedValueOnce(mockBooking);
-
-      const result = await service.findBookingById('b1');
-      expect(result).toEqual(mockBooking);
-      expect(repo.findOne).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'b1' } }));
+      expect(result[0].trip).toBeNull();
     });
 
-    it('should throw NotFoundException if not found', async () => {
-      const repo = (service as any).bookingRepository;
-      repo.findOne.mockResolvedValueOnce(null);
+    it('should return empty array when user has no bookings', async () => {
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValue([]);
 
-      await expect(service.findBookingById('b1'))
-        .rejects.toThrow(NotFoundException);
+      const result = await service.findBookingsByUserWithDetails('user-1');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should transform route data correctly', async () => {
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValue(mockBookingData);
+
+      const result = await service.findBookingsByUserWithDetails('user-1');
+
+      const route = result[0].trip?.route;
+      expect(route).toBeDefined();
+      expect(route?.name).toBe('Hanoi - Ho Chi Minh City');
+      expect(route?.origin).toBe('Hanoi');
+      expect(route?.destination).toBe('Ho Chi Minh City');
+    });
+
+    it('should transform passenger data correctly', async () => {
+      (mockQueryBuilder.getMany as jest.Mock).mockResolvedValue(mockBookingData);
+
+      const result = await service.findBookingsByUserWithDetails('user-1');
+
+      const passengers = result[0].passengers;
+      expect(passengers).toHaveLength(1);
+      expect(passengers[0].fullName).toBe('Nguyen Van A');
+      expect(passengers[0].seatCode).toBe('A1');
     });
   });
 
-  describe('confirmPayment', () => {
-    const bookingId = 'booking-1';
+  describe('Booking Expiration Logic', () => {
+    let mockEntityManager: any;
+    let mockSeatStatusRepository: any;
+    let mockAuditLogRepository: any;
 
-    it('should successfully confirm payment for a pending booking', async () => {
-      const mockBooking = { 
-        id: bookingId, 
-        status: BookingStatus.PENDING, 
-        bookedAt: new Date(),
-        userId: 'user-1',
-        bookingReference: 'REF123',
-        totalAmount: 200,
-        passengerDetails: [],
-        seatStatuses: []
+    beforeEach(() => {
+      mockEntityManager = {
+        findOne: jest.fn(),
+        update: jest.fn(),
+        find: jest.fn(),
+        save: jest.fn(),
       };
 
-      mockEntityManager.findOne.mockResolvedValueOnce(mockBooking); // Step 1: Find
-      mockEntityManager.update.mockResolvedValueOnce({ affected: 1 }); // Step 4: Update
-      mockEntityManager.findOne.mockResolvedValueOnce({ ...mockBooking, status: BookingStatus.PAID }); // Step 5: Reload
+      mockSeatStatusRepository = {
+        find: jest.fn(),
+        update: jest.fn(),
+      };
 
-      const result = await service.confirmPayment(bookingId);
+      mockAuditLogRepository = {
+        save: jest.fn(),
+        create: jest.fn(),
+      };
 
-      expect(result.status).toBe(BookingStatus.PAID);
-      expect(mockEntityManager.update).toHaveBeenCalledWith(Booking, bookingId, { status: BookingStatus.PAID });
-      expect(mockNotificationsService.createInAppNotification).toHaveBeenCalled();
+      mockDataSource.transaction.mockImplementation(async (callback) => {
+        return callback(mockEntityManager);
+      });
     });
 
-    it('should throw BadRequestException if booking already paid', async () => {
-      mockEntityManager.findOne.mockResolvedValueOnce({ 
-        id: bookingId, 
-        status: BookingStatus.PAID 
+    describe('findExpiredBookings', () => {
+      it('should find bookings that have expired', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-expired-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20), // 20 minutes ago
+            userId: 'user-1',
+            trip: {
+              route: {
+                origin: 'Hà Nội',
+                destination: 'TP. Hồ Chí Minh'
+              }
+            }
+          },
+          {
+            id: 'booking-expired-2', 
+            bookingReference: 'REF002',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
+            userId: 'user-2',
+            trip: {
+              route: {
+                origin: 'Hà Nội',
+                destination: 'Đà Nẵng'
+              }
+            }
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Act
+        const result = await service.findExpiredBookings();
+
+        // Assert
+        expect(result).toHaveLength(2);
+        expect(result[0].bookingReference).toBe('REF001');
+        expect(result[1].bookingReference).toBe('REF002');
+        expect(mockQB.where).toHaveBeenCalledWith('booking.status = :status', { status: BookingStatus.PENDING });
+        expect(mockQB.andWhere).toHaveBeenCalledWith('booking.expiresAt < :now', expect.any(Object));
       });
 
-      await expect(service.confirmPayment(bookingId))
-        .rejects.toThrow(BadRequestException);
+      it('should return empty array when no expired bookings found', async () => {
+        // Arrange
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Act
+        const result = await service.findExpiredBookings();
+
+        // Assert
+        expect(result).toHaveLength(0);
+      });
     });
 
-    it('should throw BadRequestException if booking expired', async () => {
-      const expiredDate = new Date();
-      expiredDate.setMinutes(expiredDate.getMinutes() - 20); // 20 mins ago
+    describe('expireBookings', () => {
+      it('should successfully expire multiple bookings with idempotency', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000,
+            trip: {
+              route: { origin: 'Hà Nội', destination: 'TP. Hồ Chí Minh' }
+            }
+          }
+        ];
 
-      const expiredBooking = { 
-        id: bookingId, 
-        status: BookingStatus.PENDING,
-        bookedAt: expiredDate,
-        seatStatuses: []
-      };
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
 
-      // Mock findOne twice: once for confirmPayment check, once for cancelBooking logic
-      mockEntityManager.findOne
-        .mockResolvedValueOnce(expiredBooking)
-        .mockResolvedValueOnce(expiredBooking);
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
 
-      await expect(service.confirmPayment(bookingId))
-        .rejects.toThrow(BadRequestException);
-      
-      expect(mockEntityManager.update).toHaveBeenCalledWith(Booking, bookingId, { status: BookingStatus.CANCELLED });
+        // Mock successful database updates
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+          bookingReference: 'REF001'
+        });
+
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 1 }); // Booking update
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 2 }); // Seat update
+
+        // Mock audit log creation
+        service['createAuditLog'] = jest.fn().mockResolvedValue({});
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(1);
+        expect(result.bookings).toContain('REF001');
+        expect(mockDataSource.transaction).toHaveBeenCalled();
+        expect(mockEntityManager.findOne).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            where: { id: 'booking-1', status: BookingStatus.PENDING }
+          })
+        );
+        expect(mockEntityManager.update).toHaveBeenCalledWith(
+          expect.anything(),
+          { id: 'booking-1', status: BookingStatus.PENDING },
+          expect.objectContaining({
+            status: BookingStatus.EXPIRED,
+            cancelledAt: expect.any(Date),
+            lastModifiedAt: expect.any(Date),
+          })
+        );
+      });
+
+      it('should skip bookings that are no longer PENDING (idempotency)', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock booking that's already been processed (no longer PENDING)
+        mockEntityManager.findOne.mockResolvedValue(null);
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(0);
+        expect(result.bookings).toHaveLength(0);
+        expect(mockEntityManager.update).not.toHaveBeenCalled();
+      });
+
+      it('should skip bookings where expiration time was updated', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock booking with updated expiration time (future date)
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() + 1000 * 60 * 10), // 10 minutes in future
+          bookingReference: 'REF001'
+        });
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(0);
+        expect(result.bookings).toHaveLength(0);
+        expect(mockEntityManager.update).not.toHaveBeenCalled();
+      });
+
+      it('should handle race conditions gracefully', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+          bookingReference: 'REF001'
+        });
+
+        // Mock race condition - update affects 0 rows (already processed by another instance)
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 0 });
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(0);
+        expect(result.bookings).toHaveLength(0);
+      });
+
+      it('should continue processing after individual booking failures', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          },
+          {
+            id: 'booking-2',
+            bookingReference: 'REF002',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 15),
+            userId: 'user-2',
+            tripId: 'trip-2',
+            totalAmount: 300000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock first booking fails, second succeeds
+        mockDataSource.transaction
+          .mockRejectedValueOnce(new Error('Database constraint violation'))
+          .mockImplementationOnce(async (callback) => {
+            mockEntityManager.findOne.mockResolvedValue({
+              id: 'booking-2',
+              status: BookingStatus.PENDING,
+              expiresAt: new Date(Date.now() - 1000 * 60 * 15),
+              bookingReference: 'REF002'
+            });
+            mockEntityManager.update.mockResolvedValueOnce({ affected: 1 });
+            mockEntityManager.update.mockResolvedValueOnce({ affected: 1 });
+            return callback(mockEntityManager);
+          });
+
+        service['createAuditLog'] = jest.fn().mockResolvedValue({});
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(1);
+        expect(result.bookings).toContain('REF002');
+        expect(result.bookings).not.toContain('REF001');
+      });
+
+      it('should handle constraint violations as idempotency indicators', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        // Mock constraint violation (booking already processed)
+        const constraintError = new Error('duplicate key value violates unique constraint');
+        mockDataSource.transaction.mockRejectedValue(constraintError);
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(0);
+        expect(result.bookings).toHaveLength(0);
+        // Should not throw error - constraint violations are handled gracefully
+      });
+
+      it('should release only locked seats for expired bookings', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+          bookingReference: 'REF001'
+        });
+
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 1 }); // Booking update
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 3 }); // Seat update (3 seats released)
+
+        service['createAuditLog'] = jest.fn().mockResolvedValue({});
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(1);
+        expect(mockEntityManager.update).toHaveBeenNthCalledWith(
+          2, // Second update call (seats)
+          expect.anything(),
+          expect.objectContaining({
+            bookingId: 'booking-1',
+            state: expect.anything() // Should check for LOCKED state
+          }),
+          expect.objectContaining({
+            state: expect.anything(), // Should set to AVAILABLE
+            bookingId: null,
+            lockedUntil: null,
+          })
+        );
+      });
+
+      it('should create detailed audit logs with session tracking', async () => {
+        // Arrange
+        const expiredBookings = [
+          {
+            id: 'booking-1',
+            bookingReference: 'REF001',
+            status: BookingStatus.PENDING,
+            expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+            userId: 'user-1',
+            tripId: 'trip-1',
+            totalAmount: 500000
+          }
+        ];
+
+        const mockQB = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(expiredBookings),
+        };
+
+        mockRepository.createQueryBuilder.mockReturnValue(mockQB);
+
+        mockEntityManager.findOne.mockResolvedValue({
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 20),
+          bookingReference: 'REF001'
+        });
+
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 1 });
+        mockEntityManager.update.mockResolvedValueOnce({ affected: 2 });
+
+        const createAuditLogSpy = jest.spyOn(service as any, 'createAuditLog').mockResolvedValue({});
+
+        // Act
+        const result = await service.expireBookings();
+
+        // Assert
+        expect(result.expiredCount).toBe(1);
+        expect(createAuditLogSpy).toHaveBeenCalledWith(
+          'BOOKING_EXPIRED',
+          expect.stringContaining('REF001'),
+          undefined, // system action
+          'user-1',
+          expect.objectContaining({
+            bookingReference: 'REF001',
+            tripId: 'trip-1',
+            totalAmount: 500000,
+            sessionId: expect.stringMatching(/^exp-svc-\d+-[a-z0-9]+$/),
+            seatsReleased: 2,
+          })
+        );
+      });
     });
-  });
 
-  describe('cancelBooking', () => {
-    it('should successfully cancel a pending booking', async () => {
-      const bookingId = 'b1';
-      const mockBooking = { 
-        id: bookingId, 
-        status: BookingStatus.PENDING,
-        seatStatuses: [{ id: 'ss1' }]
-      };
+    describe('isBookingExpired', () => {
+      it('should return true for expired pending bookings', async () => {
+        // Arrange
+        const expiredBooking = {
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 10) // 10 minutes ago
+        };
 
-      mockEntityManager.findOne.mockResolvedValueOnce(mockBooking);
-      mockEntityManager.update.mockResolvedValueOnce({ affected: 1 });
-      mockEntityManager.update.mockResolvedValueOnce({ affected: 1 });
+        mockRepository.findOne.mockResolvedValue(expiredBooking);
 
-      const result = await service.cancelBooking(bookingId, 'Client requested');
+        // Act
+        const result = await service.isBookingExpired('booking-1');
 
-      expect(result.success).toBe(true);
-      expect(mockEntityManager.update).toHaveBeenCalledWith(Booking, bookingId, { status: BookingStatus.CANCELLED });
-    });
+        // Assert
+        expect(result).toBe(true);
+      });
 
-    it('should throw BadRequestException for paid bookings', async () => {
-      mockEntityManager.findOne.mockResolvedValueOnce({ status: BookingStatus.PAID });
+      it('should return false for non-expired pending bookings', async () => {
+        // Arrange
+        const activeBooking = {
+          id: 'booking-1',
+          status: BookingStatus.PENDING,
+          expiresAt: new Date(Date.now() + 1000 * 60 * 10) // 10 minutes in future
+        };
 
-      await expect(service.cancelBooking('b1'))
-        .rejects.toThrow(BadRequestException);
-    });
-  });
+        mockRepository.findOne.mockResolvedValue(activeBooking);
 
-  describe('transaction wrapper', () => {
-    it('should rely on dataSource.transaction', async () => {
-      // Simple check to ensure we are wrapping everything in a transaction
-      // We pass an empty DTO just to trigger the first line
-      try {
-        await service.createBooking('u1', {} as any);
-      } catch (e) {
-        // ignore errors
-      }
-      expect(mockDataSource.transaction).toHaveBeenCalled();
+        // Act
+        const result = await service.isBookingExpired('booking-1');
+
+        // Assert
+        expect(result).toBe(false);
+      });
+
+      it('should return false for non-pending bookings', async () => {
+        // Arrange
+        const paidBooking = {
+          id: 'booking-1',
+          status: BookingStatus.PAID,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 10) // Even if expired
+        };
+
+        mockRepository.findOne.mockResolvedValue(paidBooking);
+
+        // Act
+        const result = await service.isBookingExpired('booking-1');
+
+        // Assert
+        expect(result).toBe(false);
+      });
+
+      it('should return true for non-existent bookings', async () => {
+        // Arrange
+        mockRepository.findOne.mockResolvedValue(null);
+
+        // Act
+        const result = await service.isBookingExpired('non-existent');
+
+        // Assert
+        expect(result).toBe(true);
+      });
     });
   });
 });

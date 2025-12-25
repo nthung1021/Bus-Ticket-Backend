@@ -646,11 +646,10 @@ export class BookingGateway
     this.bookingSessions.forEach((session, key) => {
       if (session.socketId === socketId && session.tripId === tripId) {
         sessionsToRemove.push(key);
-        // Remove client from booking room - check if server.sockets exists first
-        const socket = this.server?.sockets?.sockets?.get(socketId);
-        if (socket) {
-          socket.leave(`booking:${session.bookingId}`);
-        }
+        // Remove client from booking room
+        this.server.sockets.sockets
+          .get(socketId)
+          ?.leave(`booking:${session.bookingId}`);
       }
     });
 

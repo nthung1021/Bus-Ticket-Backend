@@ -2,7 +2,6 @@ import { BookingStatus } from '../../entities/booking.entity';
 
 export class BookingResponseDto {
   id: string;
-  bookingReference: string;
   tripId: string;
   totalAmount: number;
   status: BookingStatus;

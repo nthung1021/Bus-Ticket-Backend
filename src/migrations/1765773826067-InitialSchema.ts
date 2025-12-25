@@ -23,16 +23,7 @@ export class InitialSchema1765773826067 implements MigrationInterface {
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_bookings_summary_covering"`);
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_bookings_date_status_analytics"`);
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_bookings_paid_recent"`);
-        
-        // Check if enum type exists, create only if it doesn't
-        const enumExists = await queryRunner.query(`
-            SELECT 1 FROM pg_type WHERE typname = 'booking_modification_history_modification_type_enum'
-        `);
-        
-        if (!enumExists || enumExists.length === 0) {
-            await queryRunner.query(`CREATE TYPE "public"."booking_modification_history_modification_type_enum" AS ENUM('passenger_info', 'seat_change', 'contact_info')`);
-        }
-        
+        await queryRunner.query(`CREATE TYPE "public"."booking_modification_history_modification_type_enum" AS ENUM('passenger_info', 'seat_change', 'contact_info')`);
         await queryRunner.query(`CREATE TABLE IF NOT EXISTS "booking_modification_history" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "booking_id" uuid NOT NULL, "user_id" uuid, "modification_type" "public"."booking_modification_history_modification_type_enum" NOT NULL, "description" text NOT NULL, "changes" jsonb, "previousValues" jsonb, "modified_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_ef0cd664b4d69c6197502cbc8fb" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_modification_history_booking_id" ON "booking_modification_history" ("booking_id") `);
         await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_modification_history_type" ON "booking_modification_history" ("modification_type") `);

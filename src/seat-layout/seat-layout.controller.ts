@@ -8,7 +8,6 @@ import {
   Delete,
   UseGuards,
   HttpCode,
-  Query,
   HttpStatus,
 } from '@nestjs/common';
 import { SeatLayoutService } from './seat-layout.service';
@@ -101,11 +100,8 @@ export class SeatLayoutController {
 
   @Get('bus/:busId')
   @Roles() // Allow any authenticated user
-  findByBusId(
-    @Param('busId') busId: string,
-    @Query('tripId') tripId?: string
-  ): Promise<SeatLayout> {
-    return this.seatLayoutService.findByBusId(busId, tripId);
+  findByBusId(@Param('busId') busId: string): Promise<SeatLayout> {
+    return this.seatLayoutService.findByBusId(busId);
   }
 
   @Patch(':id')

@@ -4,7 +4,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config'; // Import ConfigService
 import type { Response, Request } from 'express';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -36,23 +35,10 @@ describe('AuthController', () => {
     refreshToken: jest.fn(),
   };
 
-  // Mock ConfigService
-  const mockConfigService = {
-    get: jest.fn((key: string) => {
-      if (key === 'NODE_ENV') return 'development';
-      if (key === 'FRONTEND_URL') return 'http://localhost:8000';
-      return null;
-    }),
-  };
-
   beforeEach(async () => {
-    process.env.FRONTEND_URL = 'http://localhost:8000'; // Set env var for redirect tests
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [
-        { provide: AuthService, useValue: mockAuthService },
-        { provide: ConfigService, useValue: mockConfigService }, // Provide Mock ConfigService
-      ],
+      providers: [{ provide: AuthService, useValue: mockAuthService }],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
@@ -73,7 +59,7 @@ describe('AuthController', () => {
       expect(mockAuthService.googleLogin).toHaveBeenCalledWith(
         (fakeReq as any).user,
       );
-      expect(res.redirect).toHaveBeenCalledWith('http://localhost:8000/');
+      expect(res.redirect).toHaveBeenCalledWith('http://localhost:8000');
     });
 
     it('sets cookies and redirects on success', async () => {
@@ -232,8 +218,8 @@ describe('AuthController', () => {
 
       const out = await controller.logout(res as Response);
 
-      expect(res.clearCookie).toHaveBeenCalledWith('access_token', expect.any(Object));
-      expect(res.clearCookie).toHaveBeenCalledWith('refresh_token', expect.any(Object));
+      expect(res.clearCookie).toHaveBeenCalledWith('access_token');
+      expect(res.clearCookie).toHaveBeenCalledWith('refresh_token');
       expect(out).toEqual({
         success: true,
         message: 'Logged out successfully',

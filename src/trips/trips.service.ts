@@ -226,7 +226,7 @@ export class TripsService {
   // GET /trips
   async findAll(): Promise<Trip[]> {
     return await this.tripRepo.find({
-      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'reviews'],
+      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'feedbacks'],
       order: { departureTime: 'ASC' },
     });
   }
@@ -235,7 +235,7 @@ export class TripsService {
   async findOne(id: string): Promise<Trip> {
     const trip = await this.tripRepo.findOne({
       where: { id },
-      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'reviews'],
+      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'feedbacks'],
     });
 
     if (!trip) {

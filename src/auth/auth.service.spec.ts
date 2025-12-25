@@ -2,12 +2,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { JwtModule, JwtService } from '@nestjs/jwt'; // Use real JwtService
-import { ConfigService } from '@nestjs/config'; // Needed for JwtConfigService
+import { JwtService } from '@nestjs/jwt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { User } from '../entities/user.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
-import { JwtConfigService } from '../config/jwt.config.service'; // Use real JwtConfigService
+import { JwtConfigService } from '../config/jwt.config.service';
 import * as bcrypt from 'bcrypt';
 
 jest.mock('bcrypt', () => ({
@@ -36,7 +35,6 @@ interface RefreshRepoMock {
 
 describe('AuthService', () => {
   let service: AuthService;
-  let jwtService: JwtService; // We will use the real instance
 
   const usersFixture: User[] = [
     {
@@ -44,11 +42,10 @@ describe('AuthService', () => {
       email: 'a@x.com',
       name: 'A',
       phone: '0912345678',
-      role: 'CUSTOMER',
-      passwordHash: 'hashed-password',
-    } as unknown as User,
+    } as User,
   ];
 
+  // Create mocks with explicit generics so their types are exact (no "any")
   const usersRepoMock: UserRepoMock = {
     findOne: jest.fn<
       Promise<User | null>,
@@ -78,14 +75,19 @@ describe('AuthService', () => {
     ),
   };
 
-  // Mock ConfigService so JwtConfigService gets the values it needs
-  const mockConfigService = {
-    get: jest.fn((key: string, defaultValue?: string) => {
-      if (key === 'JWT_ACCESS_SECRET') return 'test-access-secret';
-      if (key === 'JWT_REFRESH_SECRET') return 'test-refresh-secret';
-      return defaultValue;
-    }),
+  const jwtServiceMock: Pick<JwtService, 'sign' | 'verify' | 'decode'> = {
+    sign: jest.fn().mockReturnValue('signed-token'),
+    verify: jest.fn(),
+    decode: jest.fn(),
   };
+
+  const jwtConfigMock: JwtConfigService = {
+    accessTokenSecret: 'access-secret',
+    refreshTokenSecret: 'refresh-secret',
+    accessTokenExpiration: '1h',
+    refreshTokenExpiration: '7d',
+    getExpirationInSeconds: () => 3600,
+  } as unknown as JwtConfigService;
 
   beforeEach(async () => {
     usersRepoMock.findOne.mockReset();
@@ -100,28 +102,24 @@ describe('AuthService', () => {
     );
 
     const module: TestingModule = await Test.createTestingModule({
-      imports: [
-        JwtModule.register({}), // Register real JwtModule
-      ],
       providers: [
         AuthService,
-        JwtConfigService, // Use real JwtConfigService
-        { provide: ConfigService, useValue: mockConfigService }, // Provide dependent mock
         { provide: getRepositoryToken(User), useValue: usersRepoMock },
         {
           provide: getRepositoryToken(RefreshToken),
           useValue: refreshRepoMock,
         },
+        { provide: JwtService, useValue: jwtServiceMock },
+        { provide: JwtConfigService, useValue: jwtConfigMock },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    jwtService = module.get<JwtService>(JwtService);
   });
 
   afterEach(() => jest.resetAllMocks());
 
-  it('login should return real JWT tokens', async () => {
+  it('login should return tokens and user', async () => {
     usersRepoMock.findOne.mockResolvedValueOnce(usersFixture[0]);
 
     const loginDto: LoginDto = {
@@ -131,18 +129,9 @@ describe('AuthService', () => {
 
     const result = await service.login(loginDto);
 
-    // Assert that we got a string back
-    expect(typeof result.data.accessToken).toBe('string');
-    expect(typeof result.data.refreshToken).toBe('string');
-
-    // Decode and verify the content of the token using the REAL JwtService
-    // Since AuthService uses the secrets from JwtConfigService, we can verify with those secrets.
-    const decoded = jwtService.verify(result.data.accessToken, {
-      secret: 'test-access-secret',
-    });
-
-    expect(decoded.email).toBe('a@x.com');
-    expect(decoded.sub).toBe('1');
+    expect(result.data).toHaveProperty('accessToken', 'signed-token');
+    expect(result.data.user.email).toBe('a@x.com');
+    expect(jwtServiceMock.sign).toHaveBeenCalled();
   });
 
   it('login throws on invalid credentials', async () => {

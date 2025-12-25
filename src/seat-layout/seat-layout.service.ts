@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { SeatLayout, SeatLayoutType, SeatInfo, SeatPosition, SeatLayoutConfig, SeatPricingConfig } from '../entities/seat-layout.entity';
 import { Bus } from '../entities/bus.entity';
 import { Seat, SeatType } from '../entities/seat.entity';
@@ -18,7 +18,6 @@ export class SeatLayoutService {
     private readonly seatRepository: Repository<Seat>,
     @InjectRepository(SeatStatus)
     private readonly seatStatusRepository: Repository<SeatStatus>,
-    private readonly dataSource: DataSource,
   ) { }
 
   async create(createSeatLayoutDto: CreateSeatLayoutDto): Promise<SeatLayout> {
@@ -158,7 +157,7 @@ export class SeatLayoutService {
     return seatLayout;
   }
 
-  async findByBusId(busId: string, tripId?: string): Promise<SeatLayout> {
+  async findByBusId(busId: string): Promise<SeatLayout> {
     const seatLayout = await this.seatLayoutRepository.findOne({
       where: { busId },
       relations: ['bus'],
@@ -168,70 +167,6 @@ export class SeatLayoutService {
     if (!seatLayout) {
       throw new NotFoundException(`Seat layout for bus ${busId} not found`);
     }
-
-    // Populate seats data from database
-    const seats = await this.seatRepository.find({
-      where: { busId },
-      order: { seatCode: 'ASC' }
-    });
-
-    // Get trip info for pricing calculation
-    let basePrice = seatLayout.seatPricing?.basePrice || 0;
-    if (tripId) {
-      const trip = await this.dataSource.query(
-        'SELECT base_price FROM trips WHERE id = $1', 
-        [tripId]
-      );
-      if (trip && trip.length > 0) {
-        basePrice = parseFloat(trip[0].base_price) || basePrice;
-      }
-    }
-
-    // Convert database seats to SeatInfo format
-    const seatInfos: SeatInfo[] = seats.map(seat => {
-      // Extract row and position from seat code (e.g., A1, B2, H2, G1)
-      const seatCode = seat.seatCode;
-      const rowLetter = seatCode.charAt(0);
-      const position = parseInt(seatCode.slice(1)) || 1;
-      // Convert letter to row number (A=1, B=2, ..., H=8, etc.)
-      const row = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
-
-      // Calculate seat price based on type (multiplicative pricing)
-      let seatPrice = basePrice;
-      if (seatLayout.seatPricing && seatLayout.seatPricing.seatTypePrices) {
-        const seatTypePrices = seatLayout.seatPricing.seatTypePrices;
-        switch (seat.seatType) {
-          case 'normal':
-            seatPrice = basePrice * (seatTypePrices.normal || 1);
-            break;
-          case 'vip':
-            seatPrice = basePrice * (seatTypePrices.vip || 1);
-            break;
-          case 'business':
-            seatPrice = basePrice * (seatTypePrices.business || 1);
-            break;
-        }
-      }
-
-      return {
-        id: seat.id,
-        code: seat.seatCode,
-        type: seat.seatType as 'normal' | 'vip' | 'business',
-        position: {
-          row: row,
-          position: position,
-          x: 0, y: 0, width: 40, height: 40 // Default values
-        },
-        isAvailable: seat.isActive,
-        price: seatPrice
-      };
-    });
-
-    // Add seats to layoutConfig
-    seatLayout.layoutConfig = {
-      ...seatLayout.layoutConfig,
-      seats: seatInfos
-    };
 
     return seatLayout;
   }

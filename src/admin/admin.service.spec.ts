@@ -3,12 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from './admin.service';
 import { User } from '../entities/user.entity';
 import { AuditLog } from '../entities/audit-log.entity';
-import { Booking } from '../entities/booking.entity'; // Import missing entities
-import { Trip } from '../entities/trip.entity';
-import { Route } from '../entities/route.entity';
-import { SeatStatus } from '../entities/seat-status.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { CacheService } from '../common/cache.service'; // Import Real CacheService
 
 type RepoFindFn<T> = jest.Mock<Promise<T[]>, []>;
 type RepoFindOneFn<T> = jest.Mock<
@@ -27,28 +22,8 @@ type AuditRepoMock = {
   save: RepoSaveFn<AuditLog>;
 };
 
-// Generic mock for other repositories to avoid repetition
-const createGenericRepoMock = () => ({
-  find: jest.fn(() => Promise.resolve([])),
-  findOne: jest.fn(() => Promise.resolve(null)),
-  save: jest.fn((entity) => Promise.resolve(entity)),
-  createQueryBuilder: jest.fn(() => ({
-    select: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    groupBy: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    setParameters: jest.fn().mockReturnThis(),
-    getRawOne: jest.fn().mockResolvedValue({}),
-    getRawMany: jest.fn().mockResolvedValue([]),
-    leftJoin: jest.fn().mockReturnThis(),
-    leftJoinAndSelect: jest.fn().mockReturnThis(),
-  })),
-});
-
 describe('AdminService', () => {
   let service: AdminService;
-  let cacheService: CacheService;
 
   const usersFixture: User[] = [
     {
@@ -59,6 +34,7 @@ describe('AdminService', () => {
     } as User,
   ];
 
+  // Create mocks with explicit generics so their types are exact (no "any")
   const usersRepoMock: UserRepoMock = {
     find: jest.fn<Promise<User[]>, []>(() => Promise.resolve([])),
     findOne: jest.fn<
@@ -84,35 +60,22 @@ describe('AdminService', () => {
     ),
   };
 
-  const bookingRepoMock = createGenericRepoMock();
-  const tripRepoMock = createGenericRepoMock();
-  const routeRepoMock = createGenericRepoMock();
-  const seatStatusRepoMock = createGenericRepoMock();
-
   beforeEach(async () => {
-    // reset call history
+    // reset call history and set default behaviors as needed per-test
     usersRepoMock.find.mockReset();
     usersRepoMock.findOne.mockReset();
     usersRepoMock.save.mockReset();
     auditRepoMock.save.mockReset();
-    // clear real cache between tests
-    if (cacheService) cacheService.clear();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdminService,
-        CacheService,
         { provide: getRepositoryToken(User), useValue: usersRepoMock },
         { provide: getRepositoryToken(AuditLog), useValue: auditRepoMock },
-        { provide: getRepositoryToken(Booking), useValue: bookingRepoMock },
-        { provide: getRepositoryToken(Trip), useValue: tripRepoMock },
-        { provide: getRepositoryToken(Route), useValue: routeRepoMock },
-        { provide: getRepositoryToken(SeatStatus), useValue: seatStatusRepoMock },
       ],
     }).compile();
 
     service = module.get<AdminService>(AdminService);
-    cacheService = module.get<CacheService>(CacheService);
   });
 
   it('findAllUsers returns sanitized array', async () => {
