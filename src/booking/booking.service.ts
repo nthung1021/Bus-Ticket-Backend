@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, NotFoundException, ConflictException, 
 import { NotificationsService } from '../notifications/notifications.service';
 import { PayosService } from '../payos/payos.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, LessThan } from 'typeorm';
+import { Repository, DataSource, LessThan, QueryRunner, MoreThanOrEqual } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
@@ -52,8 +52,133 @@ export class BookingService {
     private readonly modificationPermissionService: BookingModificationPermissionService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
-    private readonly payosService: PayosService,
   ) { }
+
+  /**
+   * Acquire distributed lock for seat booking using PostgreSQL advisory locks
+   * Lock key format: lock:trip:{tripId}:seat:{seatCode}
+   */
+  private async acquireSeatLock(queryRunner: QueryRunner, tripId: string, seatCode: string): Promise<boolean> {
+    // Create a hash of the lock key to use as lock ID
+    const lockKey = `lock:trip:${tripId}:seat:${seatCode}`;
+    const lockId = this.hashStringToNumber(lockKey);
+    
+    this.logger.log(`Attempting to acquire lock for seat ${seatCode} on trip ${tripId} (lockId: ${lockId})`);
+    
+    try {
+      // Try to acquire advisory lock with 0 timeout (non-blocking)
+      const result = await queryRunner.query(
+        'SELECT pg_try_advisory_lock($1) as acquired',
+        [lockId]
+      );
+      
+      const acquired = result[0].acquired;
+      if (acquired) {
+        this.logger.log(`Lock acquired for seat ${seatCode} on trip ${tripId}`);
+      } else {
+        this.logger.warn(`Failed to acquire lock for seat ${seatCode} on trip ${tripId} - already locked`);
+      }
+      
+      return acquired;
+    } catch (error) {
+      this.logger.error(`Error acquiring lock for seat ${seatCode} on trip ${tripId}:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Release distributed lock for seat booking
+   */
+  private async releaseSeatLock(queryRunner: QueryRunner, tripId: string, seatCode: string): Promise<void> {
+    const lockKey = `lock:trip:${tripId}:seat:${seatCode}`;
+    const lockId = this.hashStringToNumber(lockKey);
+    
+    this.logger.log(`Releasing lock for seat ${seatCode} on trip ${tripId} (lockId: ${lockId})`);
+    
+    try {
+      await queryRunner.query(
+        'SELECT pg_advisory_unlock($1)',
+        [lockId]
+      );
+      this.logger.log(`Lock released for seat ${seatCode} on trip ${tripId}`);
+    } catch (error) {
+      this.logger.error(`Error releasing lock for seat ${seatCode} on trip ${tripId}:`, error.message);
+    }
+  }
+
+  /**
+   * Release all acquired seat locks
+   */
+  private async releaseAllSeatLocks(queryRunner: QueryRunner, tripId: string, seatCodes: string[]): Promise<void> {
+    this.logger.log(`Releasing all locks for trip ${tripId}, seats: ${seatCodes.join(', ')}`);
+    
+    for (const seatCode of seatCodes) {
+      await this.releaseSeatLock(queryRunner, tripId, seatCode);
+    }
+  }
+
+  /**
+   * Hash string to number for PostgreSQL advisory lock ID
+   */
+  private hashStringToNumber(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash + char) & 0x7fffffff; // Keep within signed 32-bit range
+    }
+    return hash;
+  }
+
+  /**
+   * Check if booking request is duplicate (idempotency check)
+   */
+  private async isDuplicateBooking(
+    queryRunner: QueryRunner,
+    userId: string | null,
+    tripId: string,
+    seatCodes: string[],
+    contactEmail?: string,
+    contactPhone?: string
+  ): Promise<string | null> {
+    // Check for recent booking (within 10 minutes) with same parameters
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    
+    // Build where conditions
+    const whereConditions: any = {
+      tripId,
+      bookedAt: MoreThanOrEqual(tenMinutesAgo)
+    };
+    
+    if (userId) {
+      whereConditions.userId = userId;
+    } else if (contactEmail && contactPhone) {
+      whereConditions.contactEmail = contactEmail;
+      whereConditions.contactPhone = contactPhone;
+    } else {
+      return null; // Can't check for duplicates without identifying info
+    }
+
+    const recentBookings = await queryRunner.manager.find(Booking, {
+      where: whereConditions,
+      relations: ['passengerDetails']
+    });
+
+    // Check if any recent booking has the same seat codes
+    for (const booking of recentBookings) {
+      const bookingSeatCodes = booking.passengerDetails
+        .map(p => p.seatCode)
+        .sort()
+        .join(',');
+      const requestSeatCodes = seatCodes.sort().join(',');
+      
+      if (bookingSeatCodes === requestSeatCodes) {
+        this.logger.warn(`Duplicate booking detected: ${booking.id} for trip ${tripId}, seats: ${seatCodes.join(', ')}`);
+        return booking.id; // Return existing booking ID
+      }
+    }
+
+    return null;
+  }
 
   private async generateBookingReference(): Promise<string> {
     const prefix = 'BK';
@@ -123,31 +248,73 @@ export class BookingService {
 
   async createBooking(userId: string | null, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
     const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
+    
+    this.logger.log(`Starting booking creation for trip ${tripId}, seats: ${seats.map(s => s.code).join(', ')}`);
 
-    // Start transaction
-    const result = await this.dataSource.transaction(async manager => {
-      // 1. Validate trip exists
-      const trip = await manager.findOne(Trip, { where: { id: tripId } });
+    // Extract seat codes for locking
+    const seatCodes = seats.map(seat => seat.code);
+    
+    // Create query runner for transaction and locking
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    
+    const acquiredLocks: string[] = [];
+    
+    try {
+      // 1. Check for duplicate booking (idempotency)
+      const existingBookingId = await this.isDuplicateBooking(
+        queryRunner, 
+        userId, 
+        tripId, 
+        seatCodes, 
+        contactEmail, 
+        contactPhone
+      );
+      
+      if (existingBookingId) {
+        // Return existing booking instead of creating duplicate
+        await queryRunner.rollbackTransaction();
+        const existingBooking = await this.findBookingById(existingBookingId);
+        return this.mapBookingToResponse(existingBooking);
+      }
+
+      // 2. Validate trip exists
+      const trip = await queryRunner.manager.findOne(Trip, { where: { id: tripId } });
       if (!trip) {
         throw new NotFoundException('Trip not found');
       }
 
-      // 2. Validate seat count matches passenger count
+      // 3. Validate seat count matches passenger count
       if (seats.length !== passengers.length) {
         throw new BadRequestException('Number of seats must match number of passengers');
       }
 
-      // 3. Validate seat codes match between seats and passengers
-      const seatCodes = seats.map(seat => seat.code).sort();
+      // 4. Validate seat codes match between seats and passengers
       const passengerSeatCodes = passengers.map(passenger => passenger.seatCode).sort();
-      if (JSON.stringify(seatCodes) !== JSON.stringify(passengerSeatCodes)) {
+      if (JSON.stringify(seatCodes.sort()) !== JSON.stringify(passengerSeatCodes)) {
         throw new BadRequestException('Seat codes in seats and passengers must match');
       }
 
-      // 4. Find seat IDs and validate they exist on the bus
+      // 5. Acquire locks for all seats BEFORE any validation or booking logic
+      this.logger.log(`Acquiring locks for ${seatCodes.length} seats...`);
+      for (const seatCode of seatCodes) {
+        const lockAcquired = await this.acquireSeatLock(queryRunner, tripId, seatCode);
+        
+        if (!lockAcquired) {
+          // If we can't acquire lock, seat is being booked by another request
+          throw new ConflictException(`Seat ${seatCode} is currently being booked by another user. Please try again.`);
+        }
+        
+        acquiredLocks.push(seatCode);
+      }
+      
+      this.logger.log(`Successfully acquired locks for all seats: ${acquiredLocks.join(', ')}`);
+
+      // 6. Find seat IDs and validate they exist on the bus
       const seatIds: string[] = [];
       for (const seatDto of seats) {
-        const seat = await manager.findOne(Seat, {
+        const seat = await queryRunner.manager.findOne(Seat, {
           where: {
             seatCode: seatDto.code,
             busId: trip.busId
@@ -160,15 +327,14 @@ export class BookingService {
         seatIds.push(seat.id);
       }
 
-      // 5. Check seat availability
-      const seatStatuses = await manager.find(SeatStatus, {
-        where: seatIds.map(seatId => ({
-          tripId,
-          seatId,
-        })),
-      });
+      // 7. Check seat availability (with SELECT FOR UPDATE to prevent race conditions)
+      const seatStatuses = await queryRunner.manager
+        .createQueryBuilder(SeatStatus, 'seatStatus')
+        .where('seatStatus.tripId = :tripId AND seatStatus.seatId IN (:...seatIds)', { tripId, seatIds })
+        .setLock('pessimistic_write') // Row-level lock
+        .getMany();
 
-      // Check if any seats are already booked or locked
+      // Check if any seats are already booked
       const unavailableSeats = seatStatuses.filter(
         status => status.state === SeatState.BOOKED
       );
@@ -176,14 +342,14 @@ export class BookingService {
       if (unavailableSeats.length > 0) {
         const unavailableCodes = await Promise.all(
           unavailableSeats.map(async (status) => {
-            const seat = await manager.findOne(Seat, { where: { id: status.seatId } });
+            const seat = await queryRunner.manager.findOne(Seat, { where: { id: status.seatId } });
             return seat?.seatCode || status.seatId;
           })
         );
         throw new ConflictException(`Seats ${unavailableCodes.join(', ')} are no longer available`);
       }
 
-      // 6. Create booking with PAID status since payment is bypassed
+      // 8. Create booking with PAID status since payment is bypassed
       const bookingReference = await this.generateBookingReference();
       const now = new Date();
       const expiresAt = new Date(now.getTime() + BOOKING_EXPIRATION_MINUTES * 60 * 1000);
@@ -201,11 +367,6 @@ export class BookingService {
         status: BookingStatus.PENDING, // Set to PENDING
         expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
       };
-      // Notification for auto-paid booking
-      if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
-         // We'll handle notification after save to get ID, or here if we have enough info. 
-         // Actually better to do it after save to ensure FK constraints if any, though userId is available.
-      }
 
       if (!isGuestCheckout && userId) {
         bookingData.userId = userId;
@@ -214,13 +375,14 @@ export class BookingService {
         bookingData.contactPhone = contactPhone;
       }
 
-      const booking = manager.create(Booking, bookingData);
+      const booking = queryRunner.manager.create(Booking, bookingData);
+      const savedBooking = await queryRunner.manager.save(booking);
+      
+      this.logger.log(`Created booking ${savedBooking.id} with reference ${savedBooking.bookingReference}`);
 
-      const savedBooking = await manager.save(booking);
-
-      // 7. Create passenger details
+      // 9. Create passenger details
       const passengerDetails = passengers.map(passenger =>
-        manager.create(PassengerDetail, {
+        queryRunner.manager.create(PassengerDetail, {
           bookingId: savedBooking.id,
           fullName: passenger.fullName,
           documentId: passenger.documentId,
@@ -228,54 +390,40 @@ export class BookingService {
         })
       );
 
-      const savedPassengers = await manager.save(passengerDetails);
+      const savedPassengers = await queryRunner.manager.save(passengerDetails);
 
-      // 8. Update/Create seat status to BOOKED
+      // 10. Update/Create seat status to BOOKED
       for (let i = 0; i < seatIds.length; i++) {
         const existingStatus = seatStatuses.find(status => status.seatId === seatIds[i]);
 
         if (existingStatus) {
           // Update existing status
-          await manager.update(SeatStatus, existingStatus.id, {
+          await queryRunner.manager.update(SeatStatus, existingStatus.id, {
             bookingId: savedBooking.id,
             state: SeatState.BOOKED,
           });
         } else {
           // Create new status
-          const newStatus = manager.create(SeatStatus, {
+          const newStatus = queryRunner.manager.create(SeatStatus, {
             tripId,
             seatId: seatIds[i],
             bookingId: savedBooking.id,
             state: SeatState.BOOKED,
           });
-          await manager.save(newStatus);
+          await queryRunner.manager.save(newStatus);
         }
       }
+      
+      this.logger.log(`Updated seat statuses for booking ${savedBooking.id}`);
 
-      // 9. Set expiration time: pending bookings expire after 15 minutes
-      let expirationTimestamp: Date | null = null;
-      if (savedBooking.status === BookingStatus.PENDING && savedBooking.bookedAt) {
-        expirationTimestamp = new Date(savedBooking.bookedAt.getTime() + 15 * 60 * 1000);
-      }
+      // 11. Commit transaction before releasing locks
+      await queryRunner.commitTransaction();
+      this.logger.log(`Transaction committed for booking ${savedBooking.id}`);
 
-      // 9b. Generate payment URL for pending bookings using PayOS helper
-      let paymentUrl: string | null = null;
-      if (savedBooking.status === BookingStatus.PENDING) {
-        try {
-          paymentUrl = (await this.payosService.createPaymentLink({
-            amount: savedBooking.totalAmount,
-            bookingId: savedBooking.id,
-            description: ``,
-          })).checkoutUrl;
-          console.log('Generated payment URL:', paymentUrl);
-        } catch (err) {
-          // Log but do not fail booking creation if payment URL generation fails
-          this.logger.error('Failed to generate payment URL: ' + String(err));
-          paymentUrl = null;
-        }
-      }
+      // 12. Release locks after successful commit
+      await this.releaseAllSeatLocks(queryRunner, tripId, acquiredLocks);
 
-      // Send notification for auto-paid booking if user is logged in
+      // 13. Send notification for auto-paid booking if user is logged in
       if (savedBooking.status === BookingStatus.PAID && userId) {
         try {
           await this.notificationsService.createInAppNotification(
@@ -291,8 +439,8 @@ export class BookingService {
         }
       }
 
-      // 10. Prepare response
-      return {
+      // 14. Prepare response
+      const response: BookingResponseDto = {
         id: savedBooking.id,
         bookingReference: savedBooking.bookingReference,
         tripId: savedBooking.tripId,
@@ -313,7 +461,61 @@ export class BookingService {
           status: SeatState.BOOKED,
         })),
       };
-    });
+      
+      this.logger.log(`Booking creation completed successfully: ${savedBooking.id}`);
+      return response;
+      
+    } catch (error) {
+      this.logger.error(`Booking creation failed for trip ${tripId}:`, error.message);
+      
+      try {
+        // Rollback transaction
+        if (queryRunner.isTransactionActive) {
+          await queryRunner.rollbackTransaction();
+          this.logger.log('Transaction rolled back due to error');
+        }
+        
+        // Release any acquired locks
+        if (acquiredLocks.length > 0) {
+          await this.releaseAllSeatLocks(queryRunner, tripId, acquiredLocks);
+        }
+      } catch (rollbackError) {
+        this.logger.error('Error during rollback:', rollbackError.message);
+      }
+      
+      throw error;
+    } finally {
+      // Always release query runner
+      if (!queryRunner.isReleased) {
+        await queryRunner.release();
+      }
+    }
+  }
+
+  /**
+   * Helper method to map Booking entity to BookingResponseDto
+   */
+  private mapBookingToResponse(booking: Booking): BookingResponseDto {
+    return {
+      id: booking.id,
+      bookingReference: booking.bookingReference,
+      tripId: booking.tripId,
+      totalAmount: booking.totalAmount,
+      status: booking.status,
+      bookedAt: booking.bookedAt,
+      expirationTimestamp: null,
+      passengers: booking.passengerDetails?.map(passenger => ({
+        id: passenger.id,
+        fullName: passenger.fullName,
+        documentId: passenger.documentId,
+        seatCode: passenger.seatCode,
+      })) || [],
+      seats: booking.seatStatuses?.map(status => ({
+        seatId: status.seatId,
+        seatCode: status.seat?.seatCode || '',
+        status: status.state,
+      })) || [],
+    };
 
     // After transaction commit, create payment link if booking is pending
     try {
@@ -540,6 +742,7 @@ export class BookingService {
 
       const response = {
         id: updatedBooking.id,
+        bookingReference: updatedBooking.bookingReference,
         tripId: updatedBooking.tripId,
         totalAmount: updatedBooking.totalAmount,
         status: updatedBooking.status,

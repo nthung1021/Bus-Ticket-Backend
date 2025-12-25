@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { Booking } from './booking.entity';
 import { PaymentMethod } from './payment-method.entity';
-import { Feedback } from './feedback.entity';
+import { Review } from './review.entity';
 import { RefreshToken } from './refresh-token.entity';
 import { Notification } from './notification.entity';
 
@@ -32,9 +32,20 @@ export class User {
   @Index('idx_users_google_id')
   googleId: string | null;
 
-  @Column()
+  @Column({
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
+  @Index('idx_users_facebook_id')
+  facebookId: string | null;
+
+  @Column({
+    type: 'varchar',
+    nullable: true,
+  })
   @Index('idx_users_email') // Email is unique but also needs index for fast lookups
-  email: string;
+  email: string | null;
 
   @Column()
   @Index('idx_users_name')
@@ -44,8 +55,12 @@ export class User {
   @Index('idx_users_phone')
   phone: string;
 
-  @Column({ name: 'password_hash' })
-  passwordHash: string;
+  @Column({ 
+    name: 'password_hash', 
+    type: 'varchar',
+    nullable: true 
+  })
+  passwordHash: string | null;
 
   @Column({
     type: 'enum',
@@ -65,8 +80,8 @@ export class User {
   @OneToMany(() => PaymentMethod, (paymentMethod) => paymentMethod.user)
   paymentMethods: PaymentMethod[];
 
-  @OneToMany(() => Feedback, (feedback) => feedback.user)
-  feedbacks: Feedback[];
+  @OneToMany(() => Review, (review) => review.user)
+  reviews: Review[];
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];

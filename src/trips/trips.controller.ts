@@ -13,6 +13,13 @@ import {
   HttpStatus,
   HttpCode,
 } from '@nestjs/common';
+import { 
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { Trip } from '../entities/trip.entity';
 import { TripsService } from './trips.service';
@@ -20,10 +27,17 @@ import { SearchTripsDto } from './dto/search-trips.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { AssignBusDto, CheckAvailabilityDto, ScheduleQueryDto } from './dto/assign-bus.dto';
+import { ReviewsService } from '../reviews/reviews.service';
+import { GetReviewsQueryDto } from '../reviews/dto/get-reviews-query.dto';
+import { ValidationPipe } from '@nestjs/common';
 
+@ApiTags('Trips')
 @Controller('trips')
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) { }
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly reviewsService: ReviewsService,
+  ) { }
 
   // User - Searching trips and get detail trip info
 
@@ -65,6 +79,91 @@ export class TripsController {
       success: true,
       data: result,
       message: 'trip details retrieved successfully',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * B3. Fetch Reviews - GET /api/trips/:id/reviews
+   * Get reviews for a specific trip with pagination and sorting support
+   */
+  @Get(':id/reviews')
+  @ApiOperation({ 
+    summary: 'Get trip reviews',
+    description: 'Fetch all reviews for a specific trip with pagination and sorting support. B3 API requirement.'
+  })
+  @ApiParam({ name: 'id', description: 'Trip ID (UUID)' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 10, max: 50)' })
+  @ApiQuery({ name: 'sortBy', required: false, enum: ['newest', 'oldest', 'highest_rating', 'lowest_rating'], description: 'Sort order (default: newest)' })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Trip reviews retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            reviews: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  userId: { type: 'string' },
+                  tripId: { type: 'string' },
+                  bookingId: { type: 'string' },
+                  rating: { type: 'number', minimum: 1, maximum: 5 },
+                  comment: { type: 'string', nullable: true },
+                  createdAt: { type: 'string', format: 'date-time' },
+                  user: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string' },
+                      email: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            },
+            pagination: {
+              type: 'object',
+              properties: {
+                total: { type: 'number' },
+                page: { type: 'number' },
+                limit: { type: 'number' },
+                totalPages: { type: 'number' },
+                hasNext: { type: 'boolean' },
+                hasPrev: { type: 'boolean' }
+              }
+            }
+          }
+        },
+        message: { type: 'string' },
+        timestamp: { type: 'string', format: 'date-time' }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.NOT_FOUND, 
+    description: 'Trip not found' 
+  })
+  async getTripReviews(
+    @Param('id') tripId: string,
+    @Query(new ValidationPipe({ transform: true })) query: GetReviewsQueryDto,
+  ) {
+    const result = await this.reviewsService.getTripReviews(tripId, query);
+    
+    return {
+      success: true,
+      data: {
+        reviews: result.reviews,
+        pagination: result.pagination,
+      },
+      message: 'Trip reviews retrieved successfully',
       timestamp: new Date().toISOString(),
     };
   }

@@ -9,9 +9,13 @@ import { SeatStatus } from '../entities/seat-status.entity';
 
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
+import { ReviewsModule } from '../reviews/reviews.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Trip, Route, Bus, Operator, SeatStatus])],
+  imports: [
+    TypeOrmModule.forFeature([Trip, Route, Bus, Operator, SeatStatus]),
+    ReviewsModule,
+  ],
   controllers: [TripsController],
   providers: [TripsService],
   exports: [TripsService],

@@ -30,7 +30,7 @@ describe('AdminController', () => {
     // Return a Promise (mockResolvedValue) instead of async function without await
     updateUserRole: jest
       .fn()
-      .mockImplementation((userId: string, newRole: string) =>
+      .mockImplementation((userId: string, newRole: string, actorId?: string) =>
         Promise.resolve({
           id: userId,
           email: `${userId}@example.com`,
@@ -89,7 +89,7 @@ describe('AdminController', () => {
     });
 
     it('should pass undefined actorId if req.user missing', async () => {
-      const dto: ChangeRoleDto = { role: 'operator' } as ChangeRoleDto;
+      const dto: ChangeRoleDto = { role: 'admin' } as ChangeRoleDto;
       const request = {} as Request & { user?: { sub?: string } };
 
       // To ensure linter doesn't complain about unused actor param in mock, explicitly reference it

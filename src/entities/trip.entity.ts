@@ -11,7 +11,7 @@ import { Route } from './route.entity';
 import { Bus } from './bus.entity';
 import { Booking } from './booking.entity';
 import { SeatStatus } from './seat-status.entity';
-import { Feedback } from './feedback.entity';
+import { Review } from './review.entity';
 
 export enum TripStatus {
   SCHEDULED = 'scheduled',
@@ -56,6 +56,12 @@ export class Trip {
   @Index('idx_trips_status')
   status: TripStatus;
 
+  @Column({ name: 'average_rating', type: 'decimal', precision: 3, scale: 2, default: 0 })
+  averageRating: number;
+
+  @Column({ name: 'review_count', type: 'int', default: 0 })
+  reviewCount: number;
+
   // Relations
   @ManyToOne(() => Route, (route) => route.trips)
   @JoinColumn({ name: 'route_id' })
@@ -71,6 +77,6 @@ export class Trip {
   @OneToMany(() => SeatStatus, (seatStatus) => seatStatus.trip)
   seatStatuses: SeatStatus[];
 
-  @OneToMany(() => Feedback, (feedback) => feedback.trip)
-  feedbacks: Feedback[];
+  @OneToMany(() => Review, (review) => review.trip)
+  reviews: Review[];
 }
