@@ -8,6 +8,7 @@ export class BookingResponseDto {
   status: BookingStatus;
   bookedAt: Date;
   expirationTimestamp: Date | null;
+  paymentUrl?: string | null;
   passengers: {
     id: string;
     fullName: string;

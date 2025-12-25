@@ -18,6 +18,8 @@ import { Notification } from '../entities/notification.entity';
 import { AuditLog } from '../entities/audit-log.entity';
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
+import { Conversation } from '../chat/entities/conversation.entity';
+import { Message } from '../chat/entities/message.entity';
 import { BookingModificationHistory } from '../entities/booking-modification-history.entity';
 
 /**
@@ -59,6 +61,9 @@ export const databaseConfig = (
     AuditLog,          // Audit trail
     RefreshToken,      // Refresh tokens for authentication
     BookingModificationHistory, // Booking modification logs
+    // Chat entities
+    Conversation,
+    Message,
   ],
   
   // Automatically synchronize database schema with entities (disabled in production)

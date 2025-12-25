@@ -23,6 +23,8 @@ import { SeatStatusModule } from './seat-status/seat-status.module';
 import { SeatModule } from './seat/seat.module';
 import { PayosModule } from './payos/payos.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ChatModule } from './chat/chat.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -51,6 +53,8 @@ import { NotificationsModule } from './notifications/notifications.module';
     SeatModule,
     PayosModule,
     NotificationsModule,
+    ChatModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService, DatabaseService],
