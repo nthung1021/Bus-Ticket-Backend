@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { PayosService } from '../payos/payos.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
@@ -34,6 +35,7 @@ export class BookingService {
     private auditLogRepository: Repository<AuditLog>,
     private dataSource: DataSource,
     private readonly emailService: EmailService,
+    private readonly payosService: PayosService,
   ) {}
 
   private async generateBookingReference(): Promise<string> {
@@ -106,7 +108,7 @@ export class BookingService {
     const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
 
     // Start transaction
-    return await this.dataSource.transaction(async manager => {
+    const result = await this.dataSource.transaction(async manager => {
       // 1. Validate trip exists
       const trip = await manager.findOne(Trip, { where: { id: tripId } });
       if (!trip) {
@@ -231,21 +233,15 @@ export class BookingService {
         expirationTimestamp = new Date(savedBooking.bookedAt.getTime() + 15 * 60 * 1000);
       }
 
-      // 9b. Generate payment URL for pending bookings using PayOS helper (lazy require to avoid circular deps in tests)
+      // 9b. Generate payment URL for pending bookings using PayOS helper
       let paymentUrl: string | null = null;
       if (savedBooking.status === BookingStatus.PENDING) {
         try {
-          // dynamic import to avoid modifying module graph heavily
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { PayosService } = require('../payment/payos.service');
-          const payos = new PayosService();
-          paymentUrl = await payos.createPaymentUrl({
+          paymentUrl = (await this.payosService.createPaymentLink({
             amount: savedBooking.totalAmount,
-            orderId: savedBooking.bookingReference || savedBooking.id,
+            bookingId: savedBooking.id,
             description: ``,
-            contactEmail: bookingData.contactEmail,
-            contactPhone: bookingData.contactPhone,
-          });
+          })).checkoutUrl;
           console.log('Generated payment URL:', paymentUrl);
         } catch (err) {
           // Log but do not fail booking creation if payment URL generation fails
@@ -277,6 +273,23 @@ export class BookingService {
         })),
       };
     });
+
+    // After transaction commit, create payment link if booking is pending
+    try {
+      if (result.status === BookingStatus.PENDING) {
+        const payRes = await this.payosService.createPaymentLink({
+          amount: result.totalAmount,
+          bookingId: result.id,
+          description: '',
+        });
+        (result as any).paymentUrl = payRes?.checkoutUrl || null;
+      }
+    } catch (err) {
+      this.logger.error('Failed to generate payment URL: ' + String(err));
+      // Do not fail booking creation; leave paymentUrl as null
+    }
+
+    return result;
   }
 
   async findBookingById(bookingId: string): Promise<Booking> {

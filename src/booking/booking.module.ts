@@ -1,3 +1,4 @@
+
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -11,6 +12,7 @@ import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
 import { EmailService } from './email.service';
+import { PayosModule } from '../payos/payos.module';
 
 @Module({
   imports: [
@@ -23,6 +25,7 @@ import { EmailService } from './email.service';
       AuditLog,
     ]),
     ScheduleModule.forRoot(),
+    PayosModule,
   ],
   controllers: [BookingController],
   providers: [BookingService, BookingSchedulerService, EmailService],
