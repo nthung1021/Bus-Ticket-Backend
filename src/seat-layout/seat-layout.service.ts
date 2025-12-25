@@ -4,7 +4,7 @@ import { Repository, In, DataSource } from 'typeorm';
 import { SeatLayout, SeatLayoutType, SeatInfo, SeatPosition, SeatLayoutConfig, SeatPricingConfig } from '../entities/seat-layout.entity';
 import { Bus } from '../entities/bus.entity';
 import { Seat, SeatType } from '../entities/seat.entity';
-import { SeatState, SeatStatus } from '../entities/seat-status.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 import { CreateSeatLayoutDto, UpdateSeatLayoutDto, CreateSeatFromTemplateDto } from './dto/create-seat-layout.dto';
 
 @Injectable()
@@ -115,14 +115,6 @@ export class SeatLayoutService {
       ...seatInfo,
       id: createdSeats[index].id,
     }));
-
-    // Add seat status objects for each seat
-    // for (const seat of updatedSeats) {
-    //   await this.seatStatusRepository.save({
-    //     seatId: seat.id,
-    //     status: 'available', // or your default status value
-    //   });
-    // }
 
     const seatLayout = this.seatLayoutRepository.create({
       busId: createFromTemplateDto.busId,
@@ -273,7 +265,7 @@ export class SeatLayoutService {
     if (seatsToDelete.length > 0) {
       // First delete related seat status records to avoid foreign key constraint
       const seatIdsToDelete = seatsToDelete.map(seat => seat.id);
-      // await this.seatStatusRepository.delete({ seatId: In(seatIdsToDelete) });
+      await this.seatStatusRepository.delete({ seatId: In(seatIdsToDelete) });
       // Then delete the seats
       await this.seatRepository.delete(seatIdsToDelete);
     }
@@ -286,7 +278,6 @@ export class SeatLayoutService {
           seatType: this.mapSeatType(newSeat.type),
           isActive: true,
         });
-        // await this.seatStatusRepository.update({ seatId: existingSeat.id }, { state: 'available' } as any);
         newSeat.id = existingSeat.id;
       } else {
         // Create new seat
@@ -298,10 +289,6 @@ export class SeatLayoutService {
         });
         const savedSeat = await this.seatRepository.save(seat);
         // console.log(savedSeat);
-        // await this.seatStatusRepository.create({
-        //   seatId: savedSeat.id,
-        //   state: 'available' as SeatState, // or your default status value
-        // });
         newSeat.id = savedSeat.id; // Update with actual database ID
       }
     }

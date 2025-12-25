@@ -3,8 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
-  Inject,
-  Logger,
+  Inject
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -21,16 +20,14 @@ import {
 import { Trip, TripStatus } from '../entities/trip.entity';
 import { Route } from '../entities/route.entity';
 import { Bus } from '../entities/bus.entity';
-import { SeatState, SeatStatus } from '../entities/seat-status.entity';
+import { SeatStatus } from '../entities/seat-status.entity';
 import { SearchTripsDto } from './dto/search-trips.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { start } from 'repl';
-import { SeatInfo } from 'src/entities/seat-layout.entity';
 
 @Injectable()
 export class TripsService {
-  private readonly logger = new Logger(TripsService.name);
   constructor(
     @InjectRepository(Trip)
     private readonly tripRepo: Repository<Trip>,
@@ -44,17 +41,6 @@ export class TripsService {
     @InjectRepository(Route)
     private readonly routeRepository: Repository<Route>,
   ) { }
-
-  // Return list of distinct origin/destination names from routes (for fuzzy matching)
-  async listLocationNames(): Promise<string[]> {
-    const routes = await this.routeRepository.find({ select: ['origin', 'destination'] });
-    const set = new Set<string>();
-    for (const r of routes) {
-      if (r.origin) set.add(r.origin);
-      if (r.destination) set.add(r.destination);
-    }
-    return Array.from(set);
-  }
 
   // helper: convert "morning/afternoon/..." into a range of hours
   private getTimeRangeForBucket(bucket: string) {
@@ -180,47 +166,8 @@ export class TripsService {
       throw new ConflictException('Bus is already scheduled for this time period');
     }
 
-    // create seat statuses for this trip based on bus layout or seat capacity
-    let savedTrip: Trip | null = null;
-    try {
-      // load relations so nested properties (seatLayout, seats, operator) are populated
-      const bus = await this.busRepository.findOne({
-        where: { id: busId },
-        relations: ['seatLayout', 'seats', 'operator'],
-      });
-      if (!bus) {
-        throw new NotFoundException(`Bus with ID ${busId} not found`);
-      }
-
-      let seatsList: SeatInfo[] = [];
-      // prefer explicit layout arrays if present (could be JSON string or array)
-      if (bus.seatLayout) {
-        const layout = bus.seatLayout;
-        const seatLayoutConfig = layout.layoutConfig;
-        seatsList = seatLayoutConfig.seats || [];
-        this.logger.log(`Creating seat statuses from bus layout config with seats: ${seatsList.length}`);
-      } else {
-        throw new Error('No seat layout found on bus');
-      }
-
-      const trip = this.tripRepo.create(createTripDto);
-      savedTrip = await this.tripRepo.save(trip);
-
-      const seatStatusEntities = seatsList.map((seat) => {
-        // create minimal SeatStatus record (cast to any to avoid strict typing issues)
-        return this.seatStatusRepo.create({ seatId: seat.id, tripId: savedTrip!.id, state: SeatState.AVAILABLE });
-      });
-
-      if (seatStatusEntities.length) {
-        await this.seatStatusRepo.save(seatStatusEntities);
-      }
-
-      return savedTrip as Trip;
-    } catch (err) {
-      // Log and rethrow so caller is aware that seat status creation failed
-      this.logger.error(`Failed to create seat statuses for trip ${savedTrip?.id ?? 'N/A'}: ${err?.message || err}`, err as any);
-      throw err;
-    }
+    const trip = this.tripRepo.create(createTripDto);
+    return await this.tripRepo.save(trip);
   }
 
   // GET /trips
@@ -286,7 +233,6 @@ export class TripsService {
   // DELETE /trips/{:tripId}
   async remove(id: string): Promise<void> {
     const trip = await this.findOne(id);
-    await this.seatStatusRepo.delete({ tripId: trip.id });
 
     if (trip.bookings && trip.bookings.length > 0) {
       throw new ConflictException('Cannot delete trip with existing bookings');
@@ -442,7 +388,7 @@ export class TripsService {
     const page = dto.page || 1;
     const limit = Math.min(dto.limit || 20, 100);
     const offset = (page - 1) * limit;
-    // console.log(dto.date);
+    console.log(dto.date);
 
     const qb = this.tripRepo.createQueryBuilder('trip')
       // join route, bus, operator — adapt relation names to your entities
@@ -450,15 +396,9 @@ export class TripsService {
       .leftJoinAndSelect('trip.bus', 'bus')
       .leftJoinAndSelect('bus.operator', 'operator');
 
-    if (dto.origin) {
-      // console.log("Filtering by origin:", dto.origin);
-      qb.andWhere('LOWER(route.origin) = LOWER(:origin)', { origin: dto?.origin?.trim() });
-    }
-    if (dto.destination) {
-      qb.andWhere('LOWER(route.destination) = LOWER(:destination)', { destination: dto?.destination?.trim() });
-    }
-
-    if (dto.date && dto.date.trim() !== '') {
+    // Required: origin/destination - assume route has origin/destination
+    qb.andWhere('LOWER(route.origin) = LOWER(:origin)', { origin: dto.origin.trim() });
+    qb.andWhere('LOWER(route.destination) = LOWER(:destination)', { destination: dto.destination.trim() });
 
       // Optional date filter: trips whose departure date = dto.date (if provided)
       if (dto.date) {
@@ -482,12 +422,12 @@ export class TripsService {
       qb.andWhere('operator.id = :operatorId', { operatorId: dto.operatorId });
     }
 
-    if (dto.minPrice) {
-      qb.andWhere('trip.base_price >= :minPrice', { minPrice: dto.minPrice });
+    if (dto.minPrice != null) {
+      qb.andWhere('trip.basePrice >= :minPrice', { minPrice: dto.minPrice });
     }
 
-    if (dto.maxPrice) {
-      qb.andWhere('trip.base_price <= :maxPrice', { maxPrice: dto.maxPrice });
+    if (dto.maxPrice != null) {
+      qb.andWhere('trip.basePrice <= :maxPrice', { maxPrice: dto.maxPrice });
     }
 
     // departureTime bucket (morning/afternoon/evening/night)
@@ -495,22 +435,21 @@ export class TripsService {
       const range = this.getTimeRangeForBucket(dto.departureTime);
       if (range) {
         if (dto.departureTime !== 'night') {
-          qb.andWhere(`to_char(trip.departure_time::time, 'HH24:MI:SS') BETWEEN :start AND :end`, {
+          qb.andWhere(`to_char(trip.departureTime::time, 'HH24:MI:SS') BETWEEN :start AND :end`, {
             start: range.start,
             end: range.end,
           });
         } else {
           // night spans midnight: accept times >= 21:00 OR <= 04:59:59
           qb.andWhere(new Brackets(q => {
-            q.where(`to_char(trip.departure_time::time, 'HH24:MI:SS') >= :start`, { start: range.start })
-              .orWhere(`to_char(trip.departure_time::time, 'HH24:MI:SS') <= :end`, { end: range.end });
+            q.where(`to_char(trip.departureTime::time, 'HH24:MI:SS') >= :start`, { start: range.start })
+              .orWhere(`to_char(trip.departureTime::time, 'HH24:MI:SS') <= :end`, { end: range.end });
           }));
         }
       }
     }
 
     // ordering — cheapest first as example, then departureTime
-    // Use dot notation (no double quotes) to avoid driver/metadata mapping issues
     qb.orderBy('trip.basePrice', 'ASC')
       .addOrderBy('trip.departureTime', 'ASC');
 

@@ -171,15 +171,8 @@ export class TripsController {
   // Admin - internal CRUD & scheduling endpoints (merged from TripController) =====
 
   @Post()
-  async create(@Body() createTripDto: CreateTripDto): Promise<Trip> {
-    try {
-      return await this.tripsService.create(createTripDto);
-    } catch (err: any) {
-      if (err && err.getStatus && typeof err.getStatus === 'function') {
-        throw err;
-      }
-      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to create trip' });
-    }
+  create(@Body() createTripDto: CreateTripDto): Promise<Trip> {
+    return this.tripsService.create(createTripDto);
   }
 
   @Get()
@@ -193,28 +186,15 @@ export class TripsController {
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() updateTripDto: UpdateTripDto): Promise<Trip> {
-    try {
-      return await this.tripsService.update(id, updateTripDto);
-    } catch (err: any) {
-      if (err && err.getStatus && typeof err.getStatus === 'function') {
-        throw err;
-      }
-      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to update trip' });
-    }
+  update(@Param('id') id: string, @Body() updateTripDto: UpdateTripDto): Promise<Trip> {
+    // console.log(updateTripDto);
+    return this.tripsService.update(id, updateTripDto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string): Promise<void> {
-    try {
-      return await this.tripsService.remove(id);
-    } catch (err: any) {
-      if (err && err.getStatus && typeof err.getStatus === 'function') {
-        throw err;
-      }
-      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to remove trip' });
-    }
+    return this.tripsService.remove(id);
   }
 
   // Get available buses for a specific time slot

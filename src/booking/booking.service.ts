@@ -1,6 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { NotificationsService } from '../notifications/notifications.service';
-import { PayosService } from '../payos/payos.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan, QueryRunner, MoreThanOrEqual } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
@@ -52,134 +51,7 @@ export class BookingService {
     private readonly modificationPermissionService: BookingModificationPermissionService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
-    private readonly payosService: PayosService,
   ) { }
-
-  /**
-   * Acquire distributed lock for seat booking using PostgreSQL advisory locks
-   * Lock key format: lock:trip:{tripId}:seat:{seatCode}
-   */
-  private async acquireSeatLock(queryRunner: QueryRunner, tripId: string, seatCode: string): Promise<boolean> {
-    // Create a hash of the lock key to use as lock ID
-    const lockKey = `lock:trip:${tripId}:seat:${seatCode}`;
-    const lockId = this.hashStringToNumber(lockKey);
-    
-    this.logger.log(`Attempting to acquire lock for seat ${seatCode} on trip ${tripId} (lockId: ${lockId})`);
-    
-    try {
-      // Try to acquire advisory lock with 0 timeout (non-blocking)
-      const result = await queryRunner.query(
-        'SELECT pg_try_advisory_lock($1) as acquired',
-        [lockId]
-      );
-      
-      const acquired = result[0].acquired;
-      if (acquired) {
-        this.logger.log(`Lock acquired for seat ${seatCode} on trip ${tripId}`);
-      } else {
-        this.logger.warn(`Failed to acquire lock for seat ${seatCode} on trip ${tripId} - already locked`);
-      }
-      
-      return acquired;
-    } catch (error) {
-      this.logger.error(`Error acquiring lock for seat ${seatCode} on trip ${tripId}:`, error.message);
-      return false;
-    }
-  }
-
-  /**
-   * Release distributed lock for seat booking
-   */
-  private async releaseSeatLock(queryRunner: QueryRunner, tripId: string, seatCode: string): Promise<void> {
-    const lockKey = `lock:trip:${tripId}:seat:${seatCode}`;
-    const lockId = this.hashStringToNumber(lockKey);
-    
-    this.logger.log(`Releasing lock for seat ${seatCode} on trip ${tripId} (lockId: ${lockId})`);
-    
-    try {
-      await queryRunner.query(
-        'SELECT pg_advisory_unlock($1)',
-        [lockId]
-      );
-      this.logger.log(`Lock released for seat ${seatCode} on trip ${tripId}`);
-    } catch (error) {
-      this.logger.error(`Error releasing lock for seat ${seatCode} on trip ${tripId}:`, error.message);
-    }
-  }
-
-  /**
-   * Release all acquired seat locks
-   */
-  private async releaseAllSeatLocks(queryRunner: QueryRunner, tripId: string, seatCodes: string[]): Promise<void> {
-    this.logger.log(`Releasing all locks for trip ${tripId}, seats: ${seatCodes.join(', ')}`);
-    
-    for (const seatCode of seatCodes) {
-      await this.releaseSeatLock(queryRunner, tripId, seatCode);
-    }
-  }
-
-  /**
-   * Hash string to number for PostgreSQL advisory lock ID
-   */
-  private hashStringToNumber(str: string): number {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash + char) & 0x7fffffff; // Keep within signed 32-bit range
-    }
-    return hash;
-  }
-
-  /**
-   * Check if booking request is duplicate (idempotency check)
-   */
-  private async isDuplicateBooking(
-    queryRunner: QueryRunner,
-    userId: string | null,
-    tripId: string,
-    seatCodes: string[],
-    contactEmail?: string,
-    contactPhone?: string
-  ): Promise<string | null> {
-    // Check for recent booking (within 10 minutes) with same parameters
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-    
-    // Build where conditions
-    const whereConditions: any = {
-      tripId,
-      bookedAt: MoreThanOrEqual(tenMinutesAgo)
-    };
-    
-    if (userId) {
-      whereConditions.userId = userId;
-    } else if (contactEmail && contactPhone) {
-      whereConditions.contactEmail = contactEmail;
-      whereConditions.contactPhone = contactPhone;
-    } else {
-      return null; // Can't check for duplicates without identifying info
-    }
-
-    const recentBookings = await queryRunner.manager.find(Booking, {
-      where: whereConditions,
-      relations: ['passengerDetails']
-    });
-
-    // Check if any recent booking has the same seat codes
-    for (const booking of recentBookings) {
-      const bookingSeatCodes = booking.passengerDetails
-        .map(p => p.seatCode)
-        .sort()
-        .join(',');
-      const requestSeatCodes = seatCodes.sort().join(',');
-      
-      if (bookingSeatCodes === requestSeatCodes) {
-        this.logger.warn(`Duplicate booking detected: ${booking.id} for trip ${tripId}, seats: ${seatCodes.join(', ')}`);
-        return booking.id; // Return existing booking ID
-      }
-    }
-
-    return null;
-  }
 
   private async generateBookingReference(): Promise<string> {
     const prefix = 'BK';
@@ -216,72 +88,13 @@ export class BookingService {
     return `${prefix}${datePart}-${randomPart()}`;
   }
 
-  /**
-   * Calculate total price for a booking.
-   * Pricing model:
-   *  - `tripBasePrice` (if provided) is treated as the base fare per seat.
-   *  - Each `seat.price` is treated as a supplement (can be 0).
-   *  - subtotal = sum((tripBasePrice || 0) + (seat.price || 0)) for each seat
-   *  - serviceFee: flat fee applied once
-   *  - taxPercent: percentage applied to subtotal (before serviceFee)
-   *  - discount: flat discount applied at the end
-   */
-  async calculateTotalPrice(
-    seats: Array<{ price: number }>,
-    options?: { tripBasePrice?: number; serviceFee?: number; taxPercent?: number; discount?: number },
-  ): Promise<number> {
-    const tripBase = options?.tripBasePrice ?? 0;
-
-    const subtotal = (seats || []).reduce((s, seat) => {
-      const seatPrice = seat?.price ?? 0;
-      return s + seatPrice;
-    }, 0);
-
-    const serviceFee = options?.serviceFee ?? 0;
-    const tax = ((options?.taxPercent ?? 0) / 100) * subtotal;
-    const discount = options?.discount ?? 0;
-
-    const total = subtotal + tripBase + serviceFee + tax - discount;
-
-    // Ensure non-negative and round to nearest integer (VND)
-    return Math.max(0, Math.round(total));
-  }
-
   async createBooking(userId: string | null, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
     const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
-    
-    this.logger.log(`Starting booking creation for trip ${tripId}, seats: ${seats.map(s => s.code).join(', ')}`);
 
-    // Extract seat codes for locking
-    const seatCodes = seats.map(seat => seat.code);
-    
-    // Create query runner for transaction and locking
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-    
-    const acquiredLocks: string[] = [];
-    
-    try {
-      // 1. Check for duplicate booking (idempotency)
-      const existingBookingId = await this.isDuplicateBooking(
-        queryRunner, 
-        userId, 
-        tripId, 
-        seatCodes, 
-        contactEmail, 
-        contactPhone
-      );
-      
-      if (existingBookingId) {
-        // Return existing booking instead of creating duplicate
-        await queryRunner.rollbackTransaction();
-        const existingBooking = await this.findBookingById(existingBookingId);
-        return this.mapBookingToResponse(existingBooking);
-      }
-
-      // 2. Validate trip exists
-      const trip = await queryRunner.manager.findOne(Trip, { where: { id: tripId } });
+    // Start transaction
+    return await this.dataSource.transaction(async manager => {
+      // 1. Validate trip exists
+      const trip = await manager.findOne(Trip, { where: { id: tripId } });
       if (!trip) {
         throw new NotFoundException('Trip not found');
       }
@@ -354,18 +167,11 @@ export class BookingService {
       const bookingReference = await this.generateBookingReference();
       const now = new Date();
       const expiresAt = new Date(now.getTime() + BOOKING_EXPIRATION_MINUTES * 60 * 1000);
-
-      // If client did not provide `totalPrice`, calculate it using trip.basePrice + seat supplements
-      let finalTotal = totalPrice;
-      if (finalTotal == null) {
-        finalTotal = await this.calculateTotalPrice(seats, { tripBasePrice: trip.basePrice });
-      }
-
       const bookingData: any = {
         tripId,
         bookingReference,
-        totalAmount: finalTotal,
-        status: BookingStatus.PENDING, // Set to PENDING
+        totalAmount: totalPrice,
+        status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
         expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
       };
 
@@ -414,17 +220,11 @@ export class BookingService {
           await queryRunner.manager.save(newStatus);
         }
       }
-      
-      this.logger.log(`Updated seat statuses for booking ${savedBooking.id}`);
 
-      // 11. Commit transaction before releasing locks
-      await queryRunner.commitTransaction();
-      this.logger.log(`Transaction committed for booking ${savedBooking.id}`);
+      // 9. Set expiration time (null for PAID bookings, they don't expire)
+      const expirationTimestamp = null; // PAID bookings don't need expiration
 
-      // 12. Release locks after successful commit
-      await this.releaseAllSeatLocks(queryRunner, tripId, acquiredLocks);
-
-      // 13. Send notification for auto-paid booking if user is logged in
+      // Send notification for auto-paid booking if user is logged in
       if (savedBooking.status === BookingStatus.PAID && userId) {
         try {
           await this.notificationsService.createInAppNotification(
@@ -469,7 +269,6 @@ export class BookingService {
         status: savedBooking.status,
         bookedAt: savedBooking.bookedAt,
         expirationTimestamp,
-        paymentUrl,
         passengers: savedPassengers.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
@@ -482,62 +281,8 @@ export class BookingService {
           status: SeatState.BOOKED,
         })),
       };
-      
-      this.logger.log(`Booking creation completed successfully: ${savedBooking.id}`);
-      return response;
-      
-    } catch (error) {
-      this.logger.error(`Booking creation failed for trip ${tripId}:`, error.message);
-      
-      try {
-        // Rollback transaction
-        if (queryRunner.isTransactionActive) {
-          await queryRunner.rollbackTransaction();
-          this.logger.log('Transaction rolled back due to error');
-        }
-        
-        // Release any acquired locks
-        if (acquiredLocks.length > 0) {
-          await this.releaseAllSeatLocks(queryRunner, tripId, acquiredLocks);
-        }
-      } catch (rollbackError) {
-        this.logger.error('Error during rollback:', rollbackError.message);
-      }
-      
-      throw error;
-    } finally {
-      // Always release query runner
-      if (!queryRunner.isReleased) {
-        await queryRunner.release();
-      }
-    }
+    });
   }
-
-  /**
-   * Helper method to map Booking entity to BookingResponseDto
-   */
-  private mapBookingToResponse(booking: Booking): BookingResponseDto {
-    return {
-      id: booking.id,
-      bookingReference: booking.bookingReference,
-      tripId: booking.tripId,
-      totalAmount: booking.totalAmount,
-      status: booking.status,
-      bookedAt: booking.bookedAt,
-      expirationTimestamp: null,
-      passengers: booking.passengerDetails?.map(passenger => ({
-        id: passenger.id,
-        fullName: passenger.fullName,
-        documentId: passenger.documentId,
-        seatCode: passenger.seatCode,
-      })) || [],
-      seats: booking.seatStatuses?.map(status => ({
-        seatId: status.seatId,
-        seatCode: status.seat?.seatCode || '',
-        status: status.state,
-      })) || [],
-    };
-  } 
 
   async findBookingById(bookingId: string): Promise<Booking> {
     const booking = await this.bookingRepository.findOne({
