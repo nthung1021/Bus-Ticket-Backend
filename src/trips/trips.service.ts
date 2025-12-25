@@ -458,20 +458,20 @@ export class TripsService {
       qb.andWhere('LOWER(route.destination) = LOWER(:destination)', { destination: dto?.destination?.trim() });
     }
 
-    if(dto.date && dto.date.trim() !== '') {
+    if (dto.date && dto.date.trim() !== '') {
 
-    // Optional date filter: trips whose departure date = dto.date (if provided)
-    if (dto.date) {
-      const startDate = new Date(dto.date);
-      startDate.setUTCHours(0, 0, 0, 0);
-      const startOfDay = startDate.toISOString();
-      const endDate = new Date(dto.date);
-      endDate.setUTCHours(23, 59, 59, 999);
-      const endOfDay = endDate.toISOString();
-      qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
+      // Optional date filter: trips whose departure date = dto.date (if provided)
+      if (dto.date) {
+        const startDate = new Date(dto.date);
+        startDate.setUTCHours(0, 0, 0, 0);
+        const startOfDay = startDate.toISOString();
+        const endDate = new Date(dto.date);
+        endDate.setUTCHours(23, 59, 59, 999);
+        const endOfDay = endDate.toISOString();
+        qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
+      }
+
     }
-
-
 
     // optional filters
     if (dto.busType) {
