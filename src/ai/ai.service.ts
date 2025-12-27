@@ -165,6 +165,38 @@ export class AiService {
       --- 
       ** NOTE **: 
       - Always use this tool to answer FAQ-type questions instead of trying to answer from your own knowledge.
+      ---
+      6. save_booking_data: Use this tool to save booking related data into the user's session storage in the frontend. 
+      Parameters for save_booking_data:
+      {
+        bookingId: string,
+        bookingReference: string,
+        tripId: string,
+        seats: [
+          {
+            id: string,
+            code: string,
+            type: "normal" | "vip" | "business",
+            price: number
+          }
+        ],
+        passengers: [
+          {
+            seatCode: string,
+            fullName: string,
+            documentId: string,
+            documentType?: string,
+            phoneNumber?: string,
+            email?: string
+          }
+        ],
+        totalPrice: number,
+        isGuestCheckout: boolean,
+        contactEmail?: string | undefined,
+        contactPhone?: string | undefined
+      }
+      ** NOTE **: 
+      You MUST use this tool everytime a booking is completed successfully.
   `;
 
   private readonly logger = new Logger(AiService.name);

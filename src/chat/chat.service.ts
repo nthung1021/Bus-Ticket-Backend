@@ -56,14 +56,15 @@ export class ChatService {
       if (fenceMatch) cleaned = fenceMatch[1].trim();
       if (cleaned.startsWith('`') && cleaned.endsWith('`')) cleaned = cleaned.slice(1, -1).trim();
 
-      try {
-        const parsed = JSON.parse(cleaned);
-        console.log('AI response parsed as JSON:', parsed);
-        aiResponseText = parsed?.content ?? (typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
-      } catch (err) {
-        this.logger.warn('Failed to parse AI response as JSON, returning cleaned text');
-        aiResponseText = cleaned;
-      }
+      // try {
+      //   const parsed = JSON.parse(cleaned);
+      //   console.log('AI response parsed as JSON:', parsed);
+      //   aiResponseText = parsed?.content ?? (typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
+      // } catch (err) {
+      //   this.logger.warn('Failed to parse AI response as JSON, returning cleaned text');
+      //   aiResponseText = cleaned;
+      // }
+      aiResponseText = cleaned;
     } catch (err) {
       this.logger.error('AI call failed', err as any);
       aiResponseText = 'Error: failed to get response from AI';
