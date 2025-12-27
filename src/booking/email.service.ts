@@ -25,11 +25,15 @@ export class EmailService {
       );
       this.logger.log('EmailService configured with SendGrid');
     } else {
-      throw new InternalServerErrorException('No email service configuration provided. Cannot send email');
+      this.logger.warn('No email service configuration provided. Email functionality will be disabled.');
     }
   }
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
+    if (!this.transporter) {
+      this.logger.error('Cannot send email: No email transporter configured.');
+      throw new InternalServerErrorException('No email service configuration provided. Cannot send email');
+    }
     try {
       const from = process.env.EMAIL_FROM;
       this.logger.debug(`Attempting to send email from: ${from}`);

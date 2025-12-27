@@ -184,6 +184,7 @@ export class BookingController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   async getUserBookings(@Request() req: any) {
     const userId = req.user.userId;
     const bookings = await this.bookingService.findBookingsByUser(userId);

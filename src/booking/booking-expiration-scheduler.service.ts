@@ -54,7 +54,7 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
   /**
    * Process expired bookings with enhanced safety and idempotency
    */
-  private async processExpiredBookings(): Promise<{ expiredCount: number; bookings: string[]; error?: string }> {
+  public async processExpiredBookings(): Promise<{ expiredCount: number; bookings: string[]; error?: string }> {
     const startTime = Date.now();
     const sessionId = `exp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     

@@ -462,6 +462,7 @@ export class BookingService {
 
       const response = {
         id: updatedBooking.id,
+        bookingReference: updatedBooking.bookingReference,
         tripId: updatedBooking.tripId,
         totalAmount: updatedBooking.totalAmount,
         status: updatedBooking.status,
@@ -1968,7 +1969,6 @@ export class BookingService {
             SeatStatus, 
             { 
               bookingId: booking.id, 
-              state: SeatState.LOCKED // Only release locked seats
             }, 
             { 
               state: SeatState.AVAILABLE,
@@ -1995,7 +1995,7 @@ export class BookingService {
             },
           );
 
-          expiredBookingIds.push(booking.bookingReference);
+          expiredBookingIds.push(booking.id);
           processedBookingIds.add(booking.id);
         });
 
