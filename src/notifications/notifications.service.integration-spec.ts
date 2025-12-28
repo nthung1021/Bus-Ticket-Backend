@@ -14,9 +14,9 @@ import { NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 
 // Mocking external environment variables
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'dummy-id';
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'dummy-secret';
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || 'http://localhost/callback';
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
 
 describe('NotificationsService (integration)', () => {
   let service: NotificationsService;
