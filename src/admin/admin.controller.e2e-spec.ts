@@ -14,9 +14,9 @@ import cookieParser from 'cookie-parser';
 import * as bcrypt from 'bcrypt';
 
 // Set dummy values for Google OAuth to avoid strategy initialization errors
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'dummy-id';
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'dummy-secret';
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || 'http://localhost/callback';
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
 
 describe('AdminController (e2e)', () => {
   let app: INestApplication<App>;

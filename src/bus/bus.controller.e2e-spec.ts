@@ -16,9 +16,9 @@ import { testDatabaseConfig } from '../config/test-database.config';
 import * as crypto from 'crypto';
 
 // Mocking external environment variables just in case AuthModule or others are pulled in
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'dummy-id';
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'dummy-secret';
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || 'http://localhost/callback';
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
 
 describe('BusController (e2e)', () => {
   let app: INestApplication;
