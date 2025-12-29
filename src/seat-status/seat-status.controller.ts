@@ -127,6 +127,7 @@ export class SeatStatusController {
             
             return seatStatus;
         } catch (error) {
+            if (error instanceof NotFoundException) throw error;
             throw new BadRequestException(error.message);
         }
     }
@@ -145,6 +146,7 @@ export class SeatStatusController {
                 throw new NotFoundException(`Seat status not found with ID: ${id}`);
             }
         } catch (error) {
+            if (error instanceof NotFoundException) throw error;
             throw new BadRequestException(error.message);
         }
     }

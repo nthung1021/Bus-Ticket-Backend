@@ -289,7 +289,7 @@ async function seedOperators(dataSource: DataSource): Promise<string[]> {
     const approvedAt = status === 'approved' ? 'NOW() - INTERVAL \'30 days\'' : 'NULL';
     const name = operatorNames[i - 1];
     const domain = name.toLowerCase().replace(/[^a-z\s]/g, '').replace(/\s+/g, '').replace('xe', '').replace('khach', '') + 'bus.vn';
-    operatorValues.push(`('${id}', '${name}', 'contact@${domain}', '+84${(28 + i).toString()}${(8000000 + i * 1000).toString()}', '${status}', ${approvedAt})`);
+    operatorValues.push(`('${id}', '${name}', 'contact@${domain}', '0${(28 + i).toString()}${(8000000 + i * 1000).toString()}', '${status}', ${approvedAt})`);
   }
   await dataSource.query(`
     INSERT INTO operators (id, name, contact_email, contact_phone, status, approved_at) VALUES
@@ -310,7 +310,7 @@ async function seedRoutes(dataSource: DataSource, operatorIds: string[]): Promis
     const operatorId = operatorIds[i % 12]; 
     const name = `${route.origin} - ${route.destination}`;
     const estimatedMinutes = calculateTravelTime(route.distance);
-    routeValues.push(`('${id}', '${operatorId}', '${name}', 'Tuyến xe từ ${route.origin} đến ${route.destination}', '${route.origin}', '${route.destination}', ${route.distance}, ${estimatedMinutes}, true, '{}', NOW(), NOW())`);
+    routeValues.push(`('${id}', '${operatorId}', '${name}', 'From ${route.origin} to ${route.destination}', '${route.origin}', '${route.destination}', ${route.distance}, ${estimatedMinutes}, true, '{}', NOW(), NOW())`);
   }
   await dataSource.query(`
     INSERT INTO routes (id, operator_id, name, description, origin, destination, distance_km, estimated_minutes, is_active, amenities, "createdAt", "updatedAt") VALUES
@@ -444,7 +444,7 @@ async function seedBookings(dataSource: DataSource, tripIds: string[], userIds: 
       let status = departureTime < now ? (Math.random() > 0.15 ? 'paid' : 'cancelled') : (Math.random() > 0.8 ? 'pending' : (Math.random() > 0.05 ? 'paid' : 'cancelled'));
       let cancelledAt = status === 'cancelled' ? `'${new Date(bookedAt.getTime() + Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()}'` : 'NULL';
       const contactEmail = userId ? `user${i}@gmail.com` : `guest${i}@gmail.com`;
-      const contactPhone = `+84${(900000000 + i * 1000).toString()}`;
+      const contactPhone = `0${(900000000 + i * 1000).toString()}`;
       bookingValues.push(`('${id}', '${bookingReference}', ${userId ? `'${userId}'` : 'NULL'}, '${tripId}', ${totalAmount}, '${status}', '${contactEmail}', '${contactPhone}', '${bookedAt.toISOString()}', NULL, ${cancelledAt})`);
     }
   }

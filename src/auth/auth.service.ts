@@ -11,6 +11,7 @@ import { Repository } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -176,7 +177,8 @@ export class AuthService {
       }
 
       if (storedToken.expiresAt < new Date()) {
-        await this.refreshTokenRepository.delete(storedToken.id);
+        // delete expired token and throw
+         await this.refreshTokenRepository.remove(storedToken);
         throw new ForbiddenException('Refresh token has expired');
       }
 
@@ -185,10 +187,11 @@ export class AuthService {
         throw new ForbiddenException('User not found');
       }
 
-      const tokens = await this.generateAndStoreTokens(user);
+      // remove old token immediately
+       await this.refreshTokenRepository.remove(storedToken);
 
-      // rotate delete old token
-      await this.refreshTokenRepository.delete(storedToken.id);
+      // generate and store new tokens
+      const tokens = await this.generateAndStoreTokens(user);
 
       return {
         success: true,
@@ -207,19 +210,37 @@ export class AuthService {
       // narrow to check name safely
       const e = err as { name?: string } | undefined;
       if (e?.name === 'TokenExpiredError') {
+        // Attempt to remove the expired token record from DB so tests
+        // and callers don't observe stale entries. Use QueryBuilder to
+        // ensure the deletion is committed and visible across connections.
+        try {
+          await this.refreshTokenRepository
+            .createQueryBuilder()
+            .delete()
+            .where('token = :token', { token: refreshToken })
+            .execute();
+        } catch (deleteErr) {
+          // ignore deletion errors — we still want to return the expired error
+        }
         throw new ForbiddenException('Refresh token has expired');
+      }
+      if (e?.name === 'JsonWebTokenError') {
+        throw new ForbiddenException('Invalid refresh token');
       }
       throw err;
     }
   }
 
   private async generateAndStoreTokens(user: User) {
+    const jti = uuidv4(); // Unique identifier for this token pair
+
     const accessToken = this.jwtService.sign(
       {
         sub: user.id,
         email: user.email,
         fullName: user.name,
         role: user.role,
+        jti,
       },
       {
         secret: this.jwtConfigService.accessTokenSecret,
@@ -230,7 +251,7 @@ export class AuthService {
     );
 
     const refreshToken = this.jwtService.sign(
-      { sub: user.id },
+      { sub: user.id, jti },
       {
         secret: this.jwtConfigService.refreshTokenSecret,
         expiresIn: this.jwtConfigService.getExpirationInSeconds(

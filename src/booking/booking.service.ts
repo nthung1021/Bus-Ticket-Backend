@@ -198,8 +198,8 @@ export class BookingService {
         tripId,
         bookingReference,
         totalAmount: finalTotal,
-        status: BookingStatus.PENDING, // Set to PENDING
-        expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
+        status: BookingStatus.PENDING,
+        expiresAt: expiresAt, // Set expiration for pending bookings
       };
       // Notification for auto-paid booking
       if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
@@ -275,7 +275,7 @@ export class BookingService {
         }
       }
 
-      // Send notification for auto-paid booking if user is logged in
+      // Send notification for auto-paid booking
       if (savedBooking.status === BookingStatus.PAID && userId) {
         try {
           await this.notificationsService.createInAppNotification(
@@ -540,6 +540,7 @@ export class BookingService {
 
       const response = {
         id: updatedBooking.id,
+        bookingReference: updatedBooking.bookingReference,
         tripId: updatedBooking.tripId,
         totalAmount: updatedBooking.totalAmount,
         status: updatedBooking.status,
@@ -2046,7 +2047,6 @@ export class BookingService {
             SeatStatus, 
             { 
               bookingId: booking.id, 
-              state: SeatState.LOCKED // Only release locked seats
             }, 
             { 
               state: SeatState.AVAILABLE,
@@ -2073,7 +2073,7 @@ export class BookingService {
             },
           );
 
-          expiredBookingIds.push(booking.bookingReference);
+          expiredBookingIds.push(booking.id);
           processedBookingIds.add(booking.id);
         });
 

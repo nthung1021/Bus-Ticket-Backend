@@ -324,12 +324,12 @@ export class TripsService {
   // DELETE /trips/{:tripId}
   async remove(id: string): Promise<void> {
     const trip = await this.findOne(id);
-    await this.seatStatusRepo.delete({ tripId: trip.id });
 
     if (trip.bookings && trip.bookings.length > 0) {
       throw new ConflictException('Cannot delete trip with existing bookings');
     }
 
+    await this.seatStatusRepo.delete({ tripId: trip.id });
     await this.tripRepo.remove(trip);
   }
 

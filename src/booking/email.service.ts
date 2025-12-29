@@ -1,5 +1,4 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
 interface SendEmailOptions {
@@ -15,61 +14,28 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private transporter: nodemailer.Transporter;
 
-  constructor(private readonly configService: ConfigService) {
-    const emailService = this.configService.get<string>('EMAIL_SERVICE');
-
-    if (emailService === 'sendgrid') {
-      const apiKey = this.configService.get<string>('SENDGRID_API_KEY');
-      if (!apiKey) {
-        throw new InternalServerErrorException('SENDGRID_API_KEY not provided. Cannot send email via SendGrid');
-      }
+  constructor() {
+    // Configure transporter based on environment variables
+    if (process.env.EMAIL_SERVICE === 'sendgrid') {
       const nodemailerSendgrid = require('nodemailer-sendgrid');
       this.transporter = nodemailer.createTransport(
         nodemailerSendgrid({
-          apiKey,
+          apiKey: process.env.SENDGRID_API_KEY,
         }),
       );
       this.logger.log('EmailService configured with SendGrid');
-      return;
+    } else {
+      this.logger.warn('No email service configuration provided. Email functionality will be disabled.');
     }
-
-    // Fallback to SMTP if SMTP config provided
-    const smtpHost = this.configService.get<string>('SMTP_HOST');
-    const smtpPort = this.configService.get<number>('SMTP_PORT');
-    const smtpUser = this.configService.get<string>('SMTP_USER');
-    const smtpPass = this.configService.get<string>('SMTP_PASS');
-
-    if (smtpHost && smtpPort) {
-      const secure = this.configService.get<boolean>('SMTP_SECURE', smtpPort === 465);
-      const transportOpts: any = {
-        host: smtpHost,
-        port: smtpPort,
-        secure,
-      };
-      if (smtpUser && smtpPass) {
-        transportOpts.auth = { user: smtpUser, pass: smtpPass };
-      }
-      this.transporter = nodemailer.createTransport(transportOpts);
-      this.logger.log(`EmailService configured with SMTP (${smtpHost}:${smtpPort})`);
-      return;
-    }
-
-    // As a last resort, use a JSON transport for development/testing
-    if (this.configService.get<string>('NODE_ENV') !== 'production') {
-      this.transporter = nodemailer.createTransport({ jsonTransport: true });
-      this.logger.log('EmailService configured with jsonTransport (development)');
-      return;
-    }
-
-    throw new InternalServerErrorException('No email service configuration provided. Cannot send email');
   }
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
+    if (!this.transporter) {
+      this.logger.error('Cannot send email: No email transporter configured.');
+      throw new InternalServerErrorException('No email service configuration provided. Cannot send email');
+    }
     try {
-      const from = this.configService.get<string>('EMAIL_FROM') || 'no-reply@example.com';
-      if (!this.configService.get<string>('EMAIL_FROM')) {
-        this.logger.warn('EMAIL_FROM not set; using fallback no-reply@example.com');
-      }
+      const from = process.env.EMAIL_FROM;
       this.logger.debug(`Attempting to send email from: ${from}`);
 
       await this.transporter.sendMail({
