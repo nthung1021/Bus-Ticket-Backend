@@ -16,8 +16,11 @@ export const AppDataSource = new DataSource({
   database: configService.get('DB_NAME', 'bus_booking'),
   synchronize: false, // Always false for production-like setup
   logging: true,
+  // include entities located across the project (not only src/entities)
   entities: [
-    'src/entities/**/*.ts'
+    'src/**/*.entity{.ts,.js}',
+    'src/**/entities/*.ts',
+    'dist/**/*.entity{.js,.ts}'
   ],
   migrations: [
     'src/migrations/**/*.ts'

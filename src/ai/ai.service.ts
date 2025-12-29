@@ -220,16 +220,23 @@ export class AiService {
     const systemMsg = new SystemMessage(this.systemPrompt);
 
     // Fetch all messages from DB and build LLM input
-    this.msgRepo.find({ order: { createdAt: 'ASC' } }).then(messages => {
-      this.msgs = messages.map((m: any) => {
-        const contentStr = typeof m.content === 'string' ? m.content : String(m.content);
-        if (m.role === 'human') return new HumanMessage({ content: contentStr });
-        if (m.role === 'system') return new SystemMessage({ content: contentStr });
-        return new AIMessage({ content: contentStr });
+    this.msgRepo
+      .find({ order: { createdAt: 'ASC' } })
+      .then(messages => {
+        this.msgs = messages.map((m: any) => {
+          const contentStr = typeof m.content === 'string' ? m.content : String(m.content);
+          if (m.role === 'human') return new HumanMessage({ content: contentStr });
+          if (m.role === 'system') return new SystemMessage({ content: contentStr });
+          return new AIMessage({ content: contentStr });
+        });
+        this.msgs = [systemMsg, ...this.msgs];
+        // console.log("AI Service initialized with messages from DB:", this.msgs);
+      })
+      .catch(err => {
+        // If the messages table doesn't exist yet (migrations not run), don't crash the app.
+        this.logger.warn('Could not load messages from DB during AI service init: ' + (err?.message || String(err)));
+        this.msgs = [systemMsg];
       });
-      this.msgs = [systemMsg, ...this.msgs];
-      // console.log("AI Service initialized with messages from DB:", this.msgs);
-    });
     // console.log("AI Service initialized with messages:", this.msgs);
   }
 
