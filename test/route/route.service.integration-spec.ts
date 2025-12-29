@@ -13,11 +13,6 @@ import { testDatabaseConfig } from '../../src/config/test-database.config';
 import { NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 
-// Mocking external environment variables
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
-
 describe('RouteService (integration)', () => {
   let service: RouteService;
   let moduleRef: TestingModule;

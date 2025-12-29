@@ -7,16 +7,11 @@ import { Repository } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { RouteModule } from '../../src/route/route.module';
 import { Route } from '../../src/entities/route.entity';
-import { RoutePoint } from '../../src/entities/route-point.entity';
 import { Operator } from '../../src/entities/operator.entity';
 import { Bus } from '../../src/entities/bus.entity';
 import { Trip } from '../../src/entities/trip.entity';
 import { testDatabaseConfig } from '../../src/config/test-database.config';
 import * as crypto from 'crypto';
-
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
 
 describe('RouteController (e2e)', () => {
   let app: INestApplication;
@@ -51,12 +46,12 @@ describe('RouteController (e2e)', () => {
 
   afterAll(async () => {
     if (routeRepository) {
-        const entities = ['route_points', 'trips', 'buses', 'routes', 'operators'];
-        for (const entity of entities) {
-            try {
-                await routeRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
-            } catch (e) {}
-        }
+      const entities = ['route_points', 'trips', 'buses', 'routes', 'operators'];
+      for (const entity of entities) {
+        try {
+          await routeRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
+        } catch (e) {}
+      }
     }
     if (app) {
       await app.close();
@@ -64,12 +59,12 @@ describe('RouteController (e2e)', () => {
   });
 
   beforeEach(async () => {
-       const entities = ['route_points', 'trips', 'buses', 'routes', 'operators'];
-        for (const entity of entities) {
-            try {
-                await routeRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
-            } catch (e) {}
-        }
+    const entities = ['route_points', 'trips', 'buses', 'routes', 'operators'];
+    for (const entity of entities) {
+      try {
+        await routeRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
+      } catch (e) {}
+    }
   });
 
   async function createOperator() {
