@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { SeatStatusService } from './seat-status.service';
-import { SeatStatus, SeatState } from '../entities/seat-status.entity';
+import { SeatStatusService } from '../../src/seat-status/seat-status.service';
+import { SeatStatus, SeatState } from '../../src/entities/seat-status.entity';
 import { Repository } from 'typeorm';
 
 describe('SeatStatusService', () => {
