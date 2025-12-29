@@ -20,6 +20,7 @@ import { testDatabaseConfig } from '../../src/config/test-database.config';
 import { NotificationsService } from '../../src/notifications/notifications.service';
 import { EmailService } from '../../src/booking/email.service';
 import { BookingModificationPermissionService } from '../../src/booking/booking-modification-permission.service';
+import { PayosService } from '../../src/payos/payos.service';
 import * as crypto from 'crypto';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
@@ -79,6 +80,13 @@ describe('BookingService (integration)', () => {
           },
         },
         BookingModificationPermissionService,
+        {
+          provide: PayosService,
+          useValue: {
+            createPaymentLink: jest.fn().mockResolvedValue({ checkoutUrl: 'http://test.com' }),
+            verifyWebhookData: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -192,7 +200,7 @@ describe('BookingService (integration)', () => {
       const result = await service.createBooking(user.id, dto as any);
 
       expect(result).toBeDefined();
-      expect(result.status).toBe(BookingStatus.PAID);
+      expect(result.status).toBe(BookingStatus.PENDING);
       expect(result.bookingReference).toBeDefined();
 
       const dbBooking = await bookingRepository.findOne({ where: { id: result.id } });

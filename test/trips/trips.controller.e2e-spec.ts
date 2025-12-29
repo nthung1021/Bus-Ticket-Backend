@@ -12,6 +12,8 @@ import { Bus } from '../../src/entities/bus.entity';
 import { Operator } from '../../src/entities/operator.entity';
 import { SeatStatus } from '../../src/entities/seat-status.entity';
 import { User } from '../../src/entities/user.entity';
+import { Seat, SeatType } from '../../src/entities/seat.entity';
+import { SeatLayout, SeatLayoutType } from '../../src/entities/seat-layout.entity';
 import { testDatabaseConfig } from '../../src/config/test-database.config';
 import * as crypto from 'crypto';
 import cookieParser from 'cookie-parser';
@@ -22,6 +24,8 @@ describe('TripsController (e2e)', () => {
 	let routeRepository: Repository<Route>;
 	let busRepository: Repository<Bus>;
 	let operatorRepository: Repository<Operator>;
+	let seatLayoutRepository: Repository<SeatLayout>;
+	let seatRepository: Repository<Seat>;
 
 	beforeAll(async () => {
 		const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -37,7 +41,7 @@ describe('TripsController (e2e)', () => {
 					inject: [ConfigService],
 				}),
 				TripsModule,
-				TypeOrmModule.forFeature([User, Route, Bus, Operator, SeatStatus]),
+				TypeOrmModule.forFeature([User, Route, Bus, Operator, SeatStatus, SeatLayout, Seat]),
 			],
 		}).compile();
 
@@ -50,6 +54,8 @@ describe('TripsController (e2e)', () => {
 		routeRepository = moduleFixture.get<Repository<Route>>(getRepositoryToken(Route));
 		busRepository = moduleFixture.get<Repository<Bus>>(getRepositoryToken(Bus));
 		operatorRepository = moduleFixture.get<Repository<Operator>>(getRepositoryToken(Operator));
+		seatLayoutRepository = moduleFixture.get<Repository<SeatLayout>>(getRepositoryToken(SeatLayout));
+		seatRepository = moduleFixture.get<Repository<Seat>>(getRepositoryToken(Seat));
 	});
 
 	afterAll(async () => {
@@ -67,7 +73,7 @@ describe('TripsController (e2e)', () => {
 	});
 
 	beforeEach(async () => {
-		const entities = ['seat_status', 'bookings', 'trips', 'buses', 'routes', 'operators'];
+		const entities = ['seat_status', 'bookings', 'trips', 'seats', 'seat_layouts', 'buses', 'routes', 'operators'];
 		for (const entity of entities) {
 			try {
 				await tripRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
@@ -97,6 +103,37 @@ describe('TripsController (e2e)', () => {
 			model: 'E2E Bus',
 			seatCapacity: 40,
 			operatorId: operator.id
+		});
+
+		const seat = await seatRepository.save({
+			busId: bus.id,
+			seatCode: 'A1',
+			seatType: SeatType.NORMAL
+		});
+
+		await seatLayoutRepository.save({
+			busId: bus.id,
+			layoutType: SeatLayoutType.STANDARD_2X2,
+			totalRows: 10,
+			seatsPerRow: 4,
+			layoutConfig: {
+				seats: [
+					{ id: seat.id, code: 'A1', type: 'normal' } as any
+				],
+				aisles: [2],
+				dimensions: {
+					totalWidth: 500,
+					totalHeight: 1000,
+					seatWidth: 80,
+					seatHeight: 80,
+					aisleWidth: 100,
+					rowSpacing: 20
+				}
+			},
+			seatPricing: {
+				basePrice: 0,
+				seatTypePrices: { normal: 0, vip: 0, business: 0 }
+			}
 		});
 
 		return { operator, route, bus };

@@ -162,7 +162,7 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
     sessionId: string;
     processingTimeMs: number;
   }> {
-    const sessionId = `manual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `manual-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const startTime = Date.now();
     
     this.logger.log(`🔧 [${sessionId}] Manual booking expiration triggered`);
@@ -172,7 +172,7 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
       const processingTime = Date.now() - startTime;
       
       if (result.error) {
-        this.logger.error(`❌ [${sessionId}] Manual expiration failed after ${processingTime}ms: ${result.error}`);
+        // We don't log the error here because processExpiredBookings already logged it
         return {
           processed: 0,
           errors: [result.error],

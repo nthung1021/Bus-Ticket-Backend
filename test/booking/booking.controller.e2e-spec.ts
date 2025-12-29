@@ -9,6 +9,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { BookingModule } from '../../src/booking/booking.module';
 import { EmailService } from '../../src/booking/email.service';
 import { NotificationsService } from '../../src/notifications/notifications.service';
+import { PayosService } from '../../src/payos/payos.service';
 import { AuthModule } from '../../src/auth/auth.module';
 import { User, UserRole } from '../../src/entities/user.entity';
 import { Trip } from '../../src/entities/trip.entity';
@@ -76,6 +77,11 @@ describe('BookingController (e2e)', () => {
       .overrideProvider(NotificationsService)
       .useValue({
         createInAppNotification: jest.fn().mockResolvedValue({}),
+      })
+      .overrideProvider(PayosService)
+      .useValue({
+        createPaymentLink: jest.fn().mockResolvedValue({ checkoutUrl: 'http://test.com' }),
+        verifyWebhookData: jest.fn(),
       })
       .compile();
 

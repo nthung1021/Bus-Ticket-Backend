@@ -20,6 +20,9 @@ describe('TripsService', () => {
 
   const mockSeatStatusRepo = {
     count: jest.fn(),
+    delete: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
   };
 
   const mockBusRepo = {
@@ -94,10 +97,19 @@ describe('TripsService', () => {
   describe('create', () => {
     it('creates when bus available', async () => {
       mockRouteRepo.findOne.mockResolvedValue({ operatorId: 'op-1' });
-      mockBusRepo.findOne.mockResolvedValue({ operatorId: 'op-1' });
+      mockBusRepo.findOne.mockResolvedValue({ 
+        operatorId: 'op-1',
+        seatLayout: {
+          layoutConfig: {
+            seats: [{ id: 's1', code: 'A1', type: 'normal' }]
+          }
+        }
+      });
       jest.spyOn<any, any>(service, 'checkBusAvailability').mockResolvedValue(true);
       mockTripRepo.create.mockReturnValue(tripFixture);
       mockTripRepo.save.mockResolvedValue(tripFixture);
+      mockSeatStatusRepo.create.mockReturnValue({});
+      mockSeatStatusRepo.save.mockResolvedValue([]);
 
       const dto = {
         routeId,

@@ -12,6 +12,8 @@ import { User, UserRole } from '../../src/entities/user.entity';
 import { testDatabaseConfig } from '../../src/config/test-database.config';
 import cookieParser from 'cookie-parser';
 import * as bcrypt from 'bcrypt';
+import { PayosService } from '../../src/payos/payos.service';
+import { EmailService } from '../../src/booking/email.service';
 
 process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -40,7 +42,18 @@ describe('NotificationsController (e2e)', () => {
         AuthModule,
         NotificationsModule,
       ],
-    }).compile();
+    })
+    .overrideProvider(PayosService)
+      .useValue({
+        createPaymentLink: jest.fn().mockResolvedValue({ checkoutUrl: 'http://test.com' }),
+        verifyWebhookData: jest.fn(),
+      })
+      .overrideProvider(EmailService)
+      .useValue({
+        sendEmail: jest.fn().mockResolvedValue({}),
+        sendEticketEmail: jest.fn().mockResolvedValue({ success: true }),
+      })
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());

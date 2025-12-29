@@ -198,8 +198,8 @@ export class BookingService {
         tripId,
         bookingReference,
         totalAmount: finalTotal,
-        status: BookingStatus.PENDING, // Set to PENDING
-        expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
+        status: BookingStatus.PENDING,
+        expiresAt: expiresAt, // Set expiration for pending bookings
       };
       // Notification for auto-paid booking
       if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
@@ -275,7 +275,7 @@ export class BookingService {
         }
       }
 
-      // Send notification for auto-paid booking if user is logged in
+      // Send notification for auto-paid booking
       if (savedBooking.status === BookingStatus.PAID && userId) {
         try {
           await this.notificationsService.createInAppNotification(

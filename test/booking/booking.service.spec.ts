@@ -13,6 +13,7 @@ import { SeatLayout } from '../../src/entities/seat-layout.entity';
 import { EmailService } from '../../src/booking/email.service';
 import { BookingModificationPermissionService } from '../../src/booking/booking-modification-permission.service';
 import { NotificationsService } from '../../src/notifications/notifications.service';
+import { PayosService } from '../../src/payos/payos.service';
 import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CreateBookingDto } from '../../src/booking/dto/create-booking.dto';
 
@@ -46,6 +47,11 @@ const mockNotificationsService = {
 
 const mockModificationPermissionService = {
   checkPermissions: jest.fn(),
+};
+
+const mockPayosService = {
+  createPaymentLink: jest.fn(),
+  verifyWebhookData: jest.fn(),
 };
 
 // Mock DataSource manager
@@ -88,6 +94,7 @@ describe('BookingService', () => {
         { provide: EmailService, useValue: mockEmailService },
         { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: BookingModificationPermissionService, useValue: mockModificationPermissionService },
+        { provide: PayosService, useValue: mockPayosService },
       ],
     }).compile();
 
@@ -132,7 +139,7 @@ describe('BookingService', () => {
       // 4. Save Booking
       const savedBooking = { 
         id: 'booking-1', 
-        status: BookingStatus.PAID, 
+        status: BookingStatus.PENDING, 
         bookingReference: 'REF123',
         totalAmount: 200,
         bookedAt: new Date(),
@@ -157,16 +164,10 @@ describe('BookingService', () => {
 
       expect(result).toBeDefined();
       expect(result.id).toBe('booking-1');
-      expect(result.status).toBe(BookingStatus.PAID);
+      expect(result.status).toBe(BookingStatus.PENDING);
       
-      // Verify notification sent
-      expect(mockNotificationsService.createInAppNotification).toHaveBeenCalledWith(
-        'user-1',
-        'Booking Successful',
-        expect.stringContaining('successfully confirmed'),
-        expect.any(Object),
-        'booking-1'
-      );
+      // Verify notification NOT sent for pending booking
+      expect(mockNotificationsService.createInAppNotification).not.toHaveBeenCalled();
     });
 
     it('should throw ConflictException if seat is already booked', async () => {

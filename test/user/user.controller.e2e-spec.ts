@@ -21,6 +21,8 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthModule } from '../../src/auth/auth.module';
 import cookieParser from 'cookie-parser';
 import * as crypto from 'crypto';
+import { PayosService } from '../../src/payos/payos.service';
+import { EmailService } from '../../src/booking/email.service';
 
 process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -64,7 +66,18 @@ describe('UserController (e2e)', () => {
           PassengerDetail
         ]),
       ],
-    }).compile();
+    })
+    .overrideProvider(PayosService)
+    .useValue({
+        createPaymentLink: jest.fn().mockResolvedValue({ checkoutUrl: 'http://test.com' }),
+        verifyWebhookData: jest.fn(),
+    })
+    .overrideProvider(EmailService)
+    .useValue({
+        sendEmail: jest.fn().mockResolvedValue({}),
+        sendEticketEmail: jest.fn().mockResolvedValue({ success: true }),
+    })
+    .compile();
 
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());

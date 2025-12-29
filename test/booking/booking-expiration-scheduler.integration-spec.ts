@@ -21,6 +21,7 @@ import { testDatabaseConfig } from '../../src/config/test-database.config';
 import { NotificationsService } from '../../src/notifications/notifications.service';
 import { EmailService } from '../../src/booking/email.service';
 import { BookingModificationPermissionService } from '../../src/booking/booking-modification-permission.service';
+import { PayosService } from '../../src/payos/payos.service';
 import * as crypto from 'crypto';
 
 describe('BookingExpirationScheduler (integration)', () => {
@@ -80,6 +81,13 @@ describe('BookingExpirationScheduler (integration)', () => {
           },
         },
         BookingModificationPermissionService,
+        {
+          provide: PayosService,
+          useValue: {
+            createPaymentLink: jest.fn().mockResolvedValue({ checkoutUrl: 'http://test.com' }),
+            verifyWebhookData: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
