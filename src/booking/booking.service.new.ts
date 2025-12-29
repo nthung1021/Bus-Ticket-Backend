@@ -298,6 +298,7 @@ export class BookingService {
     // Transform the data to include all necessary information
     return bookings.map(booking => ({
       id: booking.id,
+      bookingReference: booking.bookingReference,
       userId: booking.userId,
       tripId: booking.tripId,
       totalAmount: booking.totalAmount,
@@ -392,7 +393,7 @@ export class BookingService {
       // 5. Get updated booking
       const updatedBooking = await manager.findOne(Booking, {
         where: { id: bookingId },
-        relations: ['passengerDetails', 'seatStatuses'],
+        relations: ['passengerDetails', 'seatStatuses', 'seatStatuses.seat'],
       });
 
       if (!updatedBooking) {
@@ -404,6 +405,7 @@ export class BookingService {
       
       return {
         id: updatedBooking.id,
+        bookingReference: updatedBooking.bookingReference,
         tripId: updatedBooking.tripId,
         totalAmount: updatedBooking.totalAmount,
         status: updatedBooking.status,
@@ -417,7 +419,7 @@ export class BookingService {
         })),
         seats: seatStatuses.map(status => ({
           seatId: status.seatId,
-          seatCode: '', // Will be populated if needed
+          seatCode: status.seat?.seatCode || '',
           status: status.state,
         })),
       };
@@ -534,7 +536,7 @@ export class BookingService {
     bookingId: string,
     updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId: string; seatCode: string; }> },
     userId: string,
-  ): Promise<any> {
+  ): Promise<BookingResponseDto> {
     return await this.dataSource.transaction(async (manager) => {
       // Find and verify booking ownership
       const booking = await manager.findOne(Booking, {
@@ -597,12 +599,13 @@ export class BookingService {
       // Transform to response format
       return {
         id: updatedBooking.id,
-        userId: updatedBooking.userId,
+        bookingReference: updatedBooking.bookingReference,
         tripId: updatedBooking.tripId,
         totalAmount: updatedBooking.totalAmount,
         status: updatedBooking.status,
         bookedAt: updatedBooking.bookedAt,
-        cancelledAt: updatedBooking.cancelledAt,
+        expirationTimestamp: updatedBooking.status === BookingStatus.PENDING ? 
+          new Date(updatedBooking.bookedAt.getTime() + 15 * 60 * 1000) : null,
         passengers: updatedBooking.passengerDetails?.map(p => ({
           id: p.id,
           fullName: p.fullName,
@@ -610,12 +613,10 @@ export class BookingService {
           seatCode: p.seatCode,
         })) || [],
         seats: updatedBooking.seatStatuses?.map(s => ({
-          id: s.id,
+          seatId: s.seatId,
           seatCode: s.seat?.seatCode || '',
-          state: s.state,
+          status: s.state,
         })) || [],
-        expirationTimestamp: updatedBooking.status === 'pending' ? 
-          new Date(updatedBooking.bookedAt.getTime() + 15 * 60 * 1000) : null,
       };
     });
   }
