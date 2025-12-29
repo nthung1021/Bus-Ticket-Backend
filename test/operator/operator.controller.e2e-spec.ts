@@ -12,14 +12,10 @@ import { Route } from '../../src/entities/route.entity';
 import { User } from '../../src/entities/user.entity'; 
 import { testDatabaseConfig } from '../../src/config/test-database.config';
 
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
-
 describe('OperatorController (e2e)', () => {
   let app: INestApplication;
   let operatorRepository: Repository<Operator>;
-  let userRepository: Repository<User>; // Just for global cleanup if needed
+  let userRepository: Repository<User>;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -35,7 +31,7 @@ describe('OperatorController (e2e)', () => {
           inject: [ConfigService],
         }),
         OperatorModule,
-        // Import other entities to enable repository injection for cleanup
+
         TypeOrmModule.forFeature([User, Bus, Route]),
       ],
     }).compile();
@@ -47,23 +43,22 @@ describe('OperatorController (e2e)', () => {
     operatorRepository = moduleFixture.get<Repository<Operator>>(getRepositoryToken(Operator));
     userRepository = moduleFixture.get<Repository<User>>(getRepositoryToken(User));
 
-    // Initial Cleanup
     const entities = ['routes', 'buses', 'operators', 'users'];
     for (const entity of entities) {
-        try {
-            await operatorRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
-        } catch (e) {}
+      try {
+        await operatorRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
+      } catch (e) {}
     }
   });
 
   afterAll(async () => {
     if (operatorRepository) {
-        const entities = ['routes', 'buses', 'operators', 'users'];
-        for (const entity of entities) {
-            try {
-                await operatorRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
-            } catch (e) {}
-        }
+      const entities = ['routes', 'buses', 'operators', 'users'];
+      for (const entity of entities) {
+        try {
+          await operatorRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
+        } catch (e) {}
+      }
     }
     if (app) {
       await app.close();
@@ -71,13 +66,12 @@ describe('OperatorController (e2e)', () => {
   });
 
   beforeEach(async () => {
-      // Per-test cleanup
-      const entities = ['routes', 'buses', 'operators'];
-      for (const entity of entities) {
-          try {
-             await operatorRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
-          } catch(e) {}
-      }
+    const entities = ['routes', 'buses', 'operators'];
+    for (const entity of entities) {
+      try {
+        await operatorRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
+      } catch(e) {}
+    }
   });
 
   describe('POST /operators', () => {
@@ -100,88 +94,88 @@ describe('OperatorController (e2e)', () => {
 
   describe('GET /operators', () => {
     it('should return operators', async () => {
-        await operatorRepository.save({
-            name: 'Op1', contactEmail: '1@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
-        });
+      await operatorRepository.save({
+        name: 'Op1', contactEmail: '1@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
+      });
 
-        const response = await request(app.getHttpServer())
-            .get('/operators')
-            .expect(200);
-        
-        expect(response.body.length).toBe(1);
+      const response = await request(app.getHttpServer())
+        .get('/operators')
+        .expect(200);
+
+      expect(response.body.length).toBe(1);
     });
   });
 
   describe('GET /operators/:id', () => {
     it('should return one operator', async () => {
-        const op = await operatorRepository.save({
-            name: 'Op Single', contactEmail: 's@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
-        });
+      const op = await operatorRepository.save({
+        name: 'Op Single', contactEmail: 's@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
+      });
 
-        const response = await request(app.getHttpServer())
-            .get(`/operators/${op.id}`)
-            .expect(200);
+      const response = await request(app.getHttpServer())
+        .get(`/operators/${op.id}`)
+        .expect(200);
 
-        expect(response.body.id).toBe(op.id);
+      expect(response.body.id).toBe(op.id);
     });
   });
 
   describe('PUT /operators/:id', () => {
     it('should return update operator', async () => {
-        const op = await operatorRepository.save({
-            name: 'Op Update', contactEmail: 'u@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
-        });
+      const op = await operatorRepository.save({
+        name: 'Op Update', contactEmail: 'u@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
+      });
 
-        const response = await request(app.getHttpServer())
-            .put(`/operators/${op.id}`)
-            .send({ name: 'Updated E2E' })
-            .expect(200);
+      const response = await request(app.getHttpServer())
+        .put(`/operators/${op.id}`)
+        .send({ name: 'Updated E2E' })
+        .expect(200);
 
-        expect(response.body.name).toBe('Updated E2E');
+      expect(response.body.name).toBe('Updated E2E');
     });
   });
 
   describe('PUT /operators/:id/approve', () => {
     it('should approve operator', async () => {
-        const op = await operatorRepository.save({
-            name: 'Op Pending', contactEmail: 'pend@op.com', contactPhone: '1', status: OperatorStatus.PENDING
-        });
+      const op = await operatorRepository.save({
+        name: 'Op Pending', contactEmail: 'pend@op.com', contactPhone: '1', status: OperatorStatus.PENDING
+      });
 
-        const response = await request(app.getHttpServer())
-            .put(`/operators/${op.id}/approve`)
-            .expect(200);
+      const response = await request(app.getHttpServer())
+        .put(`/operators/${op.id}/approve`)
+        .expect(200);
 
-        expect(response.body.status).toBe(OperatorStatus.APPROVED);
-        expect(response.body.approvedAt).toBeDefined();
+      expect(response.body.status).toBe(OperatorStatus.APPROVED);
+      expect(response.body.approvedAt).toBeDefined();
     });
   });
 
   describe('PUT /operators/:id/suspend', () => {
     it('should suspend operator', async () => {
-        const op = await operatorRepository.save({
-            name: 'Op Active', contactEmail: 'act@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
-        });
+      const op = await operatorRepository.save({
+        name: 'Op Active', contactEmail: 'act@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
+      });
 
-        const response = await request(app.getHttpServer())
-            .put(`/operators/${op.id}/suspend`)
-            .expect(200);
+      const response = await request(app.getHttpServer())
+        .put(`/operators/${op.id}/suspend`)
+        .expect(200);
 
-        expect(response.body.status).toBe(OperatorStatus.SUSPENDED);
+      expect(response.body.status).toBe(OperatorStatus.SUSPENDED);
     });
   });
 
   describe('DELETE /operators/:id', () => {
     it('should delete operator', async () => {
-        const op = await operatorRepository.save({
-            name: 'Op Del', contactEmail: 'del@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
-        });
+      const op = await operatorRepository.save({
+        name: 'Op Del', contactEmail: 'del@op.com', contactPhone: '1', status: OperatorStatus.APPROVED
+      });
 
-        await request(app.getHttpServer())
-            .delete(`/operators/${op.id}`)
-            .expect(204);
+      await request(app.getHttpServer())
+        .delete(`/operators/${op.id}`)
+        .expect(204);
 
-        const found = await operatorRepository.findOne({ where: { id: op.id } });
-        expect(found).toBeNull();
+      const found = await operatorRepository.findOne({ where: { id: op.id } });
+      expect(found).toBeNull();
     });
   });
 });
