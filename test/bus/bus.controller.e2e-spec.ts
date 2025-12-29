@@ -15,16 +15,11 @@ import { User } from '../../src/entities/user.entity';
 import { testDatabaseConfig } from '../../src/config/test-database.config';
 import * as crypto from 'crypto';
 
-// Mocking external environment variables just in case AuthModule or others are pulled in
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
-
 describe('BusController (e2e)', () => {
   let app: INestApplication;
   let busRepository: Repository<Bus>;
   let operatorRepository: Repository<Operator>;
-  let userRepository: Repository<User>; // For cleanup
+  let userRepository: Repository<User>;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -131,9 +126,6 @@ describe('BusController (e2e)', () => {
         seatCapacity: 50,
       };
 
-      // Depending on global exception filters, FK violation usually returns 500
-      // But standard controller might not catch it specifically. 
-      // We expect failure.
       await request(app.getHttpServer())
         .post('/buses')
         .send(createDto)

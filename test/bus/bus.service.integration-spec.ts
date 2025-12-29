@@ -14,19 +14,11 @@ import { NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { User } from '../../src/entities/user.entity';
 
-// Mocking external environment variables
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
-
 describe('BusService (integration)', () => {
   let service: BusService;
   let moduleRef: TestingModule;
   let busRepository: Repository<Bus>;
   let operatorRepository: Repository<Operator>;
-  
-  // We need a userRepository just for the truncation helper if we recycle that code,
-  // but strictly speaking we can just use the query runner from any repo.
   let userRepository: Repository<User>;
 
   beforeAll(async () => {
