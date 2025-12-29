@@ -17,6 +17,7 @@ import { BookingModificationHistory } from '../entities/booking-modification-his
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { EmailService } from './email.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PayosModule } from '../payos/payos.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ]),
     ScheduleModule.forRoot(),
     forwardRef(() => NotificationsModule),
+    PayosModule,
   ],
   controllers: [BookingController],
   providers: [

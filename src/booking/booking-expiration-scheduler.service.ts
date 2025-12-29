@@ -24,8 +24,6 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
    */
   private startBookingExpirationJob() {
     try {
-      // Run every 2 minutes: "*/2 * * * *"
-      // For testing, you can use "*/10 * * * * *" (every 10 seconds)
       this.cronJob = cron.schedule('*/2 * * * *', async () => {
         await this.processExpiredBookings();
       }, {
@@ -56,7 +54,7 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
    */
   public async processExpiredBookings(): Promise<{ expiredCount: number; bookings: string[]; error?: string }> {
     const startTime = Date.now();
-    const sessionId = `exp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `exp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     
     try {
       this.logger.log(`🚀 [${sessionId}] Starting booking expiration process...`);

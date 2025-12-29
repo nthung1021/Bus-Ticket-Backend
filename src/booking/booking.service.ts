@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PayosService } from '../payos/payos.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
@@ -51,6 +52,7 @@ export class BookingService {
     private readonly modificationPermissionService: BookingModificationPermissionService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    private readonly payosService: PayosService,
   ) { }
 
   private async generateBookingReference(): Promise<string> {
@@ -88,11 +90,42 @@ export class BookingService {
     return `${prefix}${datePart}-${randomPart()}`;
   }
 
+  /**
+   * Calculate total price for a booking.
+   * Pricing model:
+   *  - `tripBasePrice` (if provided) is treated as the base fare per seat.
+   *  - Each `seat.price` is treated as a supplement (can be 0).
+   *  - subtotal = sum((tripBasePrice || 0) + (seat.price || 0)) for each seat
+   *  - serviceFee: flat fee applied once
+   *  - taxPercent: percentage applied to subtotal (before serviceFee)
+   *  - discount: flat discount applied at the end
+   */
+  async calculateTotalPrice(
+    seats: Array<{ price: number }>,
+    options?: { tripBasePrice?: number; serviceFee?: number; taxPercent?: number; discount?: number },
+  ): Promise<number> {
+    const tripBase = options?.tripBasePrice ?? 0;
+
+    const subtotal = (seats || []).reduce((s, seat) => {
+      const seatPrice = seat?.price ?? 0;
+      return s + seatPrice;
+    }, 0);
+
+    const serviceFee = options?.serviceFee ?? 0;
+    const tax = ((options?.taxPercent ?? 0) / 100) * subtotal;
+    const discount = options?.discount ?? 0;
+
+    const total = subtotal + tripBase + serviceFee + tax - discount;
+
+    // Ensure non-negative and round to nearest integer (VND)
+    return Math.max(0, Math.round(total));
+  }
+
   async createBooking(userId: string | null, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
     const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
 
     // Start transaction
-    return await this.dataSource.transaction(async manager => {
+    const result = await this.dataSource.transaction(async manager => {
       // 1. Validate trip exists
       const trip = await manager.findOne(Trip, { where: { id: tripId } });
       if (!trip) {
@@ -154,11 +187,18 @@ export class BookingService {
       const bookingReference = await this.generateBookingReference();
       const now = new Date();
       const expiresAt = new Date(now.getTime() + BOOKING_EXPIRATION_MINUTES * 60 * 1000);
+
+      // If client did not provide `totalPrice`, calculate it using trip.basePrice + seat supplements
+      let finalTotal = totalPrice;
+      if (finalTotal == null) {
+        finalTotal = await this.calculateTotalPrice(seats, { tripBasePrice: trip.basePrice });
+      }
+
       const bookingData: any = {
         tripId,
         bookingReference,
-        totalAmount: totalPrice,
-        status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
+        totalAmount: finalTotal,
+        status: BookingStatus.PENDING, // Set to PENDING
         expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
       };
       // Notification for auto-paid booking
@@ -212,8 +252,28 @@ export class BookingService {
         }
       }
 
-      // 9. Set expiration time (null for PAID bookings, they don't expire)
-      const expirationTimestamp = null; // PAID bookings don't need expiration
+      // 9. Set expiration time: pending bookings expire after 15 minutes
+      let expirationTimestamp: Date | null = null;
+      if (savedBooking.status === BookingStatus.PENDING && savedBooking.bookedAt) {
+        expirationTimestamp = new Date(savedBooking.bookedAt.getTime() + 15 * 60 * 1000);
+      }
+
+      // 9b. Generate payment URL for pending bookings using PayOS helper
+      let paymentUrl: string | null = null;
+      if (savedBooking.status === BookingStatus.PENDING) {
+        try {
+          paymentUrl = (await this.payosService.createPaymentLink({
+            amount: savedBooking.totalAmount,
+            bookingId: savedBooking.id,
+            description: ``,
+          })).checkoutUrl;
+          console.log('Generated payment URL:', paymentUrl);
+        } catch (err) {
+          // Log but do not fail booking creation if payment URL generation fails
+          this.logger.error('Failed to generate payment URL: ' + String(err));
+          paymentUrl = null;
+        }
+      }
 
       // Send notification for auto-paid booking if user is logged in
       if (savedBooking.status === BookingStatus.PAID && userId) {
@@ -240,6 +300,7 @@ export class BookingService {
         status: savedBooking.status,
         bookedAt: savedBooking.bookedAt,
         expirationTimestamp,
+        paymentUrl,
         passengers: savedPassengers.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
@@ -253,6 +314,23 @@ export class BookingService {
         })),
       };
     });
+
+    // After transaction commit, create payment link if booking is pending
+    try {
+      if (result.status === BookingStatus.PENDING) {
+        const payRes = await this.payosService.createPaymentLink({
+          amount: result.totalAmount,
+          bookingId: result.id,
+          description: '',
+        });
+        (result as any).paymentUrl = payRes?.checkoutUrl || null;
+      }
+    } catch (err) {
+      this.logger.error('Failed to generate payment URL: ' + String(err));
+      // Do not fail booking creation; leave paymentUrl as null
+    }
+
+    return result;
   }
 
   async findBookingById(bookingId: string): Promise<Booking> {

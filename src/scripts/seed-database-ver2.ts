@@ -223,12 +223,26 @@ function timeRangesOverlap(start1: Date, end1: Date, start2: Date, end2: Date): 
 
 // ===================== SEEDING FUNCTIONS =====================
 
+async function ensureChatTables(dataSource: DataSource) {
+  console.log('💬 Ensuring chat tables exist...');
+  await dataSource.query(`CREATE TABLE IF NOT EXISTS "conversation" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "title" character varying, CONSTRAINT "PK_conversation_id" PRIMARY KEY ("id"))`);
+  await dataSource.query(`CREATE TABLE IF NOT EXISTS "message" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "role" character varying NOT NULL, "content" text NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "conversationId" uuid, CONSTRAINT "PK_message_id" PRIMARY KEY ("id"))`);
+  
+  const constraintExists = await dataSource.query(`
+    SELECT 1 FROM pg_constraint WHERE conname = 'FK_message_conversation'
+  `);
+  if (constraintExists.length === 0) {
+    await dataSource.query(`ALTER TABLE "message" ADD CONSTRAINT "FK_message_conversation" FOREIGN KEY ("conversationId") REFERENCES "conversation"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+  }
+}
+
 async function clearDatabase(dataSource: DataSource) {
   console.log('🧹 Clearing existing data...');
   const tables = [
     'audit_logs', 'booking_modification_history', 'passenger_details', 
     'seat_status', 'bookings', 'trips', 'seats', 'seat_layouts', 
-    'buses', 'route_points', 'routes', 'operators', 'refresh_tokens', 'users'
+    'buses', 'route_points', 'routes', 'operators', 'refresh_tokens', 'users',
+    'message', 'conversation'
   ];
   for (const table of tables) {
     await dataSource.query(`TRUNCATE TABLE ${table} CASCADE`);
@@ -252,7 +266,7 @@ async function seedUsers(dataSource: DataSource): Promise<string[]> {
     userIds.push(id);
     const role = i <= 2 ? 'admin' : i <= 7 ? 'operator' : 'customer';
     const googleId = i <= 10 ? `'google_${i}'` : 'NULL';
-    const phone = `+84${(900000000 + i * 1000).toString()}`;
+    const phone = `0${(900000000 + i * 1000).toString()}`;
     const name = vietnameseNames[(i - 1) % vietnameseNames.length];
     userValues.push(`('${id}', ${googleId}, 'user${i}@gmail.com', '${name}', '${phone}', '$2b$10$hashedpassword${i}', '${role}', NOW())`);
   }
@@ -529,6 +543,7 @@ async function seedDatabase() {
     await dataSource.initialize();
     console.log('🔌 Connected to database');
 
+    await ensureChatTables(dataSource);
     await clearDatabase(dataSource);
     
     const userIds = await seedUsers(dataSource);

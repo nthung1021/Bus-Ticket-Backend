@@ -1,4 +1,3 @@
-// src/admin/admin.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from '../../src/admin/admin.service';
 import { User } from '../../src/entities/user.entity';

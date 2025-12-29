@@ -30,7 +30,7 @@ describe('AdminController', () => {
     // Return a Promise (mockResolvedValue) instead of async function without await
     updateUserRole: jest
       .fn()
-      .mockImplementation((userId: string, newRole: string, actorId?: string) =>
+      .mockImplementation((userId: string, newRole: string) =>
         Promise.resolve({
           id: userId,
           email: `${userId}@example.com`,
