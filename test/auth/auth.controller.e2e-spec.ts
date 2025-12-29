@@ -13,7 +13,6 @@ import { testDatabaseConfig } from '../../src/config/test-database.config';
 import * as bcrypt from 'bcrypt';
 import cookieParser from 'cookie-parser';
 
-// Ensure Google OAuth env vars are present when running tests
 process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
@@ -23,7 +22,6 @@ describe('AuthController (e2e)', () => {
   let userRepository: Repository<User>;
   let refreshTokenRepository: Repository<RefreshToken>;
 
-  // Test data
   const testUser = {
     email: 'test@example.com',
     password: 'Test1234!@#$',
@@ -57,10 +55,8 @@ describe('AuthController (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     
-    // Enable cookie parser middleware
     app.use(cookieParser());
     
-    // Apply validation pipe to match production behavior
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -71,7 +67,6 @@ describe('AuthController (e2e)', () => {
 
     await app.init();
 
-    // Get repositories for cleanup
     userRepository = moduleFixture.get<Repository<User>>(
       getRepositoryToken(User),
     );
@@ -81,14 +76,12 @@ describe('AuthController (e2e)', () => {
   });
 
   afterAll(async () => {
-    // Clean up all test data
     await refreshTokenRepository.createQueryBuilder().delete().execute();
     await userRepository.createQueryBuilder().delete().execute();
     await app.close();
   });
 
   beforeEach(async () => {
-    // Clean up before each test to ensure isolation
     await refreshTokenRepository.createQueryBuilder().delete().execute();
     await userRepository.createQueryBuilder().delete().execute();
   });
@@ -126,7 +119,6 @@ describe('AuthController (e2e)', () => {
 
       expect(response.body.data).toHaveProperty('role', 'admin');
 
-      // Verify admin role in database
       const user = await userRepository.findOne({
         where: { email: adminUser.email },
       });
@@ -134,13 +126,11 @@ describe('AuthController (e2e)', () => {
     });
 
     it('should reject duplicate email registration', async () => {
-      // Register first time
       await request(app.getHttpServer())
         .post('/auth/register')
         .send(testUser)
         .expect(201);
 
-      // Try to register again with same email
       const response = await request(app.getHttpServer())
         .post('/auth/register')
         .send(testUser)
@@ -178,7 +168,6 @@ describe('AuthController (e2e)', () => {
         .post('/auth/register')
         .send({
           email: testUser.email,
-          // Missing password, fullName, phone
         })
         .expect(400);
 
@@ -188,7 +177,6 @@ describe('AuthController (e2e)', () => {
 
   describe('POST /auth/login', () => {
     beforeEach(async () => {
-      // Create a user for login tests
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash(testUser.password, salt);
       await userRepository.save({
@@ -216,14 +204,12 @@ describe('AuthController (e2e)', () => {
       expect(response.body.data.user).toHaveProperty('userId');
       expect(response.body.data.user).toHaveProperty('role');
 
-      // Check that cookies are set
       const cookies = response.headers['set-cookie'] || [];
       const cookieArray = Array.isArray(cookies) ? cookies : [cookies];
       expect(cookieArray.length).toBeGreaterThan(0);
       expect(cookieArray.some((cookie: string) => cookie.includes('access_token'))).toBe(true);
       expect(cookieArray.some((cookie: string) => cookie.includes('refresh_token'))).toBe(true);
 
-      // Verify refresh token was saved in database
       const tokens = await refreshTokenRepository.find();
       expect(tokens.length).toBeGreaterThan(0);
     });
@@ -257,7 +243,6 @@ describe('AuthController (e2e)', () => {
         .post('/auth/login')
         .send({
           email: testUser.email,
-          // Missing password
         })
         .expect(400);
 
@@ -270,7 +255,6 @@ describe('AuthController (e2e)', () => {
     let userId: string;
 
     beforeEach(async () => {
-      // Create user and get refresh token
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash(testUser.password, salt);
       const user = await userRepository.save({
@@ -283,7 +267,6 @@ describe('AuthController (e2e)', () => {
 
       userId = user.id;
 
-      // Login to get tokens
       const loginResponse = await request(app.getHttpServer())
         .post('/auth/login')
         .send({
@@ -291,7 +274,6 @@ describe('AuthController (e2e)', () => {
           password: testUser.password,
         });
 
-      // Extract refresh token from cookies
       const cookies = loginResponse.headers['set-cookie'] || [];
       const cookieArray = Array.isArray(cookies) ? cookies : [cookies];
       const refreshTokenCookie = cookieArray.find((cookie: string) =>
@@ -349,7 +331,6 @@ describe('AuthController (e2e)', () => {
     });
 
     it('should rotate refresh token (old one becomes invalid)', async () => {
-      // First refresh
       const firstResponse = await request(app.getHttpServer())
         .post('/auth/refresh-token')
         .set('Cookie', [`refresh_token=${refreshToken}`])
@@ -365,11 +346,9 @@ describe('AuthController (e2e)', () => {
         ?.split(';')[0]
         .split('=')[1];
 
-      // Verify new token is different from old token
       expect(newRefreshToken).toBeDefined();
       expect(newRefreshToken).not.toEqual(refreshToken);
 
-      // New token should work for a second refresh
       const secondResponse = await request(app.getHttpServer())
         .post('/auth/refresh-token')
         .set('Cookie', [`refresh_token=${newRefreshToken}`])
@@ -384,7 +363,6 @@ describe('AuthController (e2e)', () => {
     let accessToken: string;
 
     beforeEach(async () => {
-      // Create user and login
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash(testUser.password, salt);
       await userRepository.save({
@@ -395,7 +373,6 @@ describe('AuthController (e2e)', () => {
         role: 'customer',
       } as User);
 
-      // Login to get access token
       const loginResponse = await request(app.getHttpServer())
         .post('/auth/login')
         .send({
@@ -453,7 +430,6 @@ describe('AuthController (e2e)', () => {
       expect(response.body).toHaveProperty('success', true);
       expect(response.body).toHaveProperty('message', 'Logged out successfully');
 
-      // Check that cookies are cleared
       const cookies = response.headers['set-cookie'] || [];
       const cookieArray = Array.isArray(cookies) ? cookies : cookies ? [cookies] : [];
       if (cookieArray.length > 0) {
@@ -464,7 +440,6 @@ describe('AuthController (e2e)', () => {
           cookie.includes('refresh_token'),
         );
         
-        // Cookies should be cleared (expires in past - 1970)
         if (accessTokenCookie) {
           expect(accessTokenCookie).toMatch(/Expires=.*1970/);
         }

@@ -19,7 +19,6 @@ import * as bcrypt from 'bcrypt';
 import { SignUpDto } from '../../src/auth/dto/signup.dto';
 import { LoginDto } from '../../src/auth/dto/login.dto';
 
-// Ensure Google OAuth env vars are present when running tests
 process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
@@ -89,7 +88,6 @@ describe('AuthService (integration)', () => {
   });
 
   beforeEach(async () => {
-    // Clean up before each test
     await refreshTokenRepository.createQueryBuilder().delete().execute();
     await userRepository.createQueryBuilder().delete().execute();
   });
@@ -106,7 +104,6 @@ describe('AuthService (integration)', () => {
       expect(result.data).toHaveProperty('userId');
       expect(result.data).toHaveProperty('createdAt');
 
-      // Verify user in database
       const user = await userRepository.findOne({
         where: { email: testUser.email },
       });
@@ -114,7 +111,6 @@ describe('AuthService (integration)', () => {
       expect(user?.name).toBe(testUser.fullName);
       expect(user?.passwordHash).not.toBe(testUser.password);
       
-      // Verify password is hashed
       const isValid = await bcrypt.compare(testUser.password, user!.passwordHash);
       expect(isValid).toBe(true);
     });
@@ -186,7 +182,6 @@ describe('AuthService (integration)', () => {
       expect(result.data.user).toHaveProperty('userId');
       expect(result.data.user).toHaveProperty('role', 'customer');
 
-      // Verify refresh token was saved
       const tokens = await refreshTokenRepository.find();
       expect(tokens.length).toBe(1);
       expect(tokens[0].token).toBe(result.data.refreshToken);
@@ -236,7 +231,6 @@ describe('AuthService (integration)', () => {
     let refreshToken: string;
 
     beforeEach(async () => {
-      // Create user
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash(testUser.password, salt);
       user = await userRepository.save({
@@ -247,7 +241,6 @@ describe('AuthService (integration)', () => {
         role: UserRole.CUSTOMER,
       } as User);
 
-      // Login to get refresh token
       const loginResult = await service.login({
         email: testUser.email,
         password: testUser.password,
@@ -271,13 +264,11 @@ describe('AuthService (integration)', () => {
 
       const result = await service.refreshToken(refreshToken);
 
-      // Old token should be deleted
       const oldTokenRecord = await refreshTokenRepository.findOne({
         where: { token: oldToken },
       });
       expect(oldTokenRecord).toBeNull();
 
-      // New token should exist
       const newTokenRecord = await refreshTokenRepository.findOne({
         where: { token: result.data.refreshToken },
       });
@@ -292,27 +283,24 @@ describe('AuthService (integration)', () => {
     });
 
     it('should throw ForbiddenException for expired token', async () => {
-      // Create a real JWT token that's expired in the database
       const realExpiredToken = jwtService.sign(
         { sub: user.id },
         {
-          secret: 'your-refresh-secret', // matches default in JwtConfigService
-          expiresIn: '-1s', // Already expired
+          secret: 'your-refresh-secret',
+          expiresIn: '-1s',
         },
       );
 
       const expiredToken = await refreshTokenRepository.save({
         token: realExpiredToken,
         userId: user.id,
-        expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
+        expiresAt: new Date(Date.now() - 1000),
       } as RefreshToken);
 
-      // Single call — verify specific error and that token was deleted
       await expect(service.refreshToken(realExpiredToken)).rejects.toThrow(
         'Refresh token has expired',
       );
 
-      // Verify expired token was deleted
       const tokenRecord = await refreshTokenRepository.findOne({
         where: { id: expiredToken.id },
       });
@@ -320,7 +308,6 @@ describe('AuthService (integration)', () => {
     });
 
     it('should throw ForbiddenException for non-existent token', async () => {
-      // Create a valid JWT token but not in database
       const fakeToken = jwtService.sign(
         { sub: user.id },
         { secret: 'your-refresh-secret', expiresIn: '7d' },
@@ -351,7 +338,6 @@ describe('AuthService (integration)', () => {
       expect(result?.data.user).toHaveProperty('email', googleProfile.email);
       expect(result?.data.user).toHaveProperty('fullName', googleProfile.name);
 
-      // Verify user was created
       const user = await userRepository.findOne({
         where: { googleId: googleProfile.googleId },
       });
@@ -360,7 +346,6 @@ describe('AuthService (integration)', () => {
     });
 
     it('should login existing Google user', async () => {
-      // Create existing Google user
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash('random', salt);
       const existingUser = await userRepository.save({
@@ -419,7 +404,7 @@ describe('AuthService (integration)', () => {
 
       expect(user?.passwordHash).toBeDefined();
       expect(user?.passwordHash).not.toBe(testUser.password);
-      expect(user?.passwordHash.length).toBeGreaterThan(50); // bcrypt hashes are long
+      expect(user?.passwordHash.length).toBeGreaterThan(50);
     });
 
     it('should create refresh token with proper expiration', async () => {
@@ -446,7 +431,6 @@ describe('AuthService (integration)', () => {
       expect(token?.userId).toBe(user.id);
       expect(token?.expiresAt).toBeDefined();
       
-      // Token should expire in the future (7 days)
       const expirationDate = new Date(token!.expiresAt);
       const now = new Date();
       const daysUntilExpiration = (expirationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
