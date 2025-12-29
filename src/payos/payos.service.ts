@@ -245,8 +245,7 @@ export class PayosService {
     try {
       // Verify webhook signature using PayOS method
       const verifiedData = await this.payos.webhooks.verify(webhookData);
-      this.logger.log('Verified data:', verifiedData);
-      this.logger.log('Webhook data verified successfully');
+      this.logger.debug('Webhook data verified successfully');
       return verifiedData;
     } catch (error) {
       this.logger.error('Error verifying webhook data', error);

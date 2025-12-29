@@ -1,11 +1,18 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Completely suppress NestJS framework logs during startup
+  const app = await NestFactory.create(AppModule, {
+    logger: false,
+  });
+  
+  // Create a custom logger for application messages only
+  const logger = new Logger('Bootstrap');
+  
   const configService = app.get(ConfigService);
 
   // Enable cookie parser
@@ -31,8 +38,17 @@ async function bootstrap() {
     allowedHeaders: 'Content-Type, Accept, Authorization',
   });
 
-  await app.listen(configService.get('PORT', 3000));
-  console.log(`Application is running on: ${await app.getUrl()}`);
+  const port = configService.get('PORT', 3000);
+  await app.listen(port);
+  
+  // Re-enable application logging after startup (for runtime logs)
+  app.useLogger(['error', 'warn', 'log']);
+  
+  // Single consolidated startup summary
+  logger.log(`🚀 Bus Ticket Backend started successfully`);
+  logger.log(`📍 Server: http://localhost:${port}`);
+  logger.log(`🌐 Frontend: ${configService.get('FRONTEND_URL', 'http://localhost:8000')}`);
+  logger.log(`🔌 Database: Connected to ${configService.get('DB_NAME', 'bus_booking')}`);
 }
 
 bootstrap();

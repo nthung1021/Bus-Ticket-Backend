@@ -28,6 +28,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   
   // Tracks if the database connection is currently active
   private isConnected = false;
+  
+  // Prevents duplicate initialization logging
+  private isInitialized = false;
 
   /**
    * Initializes a new instance of the DatabaseService
@@ -45,7 +48,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
    * Sets up the database connection pool and performs initial health checks
    */
   async onModuleInit() {
-    this.logger.log('🔗 Initializing database connection pool...');
+    if (this.isInitialized) {
+      this.logger.debug('Database service already initialized, skipping duplicate initialization');
+      return;
+    }
+    
+    this.logger.log('Initializing database connection pool');
+    this.isInitialized = true;
+    
     try {
       // Test the database connection
       await this.testConnection();
@@ -56,11 +66,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       // Uncomment if you want to pre-create connections at startup
       // await this.warmUpPool();
 
-      // Log initial pool statistics
+      // Log initial pool statistics with simplified logging
       await this.logPoolStats();
     } catch (error) {
       // Log detailed error if connection fails
-      this.logger.error('❌ Failed to initialize database connection:', error);
+      this.logger.error('Failed to initialize database connection:', error);
       this.isConnected = false;
     }
   }
@@ -70,14 +80,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
    * Cleans up database connections to prevent resource leaks
    */
   async onModuleDestroy() {
-    this.logger.log('🔗 Closing database connection pool...');
+    this.logger.log('Closing database connection pool');
     try {
       // Properly close all connections in the pool
       await this.dataSource.destroy();
       this.isConnected = false;
-      this.logger.log('✅ Database connection pool closed successfully');
+      this.logger.log('Database connection pool closed successfully');
     } catch (error) {
-      this.logger.error('❌ Error closing database connection pool:', error);
+      this.logger.error('Error closing database connection pool:', error);
     }
   }
 
@@ -89,11 +99,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     try {
       // Execute a simple query to verify the connection
       await this.dataSource.query('SELECT 1');
-      this.logger.log('✅ Database connection test successful');
+      this.logger.log('Database connection test successful');
       return true;
     } catch (error) {
       // Log detailed error information
-      this.logger.error('❌ Database connection test failed:', {
+      this.logger.error('Database connection test failed:', {
         error: error.message,
         code: error.code,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -112,7 +122,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private async warmUpPool(): Promise<void> {
     // Get the minimum number of connections from config or use default (5)
     const minConnections = this.configService.get<number>('DB_POOL_MIN', 5);
-    this.logger.log(`🔥 Warming up pool with ${minConnections} connections...`);
+    this.logger.log(`Warming up connection pool with ${minConnections} connections`);
 
     try {
       // Create an array of promises, each representing a database query
@@ -123,10 +133,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
       // Execute all queries in parallel to warm up the pool
       await Promise.all(promises);
-      this.logger.log(`✅ Pool warmed up with ${minConnections} connections`);
+      this.logger.log(`Connection pool warmed up with ${minConnections} connections`);
     } catch (error) {
       // Log warning if warm-up fails, but don't crash the application
-      this.logger.warn('⚠️ Pool warm-up failed:', {
+      this.logger.warn('Pool warm-up failed:', {
         message: error.message,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
@@ -215,7 +225,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
       return stats;
     } catch (error) {
-      this.logger.error('❌ Error getting pool stats:', {
+      this.logger.error('Error getting pool stats:', {
         error: error.message,
         stack: error.stack,
         driverType: 'PostgreSQL'
@@ -305,7 +315,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       };
     } catch (error) {
       // Log a warning if we can't get PostgreSQL stats
-      this.logger.warn('⚠️ Could not get PostgreSQL stats, using fallback:', {
+      this.logger.warn('Could not get PostgreSQL stats, using fallback:', {
         error: error.message,
         code: error.code,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -332,7 +342,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           };
         }
       } catch (fallbackError) {
-        this.logger.error('⚠️ Fallback stats failed:', {
+        this.logger.error('Fallback stats failed:', {
           error: fallbackError.message,
           originalError: error.message
         });
@@ -414,68 +424,28 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       logData.error = (stats as any).lastError;
     }
 
-    // Log with appropriate log level based on pool status
+    // During startup initialization, log concise message only
     if (status === 'error' || status === 'disconnected') {
-      // Critical error - database connection is down
-      this.logger.error('❌ Database connection issue', logData);
+      this.logger.error('Database connection failed');
     } else if (utilizationRate > 90 || waitingClients > 0) {
-      // Warning - pool is under heavy load
-      this.logger.warn('⚠️ Database pool under stress', logData);
+      this.logger.warn(`Database pool under stress: ${utilizationRate}% utilization, ${waitingClients} waiting`);
     } else {
-      // Normal operation - log informational message
-      const isInitialState = totalConnections === 0 && activeConnections === 0;
-      const message = isInitialState
-        ? '📊 Database pool status (connections will be created on demand)'
-        : '📊 Database pool status';
-      this.logger.log(message, logData);
+      // Concise startup message without verbose object logging
+      this.logger.log(`Database pool ready (max: ${maxConnections} connections)`);
     }
 
-    // Additional detailed warnings for pool health
+    // Only warn about waiting clients if there are any
     if (waitingClients > 0) {
-      const waitMsg = `⚠️ ${waitingClients} client${waitingClients > 1 ? 's' : ''} waiting for database connections`;
-      const waitDetails = {
-        waitingClients,
-        maxConnections,
-        activeConnections,
-        idleConnections,
-        utilizationRate: `${utilizationRate}%`,
-        suggestion: waitingClients > 5 ? 'Consider increasing DB_POOL_MAX' : ''
-      };
-      this.logger.warn(waitMsg, waitDetails);
+      this.logger.warn(`${waitingClients} clients waiting for database connections`);
     }
 
-    // Warn about high utilization
+    // Only warn about high utilization during runtime monitoring
     if (utilizationRate > 80) {
-      const utilMsg = `⚠️ Database pool utilization at ${utilizationRate}%`;
-      const utilDetails = {
-        utilizationRate,
-        maxConnections,
-        activeConnections,
-        idleConnections,
-        suggestion: utilizationRate > 90 
-          ? 'Warning: Approaching maximum pool size. Consider increasing DB_POOL_MAX.'
-          : 'Pool usage is high but within acceptable limits.'
-      };
-      this.logger.warn(utilMsg, utilDetails);
+      this.logger.warn(`Database pool utilization at ${utilizationRate}%`);
     }
 
-    // Critical error if utilization is extremely high
     if (utilizationRate > 95) {
-      const criticalMsg = `🚨 Database pool critical: ${utilizationRate}% utilization`;
-      const criticalDetails = {
-        utilizationRate,
-        maxConnections,
-        activeConnections,
-        idleConnections,
-        timestamp: new Date().toISOString(),
-        severity: 'critical',
-        actionRequired: 'Immediate attention needed. Consider:' +
-          '\n- Increasing DB_POOL_MAX' +
-          '\n- Optimizing slow queries' +
-          '\n- Scaling database resources' +
-          '\n- Implementing read replicas if read-heavy'
-      };
-      this.logger.error(criticalMsg, criticalDetails);
+      this.logger.error(`Database pool critical: ${utilizationRate}% utilization - immediate attention needed`);
     }
   }
 
@@ -535,7 +505,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       await this.dataSource.query('SELECT 1');
       database = true;
     } catch (error) {
-      this.logger.error('❌ Database health check failed:', error);
+      this.logger.error('Database health check failed:', error);
       status = 'critical';
       details = `Database query failed: ${error.message}`;
     }
@@ -543,11 +513,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     // Log health status
     const healthStatus = { status, database, utilizationRate, waitingClients, maxConnections };
     if (status === 'critical') {
-      this.logger.error('🚨 Database health check critical', healthStatus);
+      this.logger.error('Database health check critical', healthStatus);
     } else if (status === 'warning') {
-      this.logger.warn('⚠️ Database health check warning', healthStatus);
+      this.logger.warn('Database health check warning', healthStatus);
     } else {
-      this.logger.log('✅ Database health check passed', healthStatus);
+      this.logger.log('Database health check passed', healthStatus);
     }
 
     return {
@@ -652,7 +622,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       // Log error details if the query fails
       const errorTime = Date.now() - start;
-      this.logger.error('❌ Database query performance test failed', {
+      this.logger.error('Database query performance test failed', {
         error: error.message,
         duration: errorTime,
         timestamp: new Date().toISOString(),

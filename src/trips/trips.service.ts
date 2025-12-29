@@ -221,9 +221,7 @@ export class TripsService {
         const layout = bus.seatLayout;
         const seatLayoutConfig = layout.layoutConfig;
         seatsList = seatLayoutConfig.seats || [];
-        this.logger.log(
-          `Creating seat statuses from bus layout config with seats: ${seatsList.length}`,
-        );
+        this.logger.debug(`Creating seat statuses from layout with ${seatsList.length} seats`);
       } else {
         throw new Error('No seat layout found on bus');
       }
@@ -500,7 +498,6 @@ export class TripsService {
     const page = dto.page || 1;
     const limit = Math.min(dto.limit || 20, 100);
     const offset = (page - 1) * limit;
-    // console.log(dto.date);
 
     const qb = this.tripRepo
       .createQueryBuilder('trip')
@@ -510,7 +507,6 @@ export class TripsService {
       .leftJoinAndSelect('bus.operator', 'operator');
 
     if (dto.origin) {
-      // console.log("Filtering by origin:", dto.origin);
       qb.andWhere('LOWER(route.origin) = LOWER(:origin)', {
         origin: dto?.origin?.trim(),
       });

@@ -267,7 +267,7 @@ export class BookingService {
             bookingId: savedBooking.id,
             description: ``,
           })).checkoutUrl;
-          console.log('Generated payment URL:', paymentUrl);
+          this.logger.debug('Payment URL generated for booking');
         } catch (err) {
           // Log but do not fail booking creation if payment URL generation fails
           this.logger.error('Failed to generate payment URL: ' + String(err));
@@ -770,16 +770,7 @@ export class BookingService {
         throw new NotFoundException('Booking not found');
       }
 
-      console.log(`Cancel booking debug:`, {
-        bookingId,
-        userId,
-        booking: {
-          id: booking.id,
-          userId: booking.userId,
-          status: booking.status,
-          departureTime: booking.trip?.departureTime
-        }
-      });
+      this.logger.debug(`Processing cancellation for booking ${bookingId}`);
 
       if (booking.userId !== userId) {
         throw new BadRequestException('Access denied');
@@ -796,11 +787,7 @@ export class BookingService {
         const timeDifference = departureTime.getTime() - currentTime.getTime();
         const hoursUntilDeparture = timeDifference / (1000 * 60 * 60); // Convert to hours
 
-        console.log(`Time check:`, {
-          departureTime: departureTime.toISOString(),
-          currentTime: currentTime.toISOString(),
-          hoursUntilDeparture
-        });
+        this.logger.debug(`Cancellation time check: ${hoursUntilDeparture.toFixed(2)} hours until departure`);
 
         if (hoursUntilDeparture < 6) {
           throw new BadRequestException(`Cannot cancel booking less than 6 hours before departure. Hours until departure: ${hoursUntilDeparture.toFixed(2)}`);
