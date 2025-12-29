@@ -13,11 +13,6 @@ import { EmailService } from '../../src/booking/email.service';
 import { NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 
-// Mocking external environment variables
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
-
 describe('NotificationsService (integration)', () => {
   let service: NotificationsService;
   let moduleRef: TestingModule;
@@ -69,11 +64,9 @@ describe('NotificationsService (integration)', () => {
   });
 
   beforeEach(async () => {
-    // Database Cleanup
-    // We only need to clear notifications and related users for these tests
     const entities = [
       'notifications',
-      'bookings', // Notifications might link to bookings
+      'bookings',
       'users'
     ];
     for (const entity of entities) {

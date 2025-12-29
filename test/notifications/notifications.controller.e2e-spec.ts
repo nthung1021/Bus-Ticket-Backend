@@ -13,7 +13,6 @@ import { testDatabaseConfig } from '../../src/config/test-database.config';
 import cookieParser from 'cookie-parser';
 import * as bcrypt from 'bcrypt';
 
-// Mocking external environment variables
 process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
@@ -38,7 +37,7 @@ describe('NotificationsController (e2e)', () => {
             testDatabaseConfig(configService),
           inject: [ConfigService],
         }),
-        AuthModule, // Required for login to get token
+        AuthModule,
         NotificationsModule,
       ],
     }).compile();
@@ -51,12 +50,11 @@ describe('NotificationsController (e2e)', () => {
     notificationRepository = moduleFixture.get<Repository<Notification>>(getRepositoryToken(Notification));
     userRepository = moduleFixture.get<Repository<User>>(getRepositoryToken(User));
 
-    // Cleanup & Setup User
     const entities = ['notifications', 'users', 'refresh_tokens'];
     for (const entity of entities) {
-        try {
-            await userRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
-        } catch(e) {}
+      try {
+        await userRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
+      } catch(e) {}
     }
 
     const passwordHash = await bcrypt.hash('Test1234!', 10);
@@ -83,9 +81,9 @@ describe('NotificationsController (e2e)', () => {
     if (userRepository) {
       const entities = ['notifications', 'users', 'refresh_tokens'];
       for (const entity of entities) {
-          try {
-              await userRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
-          } catch(e) {}
+        try {
+          await userRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
+        } catch(e) {}
       }
     }
     if (app) {
@@ -94,8 +92,7 @@ describe('NotificationsController (e2e)', () => {
   });
 
   beforeEach(async () => {
-      // Clear notifications only, keep user
-      await notificationRepository.query('DELETE FROM "notifications"');
+    await notificationRepository.query('DELETE FROM "notifications"');
   });
 
   describe('GET /notifications', () => {
@@ -110,66 +107,66 @@ describe('NotificationsController (e2e)', () => {
     });
 
     it('should return list of notifications', async () => {
-        await notificationRepository.save({
-            userId,
-            title: 'Test',
-            message: 'Hello',
-            channel: NotificationChannel.IN_APP,
-            status: NotificationStatus.SENT,
-            template: 't',
-            sentAt: new Date()
-        });
+      await notificationRepository.save({
+        userId,
+        title: 'Test',
+        message: 'Hello',
+        channel: NotificationChannel.IN_APP,
+        status: NotificationStatus.SENT,
+        template: 't',
+        sentAt: new Date()
+    });
 
-        const response = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .get('/notifications')
         .set('Cookie', [`access_token=${userToken}`])
         .expect(200);
 
-        expect(response.body.data.length).toBe(1);
+      expect(response.body.data.length).toBe(1);
     });
   });
 
   describe('PUT /notifications/read-all', () => {
     it('should mark all as read', async () => {
-        await notificationRepository.save({
-            userId,
-            title: 'Test',
-            message: 'Hello',
-            channel: NotificationChannel.IN_APP,
-            status: NotificationStatus.SENT, // Unread state for API logic usually maps SENT to unread
-            template: 't',
-            sentAt: new Date()
-        });
+      await notificationRepository.save({
+        userId,
+        title: 'Test',
+        message: 'Hello',
+        channel: NotificationChannel.IN_APP,
+        status: NotificationStatus.SENT,
+        template: 't',
+        sentAt: new Date()
+      });
 
-        await request(app.getHttpServer())
-            .put('/notifications/read-all')
-            .set('Cookie', [`access_token=${userToken}`])
-            .expect(200);
+      await request(app.getHttpServer())
+        .put('/notifications/read-all')
+        .set('Cookie', [`access_token=${userToken}`])
+        .expect(200);
 
-        const found = await notificationRepository.findOne({ where: { userId } });
-        expect(found?.status).toBe(NotificationStatus.READ);
+      const found = await notificationRepository.findOne({ where: { userId } });
+      expect(found?.status).toBe(NotificationStatus.READ);
     });
   });
 
   describe('PUT /notifications/:id/read', () => {
     it('should mark specific notification as read', async () => {
-        const n = await notificationRepository.save({
-            userId,
-            title: 'Single',
-            message: 'One',
-            channel: NotificationChannel.IN_APP,
-            status: NotificationStatus.SENT,
-            template: 't',
-            sentAt: new Date()
-        });
+      const n = await notificationRepository.save({
+        userId,
+        title: 'Single',
+        message: 'One',
+        channel: NotificationChannel.IN_APP,
+        status: NotificationStatus.SENT,
+        template: 't',
+        sentAt: new Date()
+      });
 
-        await request(app.getHttpServer())
-            .put(`/notifications/${n.id}/read`)
-            .set('Cookie', [`access_token=${userToken}`])
-            .expect(200);
-        
-        const found = await notificationRepository.findOne({ where: { id: n.id } });
-        expect(found?.status).toBe(NotificationStatus.READ);
+      await request(app.getHttpServer())
+        .put(`/notifications/${n.id}/read`)
+        .set('Cookie', [`access_token=${userToken}`])
+        .expect(200);
+    
+      const found = await notificationRepository.findOne({ where: { id: n.id } });
+      expect(found?.status).toBe(NotificationStatus.READ);
     });
   });
 });
