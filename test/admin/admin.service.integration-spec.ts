@@ -70,7 +70,6 @@ describe('AdminService (integration)', () => {
   });
 
   afterAll(async () => {
-    // Ensure all data is wiped and connection is closed
     if (userRepository) {
       const entities = [
         'booking_modification_history',
@@ -99,7 +98,6 @@ describe('AdminService (integration)', () => {
   });
 
   beforeEach(async () => {
-    // Clean up database using TRUNCATE CASCADE to handle all constraints reliably
     const entities = [
       'booking_modification_history',
       'notifications',
@@ -115,7 +113,6 @@ describe('AdminService (integration)', () => {
       'users'
     ];
     for (const entity of entities) {
-      // Check if table exists before trying to truncate it
       await userRepository.query(`TRUNCATE TABLE "${entity}" RESTART IDENTITY CASCADE`);
     }
   });
@@ -176,7 +173,6 @@ describe('AdminService (integration)', () => {
 
   describe('Analytics Methods', () => {
     it('getBookingsSummary should return correct aggregations', async () => {
-      // Setup: Create dependencies
       const operator = await operatorRepository.save({
         name: 'Test Operator',
         contactEmail: 'operator@test.com',

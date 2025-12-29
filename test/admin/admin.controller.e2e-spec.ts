@@ -13,7 +13,6 @@ import { testDatabaseConfig } from '../../src/config/test-database.config';
 import cookieParser from 'cookie-parser';
 import * as bcrypt from 'bcrypt';
 
-// Set dummy values for Google OAuth to avoid strategy initialization errors
 process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
