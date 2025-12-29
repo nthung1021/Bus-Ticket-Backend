@@ -23,11 +23,6 @@ import { EmailService } from '../../src/booking/email.service';
 import { BookingModificationPermissionService } from '../../src/booking/booking-modification-permission.service';
 import * as crypto from 'crypto';
 
-// Mocking external environment variables required by GoogleStrategy
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'dummy-id';
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'dummy-secret';
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || 'http://localhost/callback';
-
 describe('BookingExpirationScheduler (integration)', () => {
   let scheduler: BookingExpirationScheduler;
   let service: BookingService;
@@ -175,8 +170,6 @@ describe('BookingExpirationScheduler (integration)', () => {
   it('should expire pending bookings that have passed their expiration time', async () => {
     const { trip, seat } = await setupTrip();
     
-    // Create a booking that expired 10 minutes ago
-    // If BOOKING_EXPIRATION_MINUTES is 15, then we set bookedAt to 25 mins ago
     const expiredBookedAt = new Date(Date.now() - 25 * 60 * 1000);
     const booking = await bookingRepository.save({
       tripId: trip.id,
@@ -210,7 +203,6 @@ describe('BookingExpirationScheduler (integration)', () => {
   it('should NOT expire recently created pending bookings', async () => {
     const { trip, seat } = await setupTrip();
     
-    // Create a booking created 1 minute ago
     const booking = await bookingRepository.save({
       tripId: trip.id,
       totalAmount: 100000,

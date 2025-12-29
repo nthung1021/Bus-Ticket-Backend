@@ -23,11 +23,6 @@ import { BookingModificationPermissionService } from '../../src/booking/booking-
 import * as crypto from 'crypto';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
-// Mocking external environment variables required by GoogleStrategy (if loaded via AuthModule)
-process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-process.env.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
-
 describe('BookingService (integration)', () => {
   let service: BookingService;
   let moduleRef: TestingModule;
@@ -156,13 +151,13 @@ describe('BookingService (integration)', () => {
     });
 
     const route = await routeRepository.save({
-        name: 'Test Route',
-        description: 'Test Description',
-        operator,
-        origin: 'A',
-        destination: 'B',
-        distanceKm: 100,
-        estimatedMinutes: 60,
+      name: 'Test Route',
+      description: 'Test Description',
+      operator,
+      origin: 'A',
+      destination: 'B',
+      distanceKm: 100,
+      estimatedMinutes: 60,
     });
 
     const trip = await tripRepository.save({
@@ -208,7 +203,6 @@ describe('BookingService (integration)', () => {
     it('should throw ConflictException if seat is already booked', async () => {
       const { trip, seats } = await setupTrip();
       
-      // Manually book seat A1
       await seatStatusRepository.save({
         tripId: trip.id,
         seatId: seats[0].id,
@@ -232,89 +226,89 @@ describe('BookingService (integration)', () => {
 
   describe('cancelBookingByUser', () => {
     it('should cancel booking successfully', async () => {
-        const { trip, seats } = await setupTrip();
-        const user = await userRepository.save({
-          email: 'user2@test.com',
-          name: 'Test User 2',
-          phone: '0901234568',
-          passwordHash: 'hash',
-        });
+      const { trip, seats } = await setupTrip();
+      const user = await userRepository.save({
+        email: 'user2@test.com',
+        name: 'Test User 2',
+        phone: '0901234568',
+        passwordHash: 'hash',
+      });
 
-        const booking = await bookingRepository.save({
-            tripId: trip.id,
-            userId: user.id,
-            totalAmount: 100000,
-            status: BookingStatus.PAID,
-            bookingReference: 'BK-CANCEL-TEST',
-            bookedAt: new Date()
-        });
+      const booking = await bookingRepository.save({
+        tripId: trip.id,
+        userId: user.id,
+        totalAmount: 100000,
+        status: BookingStatus.PAID,
+        bookingReference: 'BK-CANCEL-TEST',
+        bookedAt: new Date()
+      });
 
-        await seatStatusRepository.save({
-            tripId: trip.id,
-            seatId: seats[0].id,
-            bookingId: booking.id,
-            state: SeatState.BOOKED
-        });
+      await seatStatusRepository.save({
+        tripId: trip.id,
+        seatId: seats[0].id,
+        bookingId: booking.id,
+        state: SeatState.BOOKED
+      });
 
-        const result = await service.cancelBookingByUser(booking.id, user.id);
-        expect(result.success).toBe(true);
+      const result = await service.cancelBookingByUser(booking.id, user.id);
+      expect(result.success).toBe(true);
 
-        const updatedBooking = await bookingRepository.findOne({ where: { id: booking.id } });
-        expect(updatedBooking?.status).toBe(BookingStatus.CANCELLED);
+      const updatedBooking = await bookingRepository.findOne({ where: { id: booking.id } });
+      expect(updatedBooking?.status).toBe(BookingStatus.CANCELLED);
 
-        const updatedStatus = await seatStatusRepository.findOne({ where: { seatId: seats[0].id, tripId: trip.id } });
-        expect(updatedStatus?.state).toBe(SeatState.AVAILABLE);
+      const updatedStatus = await seatStatusRepository.findOne({ where: { seatId: seats[0].id, tripId: trip.id } });
+      expect(updatedStatus?.state).toBe(SeatState.AVAILABLE);
     });
 
     it('should throw BadRequestException if less than 6 hours before departure', async () => {
-        const { trip } = await setupTrip();
-        // Move departure to 2 hours from now
-        await tripRepository.update(trip.id, {
-            departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000)
-        });
+      const { trip } = await setupTrip();
 
-        const user = await userRepository.save({
-          email: 'user3@test.com',
-          name: 'Test User 3',
-          phone: '0901234569',
-          passwordHash: 'hash',
-        });
+      await tripRepository.update(trip.id, {
+        departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000)
+      });
 
-        const booking = await bookingRepository.save({
-            tripId: trip.id,
-            userId: user.id,
-            totalAmount: 100000,
-            status: BookingStatus.PAID,
-            bookingReference: 'BK-LATE-CANCEL',
-            bookedAt: new Date()
-        });
+      const user = await userRepository.save({
+        email: 'user3@test.com',
+        name: 'Test User 3',
+        phone: '0901234569',
+        passwordHash: 'hash',
+      });
 
-        await expect(service.cancelBookingByUser(booking.id, user.id))
-            .rejects.toThrow('less than 6 hours before departure');
+      const booking = await bookingRepository.save({
+        tripId: trip.id,
+        userId: user.id,
+        totalAmount: 100000,
+        status: BookingStatus.PAID,
+        bookingReference: 'BK-LATE-CANCEL',
+        bookedAt: new Date()
+      });
+
+      await expect(service.cancelBookingByUser(booking.id, user.id))
+        .rejects.toThrow('less than 6 hours before departure');
     });
   });
 
   describe('findBookingById', () => {
     it('should return booking with relations', async () => {
-        const { trip } = await setupTrip();
-        const booking = await bookingRepository.save({
-            tripId: trip.id,
-            totalAmount: 100000,
-            status: BookingStatus.PAID,
-            bookingReference: 'BK-FIND-TEST',
-            bookedAt: new Date(),
-            contactEmail: 'guest@test.com'
-        });
+      const { trip } = await setupTrip();
+      const booking = await bookingRepository.save({
+        tripId: trip.id,
+        totalAmount: 100000,
+        status: BookingStatus.PAID,
+        bookingReference: 'BK-FIND-TEST',
+        bookedAt: new Date(),
+        contactEmail: 'guest@test.com'
+      });
 
-        const result = await service.findBookingById(booking.id);
-        expect(result).toBeDefined();
-        expect(result.id).toBe(booking.id);
-        expect(result.trip).toBeDefined();
+      const result = await service.findBookingById(booking.id);
+      expect(result).toBeDefined();
+      expect(result.id).toBe(booking.id);
+      expect(result.trip).toBeDefined();
     });
 
     it('should throw NotFoundException if booking not found', async () => {
-        await expect(service.findBookingById(crypto.randomUUID()))
-            .rejects.toThrow(NotFoundException);
+      await expect(service.findBookingById(crypto.randomUUID()))
+        .rejects.toThrow(NotFoundException);
     });
   });
 });
