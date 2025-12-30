@@ -31,6 +31,11 @@ export class SearchTripsDto {
   departureTime?: string;
 
   @IsOptional()
+  @IsString()
+  // exact time in HH:MM format
+  departureTimeExact?: string;
+
+  @IsOptional()
   @Transform(({ value }) => value ? Number(value) : undefined)
   minPrice?: number;
 

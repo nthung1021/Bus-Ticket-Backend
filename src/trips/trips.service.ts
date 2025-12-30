@@ -579,6 +579,17 @@ export class TripsService {
       }
     }
 
+    // exact departure time filter (HH:MM) - match hour:minute portion
+    if ((dto as any).departureTimeExact) {
+      const exact = (dto as any).departureTimeExact as string;
+      // Normalize to HH:MM if seconds provided
+      const hm = exact.length >= 5 ? exact.slice(0,5) : exact;
+      qb.andWhere(
+        `to_char(trip.departure_time::time, 'HH24:MI') = :exactTime`,
+        { exactTime: hm },
+      );
+    }
+
     // ordering — cheapest first as example, then departureTime
     // Use dot notation (no double quotes) to avoid driver/metadata mapping issues
     qb.orderBy('trip.basePrice', 'ASC').addOrderBy('trip.departureTime', 'ASC');
