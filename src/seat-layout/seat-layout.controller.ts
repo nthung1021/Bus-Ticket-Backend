@@ -9,6 +9,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { SeatLayoutService } from './seat-layout.service';
 import { CreateSeatLayoutDto, UpdateSeatLayoutDto, CreateSeatFromTemplateDto } from './dto/create-seat-layout.dto';
@@ -102,6 +103,15 @@ export class SeatLayoutController {
   @Roles() // Allow any authenticated user
   findByBusId(@Param('busId') busId: string): Promise<SeatLayout> {
     return this.seatLayoutService.findByBusId(busId);
+  }
+
+  @Get('bus/:busId/with-pricing')
+  @Roles() // Allow any authenticated user
+  findByBusIdWithTripPricing(
+    @Param('busId') busId: string,
+    @Query('tripId') tripId?: string
+  ): Promise<SeatLayout> {
+    return this.seatLayoutService.findByBusIdWithTripPricing(busId, tripId);
   }
 
   @Patch(':id')

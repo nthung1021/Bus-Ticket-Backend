@@ -5,6 +5,7 @@ import { SeatLayout, SeatLayoutType, SeatInfo, SeatPosition, SeatLayoutConfig, S
 import { Bus } from '../entities/bus.entity';
 import { Seat, SeatType } from '../entities/seat.entity';
 import { SeatState, SeatStatus } from '../entities/seat-status.entity';
+import { Trip } from '../entities/trip.entity';
 import { CreateSeatLayoutDto, UpdateSeatLayoutDto, CreateSeatFromTemplateDto } from './dto/create-seat-layout.dto';
 
 @Injectable()
@@ -18,6 +19,8 @@ export class SeatLayoutService {
     private readonly seatRepository: Repository<Seat>,
     @InjectRepository(SeatStatus)
     private readonly seatStatusRepository: Repository<SeatStatus>,
+    @InjectRepository(Trip)
+    private readonly tripRepository: Repository<Trip>,
   ) { }
 
   async create(createSeatLayoutDto: CreateSeatLayoutDto): Promise<SeatLayout> {
@@ -183,6 +186,26 @@ export class SeatLayoutService {
       // Convert letter to row number (A=1, B=2, ..., H=8, etc.)
       const row = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
 
+      // Calculate price based on seat type and pricing configuration
+      let seatPrice = 0;
+      if (seatLayout.seatPricing?.seatTypePrices) {
+        const seatTypePrices = seatLayout.seatPricing.seatTypePrices;
+        switch (seat.seatType) {
+          case 'normal':
+            seatPrice = seatTypePrices.normal || 0;
+            break;
+          case 'vip':
+            seatPrice = seatTypePrices.vip || 0;
+            break;
+          case 'business':
+            seatPrice = seatTypePrices.business || 0;
+            break;
+          default:
+            seatPrice = seatTypePrices.normal || 0;
+            break;
+        }
+      }
+
       return {
         id: seat.id,
         code: seat.seatCode,
@@ -193,7 +216,123 @@ export class SeatLayoutService {
           x: 0, y: 0, width: 40, height: 40 // Default values
         },
         isAvailable: seat.isActive,
-        price: 0 // Will be calculated based on seatPricing config
+        price: seatPrice // Calculated based on seat type and pricing config
+      };
+    });
+
+    // Add seats to layoutConfig
+    seatLayout.layoutConfig = {
+      ...seatLayout.layoutConfig,
+      seats: seatInfos
+    };
+
+    return seatLayout;
+  }
+
+  async findByBusIdWithTripPricing(busId: string, tripId?: string): Promise<SeatLayout> {
+    const seatLayout = await this.seatLayoutRepository.findOne({
+      where: { busId },
+      relations: ['bus'],
+    });
+
+    if (!seatLayout) {
+      throw new NotFoundException(`Seat layout for bus ${busId} not found`);
+    }
+
+    // If tripId is provided, try to get trip-specific base price
+    let tripBasePrice = 0;
+    if (tripId) {
+      const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+      if (trip) {
+        tripBasePrice = trip.basePrice || 0;
+      }
+    }
+
+    // Populate seats data from database
+    const seats = await this.seatRepository.find({
+      where: { busId },
+      order: { seatCode: 'ASC' }
+    });
+
+    // Convert database seats to SeatInfo format with proper pricing
+    const seatInfos: SeatInfo[] = seats.map(seat => {
+      // Extract row and position from seat code (e.g., A1, B2, H2, G1)
+      const seatCode = seat.seatCode;
+      const rowLetter = seatCode.charAt(0);
+      const position = parseInt(seatCode.slice(1)) || 1;
+      // Convert letter to row number (A=1, B=2, ..., H=8, etc.)
+      const row = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+
+      // Calculate price based on seat type and pricing configuration
+      let seatPrice = tripBasePrice; // Start with trip base price
+      
+      if (seatLayout.seatPricing?.seatTypePrices) {
+        const seatTypePrices = seatLayout.seatPricing.seatTypePrices;
+        const layoutBasePrice = seatLayout.seatPricing.basePrice || 0;
+        
+        // If no trip base price, use layout base price
+        if (tripBasePrice === 0) {
+          seatPrice = layoutBasePrice;
+        }
+        
+        // Add seat type-specific supplement
+        switch (seat.seatType) {
+          case 'normal':
+            seatPrice += (seatTypePrices.normal || 0);
+            break;
+          case 'vip':
+            seatPrice += (seatTypePrices.vip || 0);
+            break;
+          case 'business':
+            seatPrice += (seatTypePrices.business || 0);
+            break;
+          default:
+            seatPrice += (seatTypePrices.normal || 0);
+            break;
+        }
+
+        // Apply row-specific pricing if configured
+        if (seatLayout.seatPricing.rowPricing && seatLayout.seatPricing.rowPricing[row]) {
+          seatPrice += seatLayout.seatPricing.rowPricing[row];
+        }
+
+        // Apply position-specific pricing if configured
+        const positionKey = `${row}-${position}`;
+        if (seatLayout.seatPricing.positionPricing && seatLayout.seatPricing.positionPricing[positionKey]) {
+          seatPrice += seatLayout.seatPricing.positionPricing[positionKey];
+        }
+      } else {
+        // If no seat pricing config, use reasonable defaults
+        if (tripBasePrice === 0) {
+          // Fallback prices if no configuration exists
+          switch (seat.seatType) {
+            case 'normal':
+              seatPrice = 150000; // 150k VND for normal seats
+              break;
+            case 'vip':
+              seatPrice = 200000; // 200k VND for VIP seats  
+              break;
+            case 'business':
+              seatPrice = 300000; // 300k VND for business seats
+              break;
+            default:
+              seatPrice = 150000;
+              break;
+          }
+        }
+      }
+
+      return {
+        id: seat.id,
+        code: seat.seatCode,
+        type: seat.seatType as 'normal' | 'vip' | 'business',
+        position: {
+          row: row,
+          position: position,
+          x: 0, y: 0, width: 40, height: 40 // Default values
+        },
+        isAvailable: seat.isActive,
+        price: Math.max(0, Math.round(seatPrice)) // Ensure non-negative and round to VND
       };
     });
 
