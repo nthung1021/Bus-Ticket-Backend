@@ -30,13 +30,25 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS
-  app.enableCors({
-    origin: configService.get('FRONTEND_URL', 'http://localhost:8000'),
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-    allowedHeaders: 'Content-Type, Accept, Authorization',
-  });
+  // Enable CORS: allow frontend origin in production; during development allow any origin
+  const frontendUrl = configService.get('FRONTEND_URL', 'http://localhost:8000');
+  const nodeEnv = configService.get('NODE_ENV', 'development');
+
+  if (nodeEnv !== 'production') {
+    app.enableCors({
+      origin: true, // reflect request origin — allow all during dev
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+      credentials: true,
+      allowedHeaders: 'Content-Type, Accept, Authorization',
+    });
+  } else {
+    app.enableCors({
+      origin: frontendUrl,
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+      credentials: true,
+      allowedHeaders: 'Content-Type, Accept, Authorization',
+    });
+  }
 
   const port = configService.get('PORT', 3000);
   await app.listen(port);
