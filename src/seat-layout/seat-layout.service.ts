@@ -186,24 +186,29 @@ export class SeatLayoutService {
       // Convert letter to row number (A=1, B=2, ..., H=8, etc.)
       const row = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
 
-      // Calculate price based on seat type and pricing configuration
+      // Calculate price based on seat type and pricing configuration using ratios
       let seatPrice = 0;
+      const basePrice = seatLayout.seatPricing?.basePrice || 100000; // Default base price 100k VND
+      
       if (seatLayout.seatPricing?.seatTypePrices) {
         const seatTypePrices = seatLayout.seatPricing.seatTypePrices;
         switch (seat.seatType) {
           case 'normal':
-            seatPrice = seatTypePrices.normal || 0;
+            seatPrice = basePrice * (seatTypePrices.normal || 1);
             break;
           case 'vip':
-            seatPrice = seatTypePrices.vip || 0;
+            seatPrice = basePrice * (seatTypePrices.vip || 1.3);
             break;
           case 'business':
-            seatPrice = seatTypePrices.business || 0;
+            seatPrice = basePrice * (seatTypePrices.business || 1.5);
             break;
           default:
-            seatPrice = seatTypePrices.normal || 0;
+            seatPrice = basePrice * (seatTypePrices.normal || 1);
             break;
         }
+      } else {
+        // Fallback if no pricing config
+        seatPrice = basePrice;
       }
 
       return {
@@ -263,35 +268,36 @@ export class SeatLayoutService {
       // Convert letter to row number (A=1, B=2, ..., H=8, etc.)
       const row = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
 
-      // Calculate price based on seat type and pricing configuration
-      let seatPrice = tripBasePrice; // Start with trip base price
+      // Calculate price based on seat type and pricing configuration using ratios
+      let basePrice = tripBasePrice; // Start with trip base price
       
       if (seatLayout.seatPricing?.seatTypePrices) {
         const seatTypePrices = seatLayout.seatPricing.seatTypePrices;
         const layoutBasePrice = seatLayout.seatPricing.basePrice || 0;
         
-        // If no trip base price, use layout base price
+        // If no trip base price, use layout base price, fallback to 100k VND
         if (tripBasePrice === 0) {
-          seatPrice = layoutBasePrice;
+          basePrice = layoutBasePrice || 100000;
         }
         
-        // Add seat type-specific supplement
+        // Apply seat type ratio (multiply base price by ratio)
+        let seatPrice = 0;
         switch (seat.seatType) {
           case 'normal':
-            seatPrice += (seatTypePrices.normal || 0);
+            seatPrice = basePrice * (seatTypePrices.normal || 1);
             break;
           case 'vip':
-            seatPrice += (seatTypePrices.vip || 0);
+            seatPrice = basePrice * (seatTypePrices.vip || 1.3);
             break;
           case 'business':
-            seatPrice += (seatTypePrices.business || 0);
+            seatPrice = basePrice * (seatTypePrices.business || 1.5);
             break;
           default:
-            seatPrice += (seatTypePrices.normal || 0);
+            seatPrice = basePrice * (seatTypePrices.normal || 1);
             break;
         }
 
-        // Apply row-specific pricing if configured
+        // Apply row-specific pricing if configured (add to multiplied price)
         if (seatLayout.seatPricing.rowPricing && seatLayout.seatPricing.rowPricing[row]) {
           seatPrice += seatLayout.seatPricing.rowPricing[row];
         }
@@ -301,24 +307,29 @@ export class SeatLayoutService {
         if (seatLayout.seatPricing.positionPricing && seatLayout.seatPricing.positionPricing[positionKey]) {
           seatPrice += seatLayout.seatPricing.positionPricing[positionKey];
         }
+        
+        // Use the calculated seatPrice
+        basePrice = seatPrice;
       } else {
-        // If no seat pricing config, use reasonable defaults
-        if (tripBasePrice === 0) {
-          // Fallback prices if no configuration exists
-          switch (seat.seatType) {
-            case 'normal':
-              seatPrice = 150000; // 150k VND for normal seats
-              break;
-            case 'vip':
-              seatPrice = 200000; // 200k VND for VIP seats  
-              break;
-            case 'business':
-              seatPrice = 300000; // 300k VND for business seats
-              break;
-            default:
-              seatPrice = 150000;
-              break;
-          }
+        // If no seat pricing config, use trip base price with default ratios
+        if (basePrice === 0) {
+          basePrice = 100000; // Default 100k VND base price
+        }
+        
+        // Apply default ratios
+        switch (seat.seatType) {
+          case 'normal':
+            basePrice = basePrice * 1; // Normal seats: 1x base price
+            break;
+          case 'vip':
+            basePrice = basePrice * 1.3; // VIP seats: 1.3x base price
+            break;
+          case 'business':
+            basePrice = basePrice * 1.5; // Business seats: 1.5x base price
+            break;
+          default:
+            basePrice = basePrice * 1;
+            break;
         }
       }
 
@@ -332,7 +343,7 @@ export class SeatLayoutService {
           x: 0, y: 0, width: 40, height: 40 // Default values
         },
         isAvailable: seat.isActive,
-        price: Math.max(0, Math.round(seatPrice)) // Ensure non-negative and round to VND
+        price: Math.max(0, Math.round(basePrice)) // Ensure non-negative and round to VND
       };
     });
 
