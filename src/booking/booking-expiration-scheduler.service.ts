@@ -24,8 +24,6 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
    */
   private startBookingExpirationJob() {
     try {
-      // Run every 2 minutes: "*/2 * * * *"
-      // For testing, you can use "*/10 * * * * *" (every 10 seconds)
       this.cronJob = cron.schedule('*/2 * * * *', async () => {
         await this.processExpiredBookings();
       }, {
@@ -54,9 +52,9 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
   /**
    * Process expired bookings with enhanced safety and idempotency
    */
-  private async processExpiredBookings() {
+  public async processExpiredBookings(): Promise<{ expiredCount: number; bookings: string[]; error?: string }> {
     const startTime = Date.now();
-    const sessionId = `exp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `exp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     
     try {
       this.logger.log(`🚀 [${sessionId}] Starting booking expiration process...`);
@@ -64,7 +62,7 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
       // Safety check: ensure service is healthy
       if (!this.bookingService) {
         this.logger.error(`❌ [${sessionId}] BookingService not available, skipping expiration`);
-        return;
+        return { expiredCount: 0, bookings: [], error: 'BookingService not available' };
       }
 
       // Find expired bookings first for logging
@@ -72,7 +70,7 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
       
       if (expiredBookings.length === 0) {
         this.logger.debug(`✅ [${sessionId}] No expired bookings found`);
-        return;
+        return { expiredCount: 0, bookings: [], error: undefined };
       }
 
       this.logger.warn(`📋 [${sessionId}] Found ${expiredBookings.length} expired bookings to process`);
@@ -92,7 +90,7 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
       // Process expiration with retry mechanism
       let retryCount = 0;
       const maxRetries = 2;
-      let result;
+      let result: { expiredCount: number; bookings: string[] } = { expiredCount: 0, bookings: [] };
 
       while (retryCount <= maxRetries) {
         try {
@@ -127,6 +125,8 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
         this.logger.error(`⚠️ [${sessionId}] No bookings were expired despite finding ${expiredBookings.length} expired bookings - possible race condition or data inconsistency`);
       }
 
+      return result;
+
     } catch (error) {
       const endTime = Date.now();
       const processingTime = endTime - startTime;
@@ -136,8 +136,12 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
         error.stack || error.message
       );
       
-      // Log additional debugging information
-      this.logger.error(`🔍 [${sessionId}] Debug info: cron job status=${this.cronJob?.getStatus()}, service available=${!!this.bookingService}`);
+      // Return error in result instead of throwing
+      return { 
+        expiredCount: 0, 
+        bookings: [], 
+        error: error instanceof Error ? error.message : String(error) 
+      };
     }
   }
 
@@ -158,15 +162,24 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
     sessionId: string;
     processingTimeMs: number;
   }> {
-    const sessionId = `manual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `manual-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const startTime = Date.now();
     
     this.logger.log(`🔧 [${sessionId}] Manual booking expiration triggered`);
     
     try {
-      await this.processExpiredBookings();
-      const result = await this.bookingService.expireBookings();
+      const result = await this.processExpiredBookings();
       const processingTime = Date.now() - startTime;
+      
+      if (result.error) {
+        // We don't log the error here because processExpiredBookings already logged it
+        return {
+          processed: 0,
+          errors: [result.error],
+          sessionId,
+          processingTimeMs: processingTime,
+        };
+      }
       
       this.logger.log(`✅ [${sessionId}] Manual expiration completed: ${result.expiredCount} bookings processed in ${processingTime}ms`);
       
@@ -178,11 +191,11 @@ export class BookingExpirationScheduler implements OnModuleInit, OnModuleDestroy
       };
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      this.logger.error(`❌ [${sessionId}] Manual expiration failed after ${processingTime}ms:`, error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
       
       return {
         processed: 0,
-        errors: [error.message],
+        errors: [errorMsg],
         sessionId,
         processingTimeMs: processingTime,
       };
