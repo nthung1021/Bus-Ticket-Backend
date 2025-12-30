@@ -44,7 +44,7 @@ export class EmailService {
         subject: options.subject,
         text: options.text,
         html: options.html,
-        attachments: options.attachments,
+        attachments: options.attachments || [],
       });
 
       this.logger.log(`E-ticket email sent to ${options.to}`);
