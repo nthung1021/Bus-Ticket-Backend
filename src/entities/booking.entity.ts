@@ -14,10 +14,12 @@ import { PassengerDetail } from './passenger-detail.entity';
 import { SeatStatus } from './seat-status.entity';
 import { Payment } from './payment.entity';
 import { Notification } from './notification.entity';
+import { Review } from './review.entity';
 
 export enum BookingStatus {
   PENDING = 'pending',
   PAID = 'paid',
+  COMPLETED = 'completed',
   CANCELLED = 'cancelled', 
   EXPIRED = 'expired',
 }
@@ -95,4 +97,7 @@ export class Booking {
 
   @OneToMany(() => Notification, (notification) => notification.booking)
   notifications: Notification[];
+
+  @OneToMany(() => Review, (review) => review.booking)
+  review: Review;
 }

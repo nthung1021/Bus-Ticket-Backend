@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 async function bootstrap() {
   // Completely suppress NestJS framework logs during startup
   const app = await NestFactory.create(AppModule, {
-    logger: false,
+    logger: ['error', 'warn', 'log'],
   });
   
   // Create a custom logger for application messages only
