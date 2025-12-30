@@ -33,7 +33,7 @@ export class PassengerModificationResponseDto {
   id: string;
   bookingId: string;
   fullName: string;
-  documentId: string;
+  documentId?: string;
   seatCode: string;
   modifiedAt: Date;
 }

@@ -25,6 +25,7 @@ import { BOOKING_EXPIRATION_MINUTES } from '../constants/booking.constants';
 import PDFDocument from 'pdfkit';
 import * as QRCode from 'qrcode';
 import { getBookingConfirmationTemplate } from './email.templates';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class BookingService {
@@ -53,6 +54,7 @@ export class BookingService {
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
     private readonly payosService: PayosService,
+    private readonly configService: ConfigService,
   ) { }
 
   private async generateBookingReference(): Promise<string> {
@@ -258,22 +260,8 @@ export class BookingService {
         expirationTimestamp = new Date(savedBooking.bookedAt.getTime() + 15 * 60 * 1000);
       }
 
-      // 9b. Generate payment URL for pending bookings using PayOS helper
+      // paymentUrl is generated after transaction commit to avoid FK issues
       let paymentUrl: string | null = null;
-      if (savedBooking.status === BookingStatus.PENDING) {
-        try {
-          paymentUrl = (await this.payosService.createPaymentLink({
-            amount: savedBooking.totalAmount,
-            bookingId: savedBooking.id,
-            description: ``,
-          })).checkoutUrl;
-          this.logger.debug('Payment URL generated for booking');
-        } catch (err) {
-          // Log but do not fail booking creation if payment URL generation fails
-          this.logger.error('Failed to generate payment URL: ' + String(err));
-          paymentUrl = null;
-        }
-      }
 
       // Send notification for auto-paid booking
       if (savedBooking.status === BookingStatus.PAID && userId) {
@@ -318,16 +306,31 @@ export class BookingService {
     // After transaction commit, create payment link if booking is pending
     try {
       if (result.status === BookingStatus.PENDING) {
+        // 1. Lấy giá trị từ ConfigService (An toàn hơn process.env)
+        const forceTest = this.configService.get<string>('FORCE_TEST_PAYMENT');
+        
+        // 2. Logic so sánh mạnh mẽ (bất chấp hoa thường, khoảng trắng)
+        const isTestMode = forceTest?.trim().toLowerCase() === 'true';
+
+        // 3. LOG DEBUG QUAN TRỌNG: In ra để xem server thực sự nhận được gì
+        this.logger.log(`[PAYMENT DEBUG] Env: ${forceTest} | IsTest: ${isTestMode} | RealPrice: ${result.totalAmount}`);
+
+        // 4. LƯU Ý: PayOS yêu cầu tối thiểu 2000 VND. Nếu để 1 VND có thể bị lỗi.
+        const paymentAmount = isTestMode ? 2000 : result.totalAmount;
+
         const payRes = await this.payosService.createPaymentLink({
-          amount: result.totalAmount,
+          amount: paymentAmount, // Truyền số 2000 vào đây
           bookingId: result.id,
-          description: '',
+          description: `Booking ${result.bookingReference}`, // Thêm ref để dễ tra soát
+          returnUrl: `${this.configService.get('FRONTEND_URL')}/payment/success`, // Nên dùng biến môi trường cho URL
+          cancelUrl: `${this.configService.get('FRONTEND_URL')}/payment/cancel`,
         });
+        
         (result as any).paymentUrl = payRes?.checkoutUrl || null;
       }
     } catch (err) {
       this.logger.error('Failed to generate payment URL: ' + String(err));
-      // Do not fail booking creation; leave paymentUrl as null
+      // Không throw error để booking vẫn thành công dù chưa có link thanh toán
     }
 
     return result;
@@ -670,7 +673,7 @@ export class BookingService {
 
   async updatePassengerInfo(
     bookingId: string,
-    updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId: string; seatCode: string; }> },
+    updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId?: string; seatCode: string; }> },
     userId: string,
   ): Promise<any> {
     return await this.dataSource.transaction(async (manager) => {

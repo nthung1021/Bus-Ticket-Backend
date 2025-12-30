@@ -8,7 +8,9 @@ export class PassengerDto {
 
   @IsNotEmpty()
   @IsString()
-  documentId: string;
+  @IsOptional()
+  @IsString()
+  documentId?: string;
 
   @IsNotEmpty()
   @IsString()
