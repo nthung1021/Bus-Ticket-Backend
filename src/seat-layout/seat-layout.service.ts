@@ -168,6 +168,41 @@ export class SeatLayoutService {
       throw new NotFoundException(`Seat layout for bus ${busId} not found`);
     }
 
+    // Populate seats data from database
+    const seats = await this.seatRepository.find({
+      where: { busId },
+      order: { seatCode: 'ASC' }
+    });
+
+    // Convert database seats to SeatInfo format
+    const seatInfos: SeatInfo[] = seats.map(seat => {
+      // Extract row and position from seat code (e.g., A1, B2, H2, G1)
+      const seatCode = seat.seatCode;
+      const rowLetter = seatCode.charAt(0);
+      const position = parseInt(seatCode.slice(1)) || 1;
+      // Convert letter to row number (A=1, B=2, ..., H=8, etc.)
+      const row = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+
+      return {
+        id: seat.id,
+        code: seat.seatCode,
+        type: seat.seatType as 'normal' | 'vip' | 'business',
+        position: {
+          row: row,
+          position: position,
+          x: 0, y: 0, width: 40, height: 40 // Default values
+        },
+        isAvailable: seat.isActive,
+        price: 0 // Will be calculated based on seatPricing config
+      };
+    });
+
+    // Add seats to layoutConfig
+    seatLayout.layoutConfig = {
+      ...seatLayout.layoutConfig,
+      seats: seatInfos
+    };
+
     return seatLayout;
   }
 
