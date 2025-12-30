@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Route } from '../entities/route.entity';
+import { Booking } from '../entities/booking.entity';
 import { RoutePoint } from '../entities/route-point.entity';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { UpdateRouteDto } from './dto/update-route.dto';
@@ -15,6 +16,8 @@ export class RouteService {
     private readonly routeRepository: Repository<Route>,
     @InjectRepository(RoutePoint)
     private readonly routePointRepository: Repository<RoutePoint>,
+    @InjectRepository(Booking)
+    private readonly bookingRepository: Repository<Booking>,
   ) {}
 
   async removePoint(routeId: string, pointId: string): Promise<void> {
@@ -203,5 +206,47 @@ export class RouteService {
       .orderBy('route.name', 'ASC');
 
     return query.getMany();
+  }
+
+  // Public: get popular routes by booking count (all-time)
+  async getPopularRoutes(limit: number = 8): Promise<Array<{ route: Route; bookingsCount: number }>> {
+    // Aggregate bookings per route and include route fields directly
+    const rows = await this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoin('booking.trip', 'trip')
+      .leftJoin('trip.route', 'route')
+      .select([
+        'route.id as route_id',
+        'route.name as route_name',
+        'route.origin as route_origin',
+        'route.destination as route_destination',
+        'route.distance_km as route_distance_km',
+        'route.estimated_minutes as route_estimated_minutes',
+        'COUNT(booking.id) as cnt',
+      ])
+      .where('route.id IS NOT NULL')
+      .groupBy('route.id, route.name, route.origin, route.destination, route.distance_km, route.estimated_minutes')
+      .orderBy('cnt', 'DESC')
+      .limit(limit)
+      .getRawMany();
+
+    if (!rows || rows.length === 0) return [];
+
+    // Map raw rows into route-like objects
+    const results = rows.map((r: any) => {
+      return {
+        route: {
+          id: r.route_id,
+          name: r.route_name,
+          origin: r.route_origin,
+          destination: r.route_destination,
+          distanceKm: r.route_distance_km ? parseFloat(r.route_distance_km) : undefined,
+          estimatedMinutes: r.route_estimated_minutes ? parseInt(r.route_estimated_minutes, 10) : undefined,
+        } as any,
+        bookingsCount: parseInt(r.cnt || '0', 10),
+      };
+    });
+
+    return results;
   }
 }
