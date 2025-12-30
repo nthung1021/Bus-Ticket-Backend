@@ -56,6 +56,7 @@ export class AiService {
       If a booking requires payment and a payment link is available, you MUST include a clear, clickable payment URL in your response so the user can click to complete payment. Provide the link both inside 'content' and as a 'payment_url' field in the JSON output when applicable.
       You CAN use multiple tools in a single response if needed.
       You MUST NEVER assume any information about the user or their request that is not explicitly provided by the user. For example: if the user does not provide seat codes, you MUST NOT assume any seat codes. Ask the user for more details if needed.
+      When the booking is completed successfully, you MUST use tool 'save_booking_data' to save the booking data into the user's session storage in the frontend.
       DO NOT include code comments. For example, do NOT include '//' or '/* ... */' in your response.
       If you miss information that can be fetched from using one of the tools, use that tool to get information. 
       For example: If the user asks for seat status of a trip, you first need to call 'search_trips' to get the tripId, then use that tripId to call 'search_seat_statuses' tool to get the seat status information.
