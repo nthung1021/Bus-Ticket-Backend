@@ -112,8 +112,8 @@ describe('SeatStatusService (integration)', () => {
       seatCapacity: 10
     });
 
-    const seat1 = await seatRepository.save({ bus, seatCode: 'A1', seatType: SeatType.NORMAL });
-    const seat2 = await seatRepository.save({ bus, seatCode: 'A2', seatType: SeatType.NORMAL });
+    const seat1 = await seatRepository.save({ bus, seatCode: '1A', seatType: SeatType.NORMAL });
+    const seat2 = await seatRepository.save({ bus, seatCode: '2A', seatType: SeatType.NORMAL });
 
     const route = await routeRepository.save({
       name: 'SS Route',

@@ -154,7 +154,7 @@ function generateDetailedLayoutConfig(bus: {capacity: number, seatsPerRow: numbe
       type: s.type,
       position: {
         row: row,
-        position: pos,
+        position: String.fromCharCode(64 + pos),
         x: x,
         y: (row - 1) * rowHeight,
         width: seatWidth,

@@ -150,7 +150,7 @@ describe('BookingExpirationScheduler (integration)', () => {
 
     const seat = await seatRepository.save({
       bus,
-      seatCode: 'A1',
+      seatCode: '1A',
       seatType: SeatType.NORMAL,
     });
 

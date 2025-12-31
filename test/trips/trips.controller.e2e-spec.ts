@@ -107,7 +107,7 @@ describe('TripsController (e2e)', () => {
 
 		const seat = await seatRepository.save({
 			busId: bus.id,
-			seatCode: 'A1',
+			seatCode: '1A',
 			seatType: SeatType.NORMAL
 		});
 
@@ -118,7 +118,7 @@ describe('TripsController (e2e)', () => {
 			seatsPerRow: 4,
 			layoutConfig: {
 				seats: [
-					{ id: seat.id, code: 'A1', type: 'normal' } as any
+					{ id: seat.id, code: '1A', type: 'normal' } as any
 				],
 				aisles: [2],
 				dimensions: {

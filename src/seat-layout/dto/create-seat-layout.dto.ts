@@ -6,8 +6,8 @@ export class SeatPositionDto {
   @IsNumber()
   row: number;
 
-  @IsNumber()
-  position: number;
+  @IsString()
+  position: string;
 
   @IsNumber()
   x: number;

@@ -32,7 +32,7 @@ describe('SeatLayoutController', () => {
           id: 'seat-1',
           code: '1A',
           type: 'normal',
-          position: { row: 1, position: 1, x: 0, y: 0, width: 40, height: 40 },
+          position: { row: 1, position: 'A', x: 0, y: 0, width: 40, height: 40 },
           isAvailable: true,
         },
       ],

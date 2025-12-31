@@ -111,6 +111,7 @@ export class SeatLayoutController {
     @Param('busId') busId: string,
     @Query('tripId') tripId?: string
   ): Promise<SeatLayout> {
+    // console.log(`Fetching seat layout for bus ID: ${busId} with trip ID: ${tripId}`);
     return this.seatLayoutService.findByBusIdWithTripPricing(busId, tripId);
   }
 

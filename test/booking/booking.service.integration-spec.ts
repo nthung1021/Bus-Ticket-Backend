@@ -148,13 +148,13 @@ describe('BookingService (integration)', () => {
 
     const seat1 = await seatRepository.save({
       bus,
-      seatCode: 'A1',
+      seatCode: '1A',
       seatType: SeatType.NORMAL,
     });
 
     const seat2 = await seatRepository.save({
       bus,
-      seatCode: 'A2',
+      seatCode: '2A',
       seatType: SeatType.NORMAL,
     });
 
@@ -191,8 +191,8 @@ describe('BookingService (integration)', () => {
 
       const dto = {
         tripId: trip.id,
-        seats: [{ code: 'A1' }],
-        passengers: [{ fullName: 'John Doe', documentId: '123456', seatCode: 'A1' }],
+        seats: [{ code: '1A' }],
+        passengers: [{ fullName: 'John Doe', documentId: '123456', seatCode: '1A' }],
         totalPrice: 100000,
         isGuestCheckout: false,
       };
@@ -219,8 +219,8 @@ describe('BookingService (integration)', () => {
 
       const dto = {
         tripId: trip.id,
-        seats: [{ code: 'A1' }],
-        passengers: [{ fullName: 'John Doe', documentId: '123456', seatCode: 'A1' }],
+        seats: [{ code: '1A' }],
+        passengers: [{ fullName: 'John Doe', documentId: '123456', seatCode: '1A' }],
         totalPrice: 100000,
         isGuestCheckout: true,
         contactEmail: 'guest2@test.com',

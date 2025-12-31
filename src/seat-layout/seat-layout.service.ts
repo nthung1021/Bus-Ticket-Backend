@@ -161,11 +161,12 @@ export class SeatLayoutService {
   }
 
   async findByBusId(busId: string): Promise<SeatLayout> {
+    console.log(`Fetching seat layout for bus ID: ${busId}`);
     const seatLayout = await this.seatLayoutRepository.findOne({
       where: { busId },
       relations: ['bus'],
     });
-    // console.log(seatLayout?.layoutConfig.seats);
+    console.log(seatLayout?.layoutConfig.seats);
 
     if (!seatLayout) {
       throw new NotFoundException(`Seat layout for bus ${busId} not found`);
@@ -179,12 +180,17 @@ export class SeatLayoutService {
 
     // Convert database seats to SeatInfo format
     const seatInfos: SeatInfo[] = seats.map(seat => {
-      // Extract row and position from seat code (e.g., A1, B2, H2, G1)
+      // Extract position (number) and row (letter) from seat code (e.g., 11A, 2B)
       const seatCode = seat.seatCode;
-      const rowLetter = seatCode.charAt(0);
-      const position = parseInt(seatCode.slice(1)) || 1;
-      // Convert letter to row number (A=1, B=2, ..., H=8, etc.)
-      const row = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+      // Seat code format: number+letter (e.g., 1A, 11B)
+      // Row should be the numeric part, position should be the letter(s)
+      let row = 1;
+      let positionLetter = 'A';
+      const match = seatCode.match(/^(\d+)([A-Z]+)$/i);
+      if (match) {
+        row = parseInt(match[1], 10);
+        positionLetter = match[2].toUpperCase();
+      }
 
       // Calculate price based on seat type and pricing configuration using ratios
       let seatPrice = 0;
@@ -217,7 +223,7 @@ export class SeatLayoutService {
         type: seat.seatType as 'normal' | 'vip' | 'business',
         position: {
           row: row,
-          position: position,
+          position: positionLetter,
           x: 0, y: 0, width: 40, height: 40 // Default values
         },
         isAvailable: seat.isActive,
@@ -235,10 +241,12 @@ export class SeatLayoutService {
   }
 
   async findByBusIdWithTripPricing(busId: string, tripId?: string): Promise<SeatLayout> {
+    console.log(`Fetching seat layout for bus ID: ${busId} with trip ID: ${tripId}`);
     const seatLayout = await this.seatLayoutRepository.findOne({
       where: { busId },
       relations: ['bus'],
     });
+    // console.log(seatLayout?.layoutConfig.seats);
 
     if (!seatLayout) {
       throw new NotFoundException(`Seat layout for bus ${busId} not found`);
@@ -261,12 +269,17 @@ export class SeatLayoutService {
 
     // Convert database seats to SeatInfo format with proper pricing
     const seatInfos: SeatInfo[] = seats.map(seat => {
-      // Extract row and position from seat code (e.g., A1, B2, H2, G1)
+      // Extract position (number) and row (letter) from seat code (e.g., 11A, 2B)
       const seatCode = seat.seatCode;
-      const rowLetter = seatCode.charAt(0);
-      const position = parseInt(seatCode.slice(1)) || 1;
-      // Convert letter to row number (A=1, B=2, ..., H=8, etc.)
-      const row = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+      // Parse seat code where numeric part is row and letter part is position
+      let row = 1;
+      let positionLetter = 'A';
+      const match = seatCode.match(/^(\d+)([A-Z]+)$/i);
+      if (match) {
+        row = parseInt(match[1], 10);
+        positionLetter = match[2].toUpperCase();
+      }
+      console.log(`Seat ${seatCode}: row ${row}, position ${positionLetter}`);
 
       // Calculate price based on seat type and pricing configuration using ratios
       let basePrice = tripBasePrice; // Start with trip base price
@@ -303,7 +316,7 @@ export class SeatLayoutService {
         }
 
         // Apply position-specific pricing if configured
-        const positionKey = `${row}-${position}`;
+        const positionKey = `${row}-${positionLetter}`;
         if (seatLayout.seatPricing.positionPricing && seatLayout.seatPricing.positionPricing[positionKey]) {
           seatPrice += seatLayout.seatPricing.positionPricing[positionKey];
         }
@@ -339,7 +352,7 @@ export class SeatLayoutService {
         type: seat.seatType as 'normal' | 'vip' | 'business',
         position: {
           row: row,
-          position: position,
+          position: positionLetter,
           x: 0, y: 0, width: 40, height: 40 // Default values
         },
         isAvailable: seat.isActive,
@@ -454,7 +467,16 @@ export class SeatLayoutService {
 
     // Validate seat positions are within bounds (only if there are seats)
     for (const seat of config.seats) {
-      if (seat.position.row > totalRows || seat.position.position > seatsPerRow) {
+      // Position may be a letter (A,B,...) or a number; normalize to numeric index for comparison
+      const posRaw = seat.position.position;
+      let posIndex = 0;
+      if (typeof posRaw === 'string') {
+        // Use first character to determine position index (A->1)
+        posIndex = posRaw.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+      } else {
+        posIndex = Number(posRaw) || 0;
+      }
+      if (seat.position.row > totalRows || posIndex > seatsPerRow) {
         throw new BadRequestException(`Invalid seat position: ${seat.code}`);
       }
     }
@@ -513,7 +535,7 @@ export class SeatLayoutService {
           type: 'normal',
           position: {
             row,
-            position: pos,
+            position: String.fromCharCode(64 + pos),
             x: (pos - 1) * (seatWidth + aisleWidth),
             y: (row - 1) * (seatHeight + rowSpacing),
             width: seatWidth,
@@ -561,7 +583,7 @@ export class SeatLayoutService {
           type: pos === 2 ? 'vip' : 'normal', // Middle seat is VIP
           position: {
             row,
-            position: pos,
+            position: String.fromCharCode(64 + pos),
             x: pos > 1 ? (pos - 1) * seatWidth + aisleWidth : 0,
             y: (row - 1) * (seatHeight + rowSpacing),
             width: seatWidth,
@@ -609,7 +631,7 @@ export class SeatLayoutService {
           type: 'vip',
           position: {
             row,
-            position: pos,
+            position: String.fromCharCode(64 + pos),
             x: (pos - 1) * (seatWidth + aisleWidth),
             y: (row - 1) * (seatHeight + rowSpacing),
             width: seatWidth,
@@ -657,7 +679,7 @@ export class SeatLayoutService {
           type: 'business',
           position: {
             row,
-            position: pos,
+            position: String.fromCharCode(64 + pos),
             x: (pos - 1) * (seatWidth + aisleWidth),
             y: (row - 1) * (seatHeight + rowSpacing),
             width: seatWidth,

@@ -190,7 +190,7 @@ describe('BookingController (e2e)', () => {
 
     const seat = await seatRepository.save({ 
       bus, 
-      seatCode: 'A1', 
+      seatCode: '1A', 
       seatType: SeatType.NORMAL 
     });
 
@@ -223,11 +223,11 @@ describe('BookingController (e2e)', () => {
         tripId: trip.id,
         seats: [{ 
           id: seat.id, 
-          code: 'A1', 
+          code: '1A', 
           type: 'normal', 
           price: 50000 
         }],
-        passengers: [{ fullName: 'E2E Passenger', documentId: 'PD123', seatCode: 'A1' }],
+        passengers: [{ fullName: 'E2E Passenger', documentId: 'PD123', seatCode: '1A' }],
         totalPrice: 50000,
         isGuestCheckout: false,
       };

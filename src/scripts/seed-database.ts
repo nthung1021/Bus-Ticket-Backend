@@ -198,7 +198,7 @@ async function seedDatabase() {
       for (let seatNum = 1; seatNum <= capacity; seatNum++) {
         const id = `50000000-0000-4000-8000-${seatCounter.toString().padStart(12, '0')}`;
         seatIds.push(id);
-        const seatCode = `${String.fromCharCode(65 + Math.floor((seatNum - 1) / 4))}${((seatNum - 1) % 4) + 1}`;
+        const seatCode = `${((seatNum - 1) % 4) + 1}${String.fromCharCode(65 + Math.floor((seatNum - 1) / 4))}`;
         const seatType = seatNum <= 4 ? 'vip' : seatNum <= 8 ? 'business' : 'normal';
         
         seatValues.push(`('${id}', '${busId}', '${seatCode}', '${seatType}', true)`);
@@ -293,7 +293,7 @@ async function seedDatabase() {
       const id = `80000000-0000-4000-8000-${i.toString().padStart(12, '0')}`;
       const tripId = tripIds[Math.floor(Math.random() * tripIds.length)];
       const seatId = seatIds[Math.floor(Math.random() * Math.min(seatIds.length, 400))]; // Use subset of seats
-      const seatCode = `${String.fromCharCode(65 + Math.floor(Math.random() * 10))}${Math.floor(Math.random() * 4) + 1}`;
+      const seatCode = `${Math.floor(Math.random() * 4) + 1}${String.fromCharCode(65 + Math.floor(Math.random() * 10))}`;
       const bookingId = Math.random() > 0.3 ? bookingIds[Math.floor(Math.random() * bookingIds.length)] : null;
       const bookingIdValue = bookingId ? `'${bookingId}'` : 'NULL';
       const states = ['available', 'booked', 'locked', 'reserved'];
@@ -320,7 +320,7 @@ async function seedDatabase() {
       const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
       const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
       const fullName = `${lastName} ${firstName} ${i % 2 === 0 ? 'Văn' : 'Thị'} ${String.fromCharCode(65 + i % 26)}`;
-      const seatCode = `${String.fromCharCode(65 + Math.floor(Math.random() * 10))}${Math.floor(Math.random() * 4) + 1}`;
+      const seatCode = `${Math.floor(Math.random() * 4) + 1}${String.fromCharCode(65 + Math.floor(Math.random() * 10))}`;
       // Make documentId optional in seed data: 70% filled, 30% NULL
       const hasDocument = Math.random() > 0.3;
       const documentIdValue = hasDocument ? `ID${i.toString().padStart(8, '0')}` : null;

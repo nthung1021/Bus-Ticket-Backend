@@ -110,9 +110,9 @@ describe('BookingService', () => {
       tripId: 'trip-1',
       totalPrice: 200,
       passengers: [
-        { fullName: 'P1', documentId: '123', seatCode: 'A1' },
+        { fullName: 'P1', documentId: '123', seatCode: '1A' },
       ],
-      seats: [{ code: 'A1', id: 'seat-1', type: 'normal', price: 200 }],
+      seats: [{ code: '1A', id: 'seat-1', type: 'normal', price: 200 }],
       isGuestCheckout: false,
     };
 
@@ -135,7 +135,7 @@ describe('BookingService', () => {
       // 1. Find Trip
       mockEntityManager.findOne.mockResolvedValueOnce({ id: 'trip-1', busId: 'bus-1' }); 
       // 2. Find Seat A1
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: 'A1' });
+      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: '1A' });
       // 3. Find SeatStatuses (Availability Check) -> Return empty (available) or existing but free
       mockEntityManager.find.mockResolvedValueOnce([]); 
       // 4. Save Booking
@@ -174,14 +174,14 @@ describe('BookingService', () => {
 
     it('should throw ConflictException if seat is already booked', async () => {
       mockEntityManager.findOne.mockResolvedValueOnce({ id: 'trip-1', busId: 'bus-1' });
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: 'A1' });
+      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: '1A' });
       
       // Return occupied seat status
       mockEntityManager.find.mockResolvedValueOnce([
         { seatId: 'seat-1', state: SeatState.BOOKED }
       ]);
       // The service also looks up the seat again to get the code for the error message
-      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: 'A1' });
+      mockEntityManager.findOne.mockResolvedValueOnce({ id: 'seat-1', seatCode: '1A' });
 
       await expect(service.createBooking('user-1', createDto))
         .rejects.toThrow(ConflictException);

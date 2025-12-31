@@ -26,6 +26,7 @@ import PDFDocument from 'pdfkit';
 import * as QRCode from 'qrcode';
 import { getBookingConfirmationTemplate } from './email.templates';
 import { ConfigService } from '@nestjs/config';
+import { normalizeSeatCode, isSeatCodeValid } from '../common/seat-utils';
 
 @Injectable()
 export class BookingService {
@@ -139,9 +140,9 @@ export class BookingService {
         throw new BadRequestException('Number of seats must match number of passengers');
       }
 
-      // 3. Validate seat codes match between seats and passengers
-      const seatCodes = seats.map(seat => seat.code).sort();
-      const passengerSeatCodes = passengers.map(passenger => passenger.seatCode).sort();
+      // 3. Validate seat codes match between seats and passengers (normalize both formats)
+      const seatCodes = seats.map(seat => normalizeSeatCode(seat.code)).sort();
+      const passengerSeatCodes = passengers.map(passenger => normalizeSeatCode(passenger.seatCode)).sort();
       if (JSON.stringify(seatCodes) !== JSON.stringify(passengerSeatCodes)) {
         throw new BadRequestException('Seat codes in seats and passengers must match');
       }
@@ -149,15 +150,16 @@ export class BookingService {
       // 4. Find seat IDs and validate they exist on the bus
       const seatIds: string[] = [];
       for (const seatDto of seats) {
+        const normalizedCode = normalizeSeatCode(seatDto.code);
         const seat = await manager.findOne(Seat, {
           where: {
-            seatCode: seatDto.code,
+            seatCode: normalizedCode,
             busId: trip.busId
           }
         });
 
         if (!seat) {
-          throw new BadRequestException(`Seat ${seatDto.code} not found on this bus`);
+          throw new BadRequestException(`Seat ${normalizedCode} not found on this bus`);
         }
         seatIds.push(seat.id);
       }

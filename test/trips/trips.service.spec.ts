@@ -104,7 +104,7 @@ describe('TripsService', () => {
         operatorId: 'op-1',
         seatLayout: {
           layoutConfig: {
-            seats: [{ id: 's1', code: 'A1', type: 'normal' }]
+            seats: [{ id: 's1', code: '1A', type: 'normal' }]
           }
         }
       });

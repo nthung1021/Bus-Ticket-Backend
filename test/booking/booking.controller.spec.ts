@@ -91,7 +91,7 @@ describe('BookingController', () => {
           bus: { plateNumber: 'BUS-1' }
         },
         passengerDetails: [{ id: 'p1', fullName: 'John' }],
-        seatStatuses: [{ id: 's1', state: 'BOOKED', seat: { seatCode: 'A1' } }]
+        seatStatuses: [{ id: 's1', state: 'BOOKED', seat: { seatCode: '1A' } }]
       };
 
       mockBookingService.findBookingById.mockResolvedValueOnce(mockBooking);

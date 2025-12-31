@@ -56,7 +56,7 @@ describe('UserController', () => {
           id: 'passenger-1',
           fullName: 'Nguyen Van A',
           documentId: '123456789',
-          seatCode: 'A1',
+          seatCode: '1A',
         },
       ],
       seats: [
@@ -67,7 +67,7 @@ describe('UserController', () => {
           lockedUntil: null,
           seat: {
             id: 'seat-1',
-            seatCode: 'A1',
+            seatCode: '1A',
             seatType: 'vip',
             isActive: true,
           },
