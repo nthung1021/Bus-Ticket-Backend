@@ -1,4 +1,5 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
 interface SendEmailOptions {
@@ -14,16 +15,22 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private transporter: nodemailer.Transporter;
 
-  constructor() {
-    // Configure transporter based on environment variables
-    if (process.env.EMAIL_SERVICE === 'sendgrid') {
-      const nodemailerSendgrid = require('nodemailer-sendgrid');
-      this.transporter = nodemailer.createTransport(
-        nodemailerSendgrid({
-          apiKey: process.env.SENDGRID_API_KEY,
-        }),
-      );
-      this.logger.log('EmailService configured with SendGrid');
+  constructor(private config: ConfigService) {
+    // Configure transporter using ConfigService and normalize settings
+    const svc = (this.config.get<string>('EMAIL_SERVICE') || '').toLowerCase();
+    if (svc === 'sendgrid') {
+      const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+      if (!apiKey) {
+        this.logger.warn('SENDGRID_API_KEY not set. Email functionality will be disabled.');
+      } else {
+        const nodemailerSendgrid = require('nodemailer-sendgrid');
+        this.transporter = nodemailer.createTransport(
+          nodemailerSendgrid({
+            apiKey,
+          }),
+        );
+        this.logger.log('EmailService configured with SendGrid');
+      }
     } else {
       this.logger.warn('No email service configuration provided. Email functionality will be disabled.');
     }
@@ -35,7 +42,7 @@ export class EmailService {
       throw new InternalServerErrorException('No email service configuration provided. Cannot send email');
     }
     try {
-      const from = process.env.EMAIL_FROM;
+      const from = this.config.get<string>('EMAIL_FROM') || undefined;
       this.logger.debug(`Attempting to send email from: ${from}`);
 
       await this.transporter.sendMail({
