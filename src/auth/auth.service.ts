@@ -3,6 +3,7 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -253,6 +254,11 @@ export class AuthService {
   }
 
   async forgotPassword(email: string) {
+    // Validate input early
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      throw new BadRequestException('Invalid email address');
+    }
+
     // Generate a secure token and its hash
     const rawToken = crypto.randomBytes(32).toString('hex');
     const salt = await bcrypt.genSalt();
@@ -262,21 +268,33 @@ export class AuthService {
     const expiredAt = new Date();
     expiredAt.setHours(expiredAt.getHours() + 1);
 
-    // Try to find user; do not reveal whether it exists to callers
-    const user = await this.usersRepository.findOne({ where: { email } });
+    try {
+      // Try to find user; do not reveal whether it exists to callers
+      const user = await this.usersRepository.findOne({ where: { email } });
 
-    if (user) {
-      // Optionally: invalidate previous unused tokens for this user (cleanup)
+      if (!user) {
+        // No user found — return generic success to avoid leaking account existence
+        const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
+        const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+        return {
+          success: true,
+          data: { resetUrl },
+          message: "If an account with that email exists, we've sent password reset instructions.",
+        };
+      }
+
+      // Invalidate previous unused tokens for this user (best effort)
       try {
         await this.passwordResetTokenRepository
           .createQueryBuilder()
           .delete()
           .where('user_id = :userId AND used = false', { userId: user.id })
           .execute();
-      } catch (e) {
-        // Ignore cleanup errors
+      } catch (cleanupErr) {
+        this.logger.warn(`Failed to cleanup previous reset tokens for user ${user.id}: ${cleanupErr}`);
       }
 
+      // Save new token
       const tokenEntity = this.passwordResetTokenRepository.create({
         userId: user.id,
         tokenHash,
@@ -284,9 +302,14 @@ export class AuthService {
         used: false,
       } as Partial<PasswordResetToken> as PasswordResetToken);
 
-      await this.passwordResetTokenRepository.save(tokenEntity);
+      try {
+        await this.passwordResetTokenRepository.save(tokenEntity);
+      } catch (saveErr) {
+        this.logger.error(`Failed to save password reset token for user ${user.id}: ${saveErr}`);
+        throw new InternalServerErrorException('Failed to generate reset token');
+      }
 
-      // Send reset email (best effort)
+      // Send reset email (best effort — email failures shouldn't crash the flow)
       try {
         const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
         await this.emailService.sendEmail({
@@ -296,18 +319,24 @@ export class AuthService {
         });
         this.logger.log(`Password reset email sent to ${user.email}`);
       } catch (err: any) {
+        // Log and continue — we'll still return the reset link to the caller
         this.logger.warn(`Failed to send password reset email to ${user.email}: ${err?.message || err}`);
       }
+
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
+      const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+
+      return {
+        success: true,
+        data: { resetUrl },
+        message: "If an account with that email exists, we've sent password reset instructions.",
+      };
+    } catch (err: any) {
+      // Log and normalize unexpected errors
+      this.logger.error(`forgotPassword failed for email=${email}: ${err?.message || err}`);
+      if (err instanceof BadRequestException || err instanceof InternalServerErrorException) throw err;
+      throw new InternalServerErrorException('Failed to process request');
     }
-
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
-    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
-
-    return {
-      success: true,
-      data: { resetUrl },
-      message: "If an account with that email exists, we've sent password reset instructions.",
-    };
   }
 
   async verifyResetToken(token: string) {
@@ -337,6 +366,63 @@ export class AuthService {
     }
 
     throw new BadRequestException('Invalid or expired token');
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters');
+    }
+
+    const now = new Date();
+
+    return await this.usersRepository.manager.transaction(async (manager) => {
+      const tokenRepo = manager.getRepository(PasswordResetToken);
+      const userRepo = manager.getRepository(User);
+
+      // Fetch candidates (unused tokens)
+      const candidates = await tokenRepo.find({
+        where: { used: false },
+        relations: ['user'],
+        order: { createdAt: 'DESC' },
+      });
+
+      let found: PasswordResetToken | null = null;
+      for (const c of candidates) {
+        if (c.expiredAt < now) continue;
+        if (await bcrypt.compare(token, c.tokenHash)) {
+          found = c;
+          break;
+        }
+      }
+
+      if (!found) {
+        throw new BadRequestException('Invalid or expired token');
+      }
+
+      const user = found.user;
+      if (!user) {
+        throw new BadRequestException('Associated user not found');
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt();
+      const passwordHash = await bcrypt.hash(newPassword, salt);
+
+      await userRepo.update({ id: user.id }, { passwordHash });
+
+      // Mark all tokens for this user as used to prevent reuse
+      await tokenRepo
+        .createQueryBuilder()
+        .update()
+        .set({ used: true })
+        .where('user_id = :userId', { userId: user.id })
+        .execute();
+
+      return {
+        success: true,
+        message: 'Password updated successfully',
+      };
+    });
   }
 
   async refreshToken(refreshToken: string) {

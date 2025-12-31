@@ -21,6 +21,7 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyResetTokenDto } from './dto/verify-reset-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -100,6 +101,13 @@ export class AuthController {
   async verifyResetToken(@Body() verifyDto: VerifyResetTokenDto) {
     const { token } = verifyDto;
     return this.authService.verifyResetToken(token);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() resetDto: ResetPasswordDto) {
+    const { token, newPassword } = resetDto;
+    return this.authService.resetPassword(token, newPassword);
   }
 
   @Get('me')
