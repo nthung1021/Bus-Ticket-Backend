@@ -213,6 +213,39 @@ export class AuthService {
     };
   }
 
+  async resendVerification(email: string) {
+    const user = await this.usersRepository.findOne({ where: { email } });
+    if (!user) {
+      throw new BadRequestException('Email not found');
+    }
+
+    // Generate a new 6-digit verification code and expiry (15 minutes)
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+    user.emailVerificationCode = code;
+    user.emailVerificationExpiresAt = expiresAt;
+    await this.usersRepository.save(user);
+
+    try {
+      await this.emailService.sendEmail({
+        to: user.email,
+        subject: 'Your Busticket verification code',
+        text: `Your verification code is ${code}. It expires in 15 minutes.`,
+      });
+      this.logger.log(`Resent verification email to ${user.email}`);
+    } catch (err: any) {
+      this.logger.warn(`Failed to resend verification email to ${user.email}: ${err?.message || err}`);
+      throw new BadRequestException('Failed to send verification email');
+    }
+
+    return {
+      success: true,
+      message: 'Verification email resent',
+    };
+  }
+
   async refreshToken(refreshToken: string) {
     try {
       // verify will throw if token invalid/expired — we don't need the payload variable here

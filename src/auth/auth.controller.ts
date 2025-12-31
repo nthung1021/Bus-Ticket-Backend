@@ -18,6 +18,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -74,6 +75,13 @@ export class AuthController {
   async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
     const { email, code } = verifyEmailDto;
     return this.authService.verifyEmail(email, code);
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  async resendVerification(@Body() resendDto: ResendVerificationDto) {
+    const { email } = resendDto;
+    return this.authService.resendVerification(email);
   }
 
   @Get('me')
