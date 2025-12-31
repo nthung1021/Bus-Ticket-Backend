@@ -22,6 +22,8 @@
     "seed:all": "node --max-old-space-size=256 -r ts-node/register src/trips/seeds/run-seeds.ts",
     "seed:database": "node --max-old-space-size=512 -r ts-node/register src/scripts/seed-database-fixed.ts",
     "seed:database-ver2": "node --max-old-space-size=512 -r ts-node/register src/scripts/seed-database-ver2.ts",
+    "seed:reviews": "node --max-old-space-size=256 -r ts-node/register src/scripts/seed-reviews-feedbacks.ts",
+    "test:reviews": "node --max-old-space-size=256 -r ts-node/register src/scripts/test-reviews-data.ts",
     "migrate:booking-refs": "node --max-old-space-size=256 -r ts-node/register src/scripts/migrate-booking-references.ts",
     "typeorm": "typeorm-ts-node-commonjs -d src/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate",
@@ -70,8 +72,8 @@
     "cookie-parser": "^1.4.7",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
-    "node-cron": "^4.2.1",
     "langchain": "^1.2.2",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.11",
     "nodemailer-sendgrid": "^1.0.3",
     "passport": "^0.7.0",
@@ -83,6 +85,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.3",
     "typeorm": "^0.3.27"
   },
   "devDependencies": {

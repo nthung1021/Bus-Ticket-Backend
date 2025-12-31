@@ -12,7 +12,7 @@ export class BookingResponseDto {
   passengers: {
     id: string;
     fullName: string;
-    documentId: string;
+    documentId?: string | null;
     seatCode: string;
   }[];
   seats: {

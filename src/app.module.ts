@@ -24,6 +24,8 @@ import { SeatModule } from './seat/seat.module';
 import { PayosModule } from './payos/payos.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChatModule } from './chat/chat.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { FaqModule } from './faq/faq.module';
 
 @Module({
   imports: [
@@ -53,6 +55,8 @@ import { ChatModule } from './chat/chat.module';
     PayosModule,
     NotificationsModule,
     ChatModule,
+    ReviewsModule,
+    FaqModule
   ],
   controllers: [AppController],
   providers: [AppService, DatabaseService],

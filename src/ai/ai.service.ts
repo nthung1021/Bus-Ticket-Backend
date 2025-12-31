@@ -132,13 +132,13 @@ export class AiService {
           price: number 
         }], 
         passengers: [{
-          fullName: string, 
-          documentId: string, 
-          seatCode: string, 
-          documentType?: string, 
-          phoneNumber?: string, 
-          email?: string 
-        }], 
+          fullName: string,
+          documentId?: string,
+          seatCode: string,
+          documentType?: string,
+          phoneNumber?: string,
+          email?: string
+        }],
         totalPrice: number, 
         paymentMethod?: string, 
         isGuestCheckout?: boolean, 
@@ -157,7 +157,7 @@ export class AiService {
       ** NOTE **:
       - tripId is fetched from the selected trip in tool 'search_trips' results.
       - Each element in seats array only needs 'code' provided by user, other fields can be filled based on tool 'search_seats' results.
-      - Each element in passengers array must have fullName, documentId, seatCode. Other fields are optional.
+      - Each element in passengers array must have 'fullName' and 'seatCode'. 'documentId' is optional. Other fields are optional.
       - totalPrice is calculated using 'calculate_total_price' tool.
       - Other fields are optional based on user input.
       ---
@@ -185,7 +185,7 @@ export class AiService {
           {
             seatCode: string,
             fullName: string,
-            documentId: string,
+            documentId?: string,
             documentType?: string,
             phoneNumber?: string,
             email?: string
@@ -221,17 +221,23 @@ export class AiService {
     const systemMsg = new SystemMessage(this.systemPrompt);
 
     // Fetch all messages from DB and build LLM input
-    this.msgRepo.find({ order: { createdAt: 'ASC' } }).then(messages => {
-      this.msgs = messages.map((m: any) => {
-        const contentStr = typeof m.content === 'string' ? m.content : String(m.content);
-        if (m.role === 'human') return new HumanMessage({ content: contentStr });
-        if (m.role === 'system') return new SystemMessage({ content: contentStr });
-        return new AIMessage({ content: contentStr });
+    this.msgRepo
+      .find({ order: { createdAt: 'ASC' } })
+      .then(messages => {
+        this.msgs = messages.map((m: any) => {
+          const contentStr = typeof m.content === 'string' ? m.content : String(m.content);
+          if (m.role === 'human') return new HumanMessage({ content: contentStr });
+          if (m.role === 'system') return new SystemMessage({ content: contentStr });
+          return new AIMessage({ content: contentStr });
+        });
+        this.msgs = [systemMsg, ...this.msgs];
+        this.logger.debug('AI service initialized with existing messages from database');
+      })
+      .catch(err => {
+        // If the messages table doesn't exist yet (migrations not run), don't crash the app.
+        this.logger.warn(`Failed to load messages from database during initialization: ${err?.message || String(err)}`);
+        this.msgs = [systemMsg];
       });
-      this.msgs = [systemMsg, ...this.msgs];
-      // console.log("AI Service initialized with messages from DB:", this.msgs);
-    });
-    // console.log("AI Service initialized with messages:", this.msgs);
   }
 
   private robustParseJson(raw: string) {
@@ -299,26 +305,21 @@ export class AiService {
   }
 
   async invoke(messages: any[], metadata?: { userId?: string }) {
-    // Lấy userId từ metadata nếu có
     const userId = metadata?.userId;
-    // this.logger.log('AI invoked by user:', userId);
-    // Prepend system message to the messages array
     
     // Build messages for this invocation and ensure system instruction is first
     this.msgs.push(...messages);
-    // const messagesToSend = [...this.msgs, sys, ...messages];
-    // console.log("AI Service - Current Messages:", this.msgs);
+    
     // Loop: invoke LLM, handle any tool_calls it returns, and repeat until no tool_calls remain.
     let finalRaw: string = '';
     let lastResponse: any = null;
     const MAX_ITERATIONS = 3;
     let iteration = 0;
 
+    this.logger.debug(`Starting AI processing for ${userId ? `user ${userId}` : 'anonymous user'}`);
+
     while (iteration < MAX_ITERATIONS) {
       const response = await this.llm.invoke(this.msgs);
-      console.log('AI Service - Gemini Response:', response);
-      // break;
-      // this.logger.log(`AI Service - LLM Response (iteration ${iteration + 1}): ${JSON.stringify(response, null, 2)}`);
       lastResponse = response;
 
       // Normalize and clean raw content (strip code fences like ```json ... ``` and surrounding backticks)
@@ -335,7 +336,7 @@ export class AiService {
 
       const parsed: any = this.robustParseJson(rawContent);
       if (parsed && typeof parsed === 'object' && parsed.content === rawContent) {
-        this.logger.warn('LLM output could not be parsed as JSON; using raw text fallback');
+        this.logger.warn('LLM output could not be parsed as JSON, requesting proper format');
         this.msgs.push(new HumanMessage({ content: `
           Your input could not be parsed as JSON. Please provide valid JSON. Example input:
           {
@@ -358,41 +359,25 @@ export class AiService {
             ]
           }
           `}));
-        try {
-          this.logger.debug('LLM rawContent (trimmed 2000 chars): ' + rawContent.slice(0, 2000));
-        } catch (e) {
-          // ignore
-        }
-        try {
-          this.logger.debug('LLM rawContent (json-escaped): ' + JSON.stringify(rawContent));
-        } catch (e) {
-          // ignore
-        }
-        try {
-          this.logger.debug('Full response object (trimmed): ' + JSON.stringify(response, null, 2).slice(0, 2000));
-        } catch (e) {
-          // ignore
-        }
+        this.logger.debug(`LLM raw content preview: ${rawContent.slice(0, 200)}...`);
       }
 
       // If the model requested tools, execute them and continue the loop.
       if (parsed.tool_calls && parsed.tool_calls.length > 0) {
-        console.log('AI Service - Tool Calls Detected:', parsed.tool_calls);
+        this.logger.debug(`Processing ${parsed.tool_calls.length} tool calls`);
         for (const toolCall of parsed.tool_calls) {
-          console.log('AI Service - Tool Call Requested:', toolCall.tool_name);
           if (toolCall.tool_name === 'search_trips') {
-            this.logger.log('AI Service - Invoking search_trips with params: ' + JSON.stringify(toolCall.parameters));
+            this.logger.debug(`Executing search_trips tool`);
             const toolResult = await this.tripsService.search(toolCall.parameters);
-            this.logger.log('AI Service - Tool Result: ' + JSON.stringify(toolResult));
             const aiMsg = new HumanMessage(JSON.stringify({ content: `Here are the search results: ${JSON.stringify(toolResult, null, 2)}` }));
             this.msgs.push(aiMsg);
           } else if (toolCall.tool_name === 'book_ticket') {
-            this.logger.log('AI Service - Invoking book_ticket with params: ' + JSON.stringify(toolCall.parameters));
+            this.logger.debug(`Executing book_ticket tool`);
             const bookingParams = toolCall.parameters;
             const bookingUserId = userId || bookingParams.userId || null;
             try {
               const bookingResult = await this.bookingService.createBooking(bookingUserId, bookingParams);
-              this.logger.log('AI Service - Booking Result: ' + JSON.stringify(bookingResult));
+              this.logger.log(`Booking created successfully for user ${bookingUserId}`);
               const messageObj: any = {
                 content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}`,
               };
@@ -403,6 +388,7 @@ export class AiService {
               const aiMsg = new HumanMessage(JSON.stringify(messageObj));
               this.msgs.push(aiMsg);
             } catch (err) {
+              this.logger.error(`Booking failed for user ${bookingUserId}: ${err?.message}`);
               const aiMsg = new HumanMessage(JSON.stringify({ content: `Booking failed: ${err?.message || String(err)}` }));
               this.msgs.push(aiMsg);
             }
@@ -414,7 +400,7 @@ export class AiService {
             } else {
               try {
                 const seats = await this.seatStatusService.findByTripId(tripId);
-                this.logger.log('AI Service - search_seats Result: \n' + JSON.stringify(seats, null, 2));
+                this.logger.debug(`Found ${seats?.length || 0} seats for trip ${tripId}`);
                 if (seats && seats.length > 0) {
                   const aiMsg = new HumanMessage(JSON.stringify({ content: `Found seats: \n${JSON.stringify(seats, null, 2)}` }));
                   this.msgs.push(aiMsg);
@@ -423,6 +409,7 @@ export class AiService {
                   this.msgs.push(aiMsg);
                 }
               } catch (err) {
+                this.logger.error(`Error searching seats for trip ${tripId}: ${err?.message}`);
                 const aiMsg = new HumanMessage(JSON.stringify({ content: `Error searching seat: ${err?.message || String(err)}` }));
                 this.msgs.push(aiMsg);
               }
@@ -444,13 +431,14 @@ export class AiService {
             }
           }
           else if (toolCall.tool_name === 'get_faqs') {
-            console.log('AI Service - Invoking get_faqs');
+            this.logger.debug('Executing get_faqs tool');
             try {
               const faqs = await this.faqService.getAllFaqs();
               const aiMsg = new HumanMessage(JSON.stringify({ content: `Here are the frequently asked questions and answers: \n${JSON.stringify(faqs, null, 2)}` }));
               this.msgs.push(aiMsg);
             } 
             catch(err) {
+              this.logger.error(`Error fetching FAQs: ${err?.message}`);
               const aiMsg = new HumanMessage(JSON.stringify({ content: `Error fetching FAQs: ${err?.message || String(err)}` }));
               this.msgs.push(aiMsg);
             }
@@ -467,10 +455,10 @@ export class AiService {
     }
 
     if (iteration >= MAX_ITERATIONS) {
-      this.logger.warn('Max iterations reached while processing tool_calls; attempting one final LLM invoke to include tool results');
+      this.logger.warn('Maximum iterations reached while processing tool calls, attempting final response');
       try {
         const finalResponse = await this.llm.invoke(this.msgs);
-        this.logger.debug('AI Service - Final LLM invoke after max iterations: ' + JSON.stringify(finalResponse));
+        this.logger.debug('Final LLM invoke completed after max iterations');
         lastResponse = finalResponse;
         let finalRawCandidate = '';
         if (finalResponse == null) {
@@ -486,7 +474,7 @@ export class AiService {
           finalRaw = finalRawCandidate;
         }
       } catch (err) {
-        this.logger.warn('Final LLM invoke failed: ' + (err?.message ?? String(err)));
+        this.logger.error(`Final LLM invoke failed: ${err?.message || String(err)}`);
       }
     }
 
@@ -494,7 +482,7 @@ export class AiService {
       finalRaw = typeof lastResponse === 'string' ? lastResponse : lastResponse.content ?? JSON.stringify(lastResponse);
     }
 
-    console.log('AI Service - Final Response:', finalRaw);
+    this.logger.debug(`AI processing completed, returning response`);
     return finalRaw;
   }
 }

@@ -16,10 +16,11 @@ export const AppDataSource = new DataSource({
   database: configService.get('DB_NAME', 'bus_booking'),
   synchronize: true, // Enabled for development: auto-create/update schema
   logging: true,
-  // Include all entity folders (some modules keep entities under module folders)
+  // include entities located across the project (not only src/entities)
   entities: [
-    'src/entities/**/*.ts',
-    'src/**/entities/**/*.ts'
+    'src/**/*.entity{.ts,.js}',
+    'src/**/entities/*.ts',
+    'dist/**/*.entity{.js,.ts}'
   ],
   migrations: [
     'src/migrations/**/*.ts'

@@ -21,7 +21,7 @@ export class NotificationsService {
 
   @Cron(CronExpression.EVERY_HOUR)
   async handleTripReminders() {
-    this.logger.log('Running scheduled trip reminders (NotificationsService)...');
+    this.logger.debug('Running scheduled trip reminders');
 
     // 1. Get eligible bookings from BookingService
     const bookings = await this.bookingService.findUpcomingPaidBookings(24);

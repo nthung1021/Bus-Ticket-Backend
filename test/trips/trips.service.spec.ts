@@ -53,6 +53,9 @@ describe('TripsService', () => {
     bookings: [],
     seatStatuses: [],
     feedbacks: [],
+    averageRating: 0,
+    reviewCount: 0,
+    reviews: [],
   };
 
   beforeEach(async () => {

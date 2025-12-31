@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, Query } from '@nestjs/common';
 import { RouteService } from './route.service';
 import { Route } from '../entities/route.entity';
 import { CreateRouteDto } from './dto/create-route.dto';
@@ -16,6 +16,12 @@ export class RouteController {
   @Get()
   findAll(): Promise<Route[]> {
     return this.routeService.findAll();
+  }
+
+  @Get('popular')
+  async popular(@Query('limit') limit?: string) {
+    const n = limit ? parseInt(limit, 10) : 8;
+    return await this.routeService.getPopularRoutes(n);
   }
 
   @Get(':id')

@@ -104,6 +104,8 @@ export class BookingGateway
   private readonly logger = new Logger(BookingGateway.name);
   /** Storage for active booking tracking sessions (key: "userId:bookingId", value: BookingSession) */
   private bookingSessions: Map<string, BookingSession> = new Map();
+  /** Flag to prevent duplicate CORS logging */
+  private corsConfigured = false;
 
   constructor(
     private readonly configService: ConfigService,
@@ -126,10 +128,11 @@ export class BookingGateway
       'http://localhost:8000',
     ].filter(Boolean); // Remove null/undefined values
 
-    this.logger.log(
-      `Frontend URL configured: ${frontendUrl || 'http://localhost:3000'}`,
-    );
-    this.logger.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
+    // Only log CORS configuration once during initialization
+    if (!this.corsConfigured) {
+      this.logger.log(`Booking gateway CORS configured for origins: ${allowedOrigins.join(', ')}`);
+      this.corsConfigured = true;
+    }
 
     // Update the server's CORS configuration dynamically
     if (this.server && this.server.httpServer) {
@@ -148,10 +151,7 @@ export class BookingGateway
    * @param client - The connected socket client
    */
   handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
-    // Re-apply CORS configuration when first client connects
-    // This ensures the configuration is active
-    this.updateCorsConfiguration();
+    this.logger.debug(`Booking gateway client connected: ${client.id}`);
   }
 
   /**
@@ -160,8 +160,7 @@ export class BookingGateway
    * @param client - The disconnected socket client
    */
   async handleDisconnect(client: Socket) {
-    this.logger.log(`Client disconnected: ${client.id}`);
-    // Remove all booking sessions for this client
+    this.logger.debug(`Booking gateway client disconnected: ${client.id}`);
     await this.removeClientSessions(client.id);
   }
 
@@ -177,7 +176,7 @@ export class BookingGateway
     const { tripId, userId } = data;
     // Add client to trip-specific room for targeted broadcasts
     client.join(`trip:${tripId}`);
-    this.logger.log(`Client ${client.id} joined trip ${tripId}`);
+    this.logger.debug(`Client joined booking updates for trip ${tripId}`);
 
     // Send current active bookings for this trip to the new client
     const activeBookings = await this.getActiveBookingsForTrip(tripId);
@@ -198,7 +197,7 @@ export class BookingGateway
     const { tripId } = data;
     // Remove client from trip room
     client.leave(`trip:${tripId}`);
-    this.logger.log(`Client ${client.id} left trip ${tripId}`);
+    this.logger.debug(`Client left booking updates for trip ${tripId}`);
 
     // Remove booking sessions for this trip by this client
     await this.removeClientSessionsForTrip(client.id, tripId);
@@ -646,10 +645,16 @@ export class BookingGateway
     this.bookingSessions.forEach((session, key) => {
       if (session.socketId === socketId && session.tripId === tripId) {
         sessionsToRemove.push(key);
-        // Remove client from booking room
-        this.server.sockets.sockets
-          .get(socketId)
-          ?.leave(`booking:${session.bookingId}`);
+        // Remove client from booking room (guard against different socket.io shapes)
+        try {
+          const ioSockets: any = (this.server?.sockets as any)?.sockets;
+          if (ioSockets) {
+            const socket = typeof ioSockets.get === 'function' ? ioSockets.get(socketId) : ioSockets[socketId];
+            socket?.leave?.(`booking:${session.bookingId}`);
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to remove socket ${socketId} from booking room: ${String(err)}`);
+        }
       }
     });
 

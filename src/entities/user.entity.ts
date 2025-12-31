@@ -11,11 +11,11 @@ import { PaymentMethod } from './payment-method.entity';
 import { Feedback } from './feedback.entity';
 import { RefreshToken } from './refresh-token.entity';
 import { Notification } from './notification.entity';
+import { Review } from './review.entity';
 
 export enum UserRole {
   ADMIN = 'admin',
-  CUSTOMER = 'customer',
-  OPERATOR = 'operator',
+  CUSTOMER = 'customer'
 }
 
 @Entity('users')
@@ -31,6 +31,14 @@ export class User {
   })
   @Index('idx_users_google_id')
   googleId: string | null;
+
+  @Column({
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
+  @Index('idx_users_facebook_id')
+  facebookId: string | null;
 
   @Column()
   @Index('idx_users_email') // Email is unique but also needs index for fast lookups
@@ -62,11 +70,14 @@ export class User {
   @OneToMany(() => Booking, (booking) => booking.user)
   bookings: Booking[];
 
-  @OneToMany(() => PaymentMethod, (paymentMethod) => paymentMethod.user)
-  paymentMethods: PaymentMethod[];
+  @OneToMany(() => Review, (review) => review.user)
+  reviews: Review[];
 
   @OneToMany(() => Feedback, (feedback) => feedback.user)
   feedbacks: Feedback[];
+
+  @OneToMany(() => PaymentMethod, (paymentMethod) => paymentMethod.user)
+  paymentMethods: PaymentMethod[];
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];

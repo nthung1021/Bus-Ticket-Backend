@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 import { PayosService } from './payos.service';
+import { ConfigService } from '@nestjs/config';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import {
   PaymentResponseDto,
@@ -22,7 +23,10 @@ import {
 export class PayosController {
   private readonly logger = new Logger(PayosController.name);
 
-  constructor(private readonly payosService: PayosService) {}
+  constructor(
+    private readonly payosService: PayosService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('create-payment-link')
   @ApiOperation({ summary: 'Create a payment link' })
@@ -88,18 +92,34 @@ export class PayosController {
   })
   @ApiResponse({ status: 400, description: 'Invalid webhook signature' })
   @ApiResponse({ status: 500, description: 'Internal Server Error' })
-  async handleWebhook(@Body() webhookData: any): Promise<WebhookResponseDto> {
+  async handleWebhook(
+    @Body() webhookData: any,
+    @Headers() headers: Record<string, any>,
+  ): Promise<WebhookResponseDto> {
     this.logger.log('Received webhook notification');
-    this.logger.log('Webhook data: ', webhookData);
+    this.logger.debug('Webhook data: ', webhookData);
+
+    // Allow bypassing verification via header for local testing only
+    const skipHeader = (
+      headers?.['x-payos-skip-verify'] || headers?.['payos-skip-verify']
+    ) as string | undefined;
+
+    const nodeEnv = this.configService.get('NODE_ENV') || process.env.NODE_ENV || 'development';
+    const allowSkip = nodeEnv !== 'production' && String(skipHeader || '').trim().toLowerCase() === 'true';
+
     try {
+      if (allowSkip) {
+        this.logger.log('Bypassing webhook verification due to header (non-production)');
+        return this.payosService.handleWebhook(webhookData);
+      }
+
       // Verify webhook data using PayOS method
-      const verifiedData =
-        await this.payosService.verifyWebhookData(webhookData);
+      const verifiedData = await this.payosService.verifyWebhookData(webhookData);
 
       // Process webhook with verified data
       return this.payosService.handleWebhook(verifiedData);
     } catch (error) {
-      this.logger.warn('Invalid webhook data received', error);
+      this.logger.warn('Invalid webhook data received', error?.stack || error);
       return {
         success: false,
         message: 'Invalid webhook data',

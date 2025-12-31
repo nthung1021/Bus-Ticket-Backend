@@ -25,6 +25,7 @@ import { BOOKING_EXPIRATION_MINUTES } from '../constants/booking.constants';
 import PDFDocument from 'pdfkit';
 import * as QRCode from 'qrcode';
 import { getBookingConfirmationTemplate } from './email.templates';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class BookingService {
@@ -53,6 +54,7 @@ export class BookingService {
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
     private readonly payosService: PayosService,
+    private readonly configService: ConfigService,
   ) { }
 
   private async generateBookingReference(): Promise<string> {
@@ -218,12 +220,12 @@ export class BookingService {
 
       const savedBooking = await manager.save(booking);
 
-      // 7. Create passenger details
+      // 7. Create passenger details (store null when no document provided)
       const passengerDetails = passengers.map(passenger =>
         manager.create(PassengerDetail, {
           bookingId: savedBooking.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId ?? undefined,
           seatCode: passenger.seatCode,
         })
       );
@@ -258,22 +260,8 @@ export class BookingService {
         expirationTimestamp = new Date(savedBooking.bookedAt.getTime() + 15 * 60 * 1000);
       }
 
-      // 9b. Generate payment URL for pending bookings using PayOS helper
+      // paymentUrl is generated after transaction commit to avoid FK issues
       let paymentUrl: string | null = null;
-      if (savedBooking.status === BookingStatus.PENDING) {
-        try {
-          paymentUrl = (await this.payosService.createPaymentLink({
-            amount: savedBooking.totalAmount,
-            bookingId: savedBooking.id,
-            description: ``,
-          })).checkoutUrl;
-          console.log('Generated payment URL:', paymentUrl);
-        } catch (err) {
-          // Log but do not fail booking creation if payment URL generation fails
-          this.logger.error('Failed to generate payment URL: ' + String(err));
-          paymentUrl = null;
-        }
-      }
 
       // Send notification for auto-paid booking
       if (savedBooking.status === BookingStatus.PAID && userId) {
@@ -304,7 +292,7 @@ export class BookingService {
         passengers: savedPassengers.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId || null,
           seatCode: passenger.seatCode,
         })),
         seats: seatIds.map((seatId, index) => ({
@@ -318,16 +306,35 @@ export class BookingService {
     // After transaction commit, create payment link if booking is pending
     try {
       if (result.status === BookingStatus.PENDING) {
+        // 1. Lấy giá trị từ ConfigService (An toàn hơn process.env)
+        const forceTest = this.configService.get<string>('FORCE_TEST_PAYMENT');
+        
+        // 2. Logic so sánh mạnh mẽ (bất chấp hoa thường, khoảng trắng)
+        const isTestMode = forceTest?.trim().toLowerCase() === 'true';
+
+        // 3. LOG DEBUG QUAN TRỌNG: In ra để xem server thực sự nhận được gì
+        this.logger.log(`[PAYMENT DEBUG] Env: ${forceTest} | IsTest: ${isTestMode} | RealPrice: ${result.totalAmount}`);
+
+        // 4. LƯU Ý: PayOS yêu cầu tối thiểu 2000 VND. Nếu để 1 VND có thể bị lỗi.
+        const paymentAmount = isTestMode ? 2000 : result.totalAmount;
+
+        const frontendBase = this.configService.get('FRONTEND_URL') || 'http://localhost:8000';
+        const returnUrl = `${frontendBase.replace(/\/$/, '')}/payment/success?bookingId=${result.id}`;
+        const cancelUrl = `${frontendBase.replace(/\/$/, '')}/payment/cancel?bookingId=${result.id}`;
+
         const payRes = await this.payosService.createPaymentLink({
-          amount: result.totalAmount,
+          amount: paymentAmount, // Truyền số 2000 vào đây
           bookingId: result.id,
-          description: '',
+          description: `Booking ${result.bookingReference}`, // Thêm ref để dễ tra soát
+          returnUrl,
+          cancelUrl,
         });
+        
         (result as any).paymentUrl = payRes?.checkoutUrl || null;
       }
     } catch (err) {
       this.logger.error('Failed to generate payment URL: ' + String(err));
-      // Do not fail booking creation; leave paymentUrl as null
+      // Không throw error để booking vẫn thành công dù chưa có link thanh toán
     }
 
     return result;
@@ -471,7 +478,7 @@ export class BookingService {
       passengers: booking.passengerDetails?.map(passenger => ({
         id: passenger.id,
         fullName: passenger.fullName,
-        documentId: passenger.documentId,
+        documentId: passenger.documentId || null,
         seatCode: passenger.seatCode,
       })) || [],
 
@@ -505,6 +512,32 @@ export class BookingService {
 
       // 2. Validate booking status
       if (booking.status !== BookingStatus.PENDING) {
+        // If booking already marked as PAID, treat as idempotent and return current booking
+        if (booking.status === BookingStatus.PAID) {
+          const seatStatuses = booking.seatStatuses || [];
+
+          return {
+            id: booking.id,
+            bookingReference: booking.bookingReference,
+            tripId: booking.tripId,
+            totalAmount: booking.totalAmount,
+            status: booking.status,
+            bookedAt: booking.bookedAt,
+            expirationTimestamp: null,
+            passengers: booking.passengerDetails?.map(passenger => ({
+              id: passenger.id,
+              fullName: passenger.fullName,
+              documentId: passenger.documentId || null,
+              seatCode: passenger.seatCode,
+            })) || [],
+            seats: seatStatuses.map(status => ({
+              seatId: status.seatId,
+              seatCode: '',
+              status: status.state,
+            })),
+          } as BookingResponseDto;
+        }
+
         throw new BadRequestException(
           `Cannot confirm payment for booking with status: ${booking.status}`,
         );
@@ -549,7 +582,7 @@ export class BookingService {
         passengers: updatedBooking.passengerDetails.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId || null,
           seatCode: passenger.seatCode,
         })),
         seats: seatStatuses.map(status => ({
@@ -588,7 +621,11 @@ export class BookingService {
 
       // 2. Validate booking status
       if (booking.status === BookingStatus.CANCELLED) {
-        throw new BadRequestException('Booking is already cancelled');
+        // Idempotent: if already cancelled, return success without error
+        return {
+          success: true,
+          message: 'Booking is already cancelled',
+        };
       }
 
       if (booking.status === BookingStatus.PAID) {
@@ -670,7 +707,7 @@ export class BookingService {
 
   async updatePassengerInfo(
     bookingId: string,
-    updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId: string; seatCode: string; }> },
+    updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId?: string; seatCode: string; }> },
     userId: string,
   ): Promise<any> {
     return await this.dataSource.transaction(async (manager) => {
@@ -744,7 +781,7 @@ export class BookingService {
         passengers: updatedBooking.passengerDetails?.map(p => ({
           id: p.id,
           fullName: p.fullName,
-          documentId: p.documentId,
+          documentId: p.documentId || null,
           seatCode: p.seatCode,
         })) || [],
         seats: updatedBooking.seatStatuses?.map(s => ({
@@ -770,16 +807,7 @@ export class BookingService {
         throw new NotFoundException('Booking not found');
       }
 
-      console.log(`Cancel booking debug:`, {
-        bookingId,
-        userId,
-        booking: {
-          id: booking.id,
-          userId: booking.userId,
-          status: booking.status,
-          departureTime: booking.trip?.departureTime
-        }
-      });
+      this.logger.debug(`Processing cancellation for booking ${bookingId}`);
 
       if (booking.userId !== userId) {
         throw new BadRequestException('Access denied');
@@ -796,11 +824,7 @@ export class BookingService {
         const timeDifference = departureTime.getTime() - currentTime.getTime();
         const hoursUntilDeparture = timeDifference / (1000 * 60 * 60); // Convert to hours
 
-        console.log(`Time check:`, {
-          departureTime: departureTime.toISOString(),
-          currentTime: currentTime.toISOString(),
-          hoursUntilDeparture
-        });
+        this.logger.debug(`Cancellation time check: ${hoursUntilDeparture.toFixed(2)} hours until departure`);
 
         if (hoursUntilDeparture < 6) {
           throw new BadRequestException(`Cannot cancel booking less than 6 hours before departure. Hours until departure: ${hoursUntilDeparture.toFixed(2)}`);
@@ -1010,7 +1034,7 @@ export class BookingService {
         doc
           .fontSize(12)
           .text(
-            `${index + 1}. ${p.fullName} - Doc: ${p.documentId} - Seat: ${p.seatCode}`,
+            `${index + 1}. ${p.fullName} - Doc: ${p.documentId || ''} - Seat: ${p.seatCode}`,
           );
       });
 
@@ -1309,7 +1333,7 @@ export class BookingService {
 
       if (modification.documentId && modification.documentId !== passenger.documentId) {
         changes.documentId = modification.documentId;
-        changeDescription.push(`document ID from "${passenger.documentId}" to "${modification.documentId}"`);
+        changeDescription.push(`document ID from "${passenger.documentId || ''}" to "${modification.documentId || ''}"`);
       }
 
       if (Object.keys(changes).length > 0) {
@@ -1638,7 +1662,7 @@ export class BookingService {
             id: updatedPassenger.id,
             bookingId: updatedPassenger.bookingId,
             fullName: updatedPassenger.fullName,
-            documentId: updatedPassenger.documentId,
+            documentId: updatedPassenger.documentId || null,
             seatCode: updatedPassenger.seatCode,
             modifiedAt: new Date(),
           });
@@ -1687,7 +1711,7 @@ export class BookingService {
     }
 
     if (changes.documentId) {
-      descriptions.push(`document ID from '${previousValues.documentId}' to '${changes.documentId}'`);
+      descriptions.push(`document ID from '${previousValues.documentId || ''}' to '${changes.documentId || ''}'`);
     }
 
     if (changes.seatCode) {

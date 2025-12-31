@@ -14,6 +14,7 @@ import { EmailService } from '../../src/booking/email.service';
 import { BookingModificationPermissionService } from '../../src/booking/booking-modification-permission.service';
 import { NotificationsService } from '../../src/notifications/notifications.service';
 import { PayosService } from '../../src/payos/payos.service';
+import { ConfigService } from '@nestjs/config';
 import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CreateBookingDto } from '../../src/booking/dto/create-booking.dto';
 
@@ -95,6 +96,7 @@ describe('BookingService', () => {
         { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: BookingModificationPermissionService, useValue: mockModificationPermissionService },
         { provide: PayosService, useValue: mockPayosService },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('') } },
       ],
     }).compile();
 
@@ -232,14 +234,14 @@ describe('BookingService', () => {
       expect(mockNotificationsService.createInAppNotification).toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException if booking already paid', async () => {
+    it('should return booking when already paid (idempotent)', async () => {
       mockEntityManager.findOne.mockResolvedValueOnce({ 
         id: bookingId, 
         status: BookingStatus.PAID 
       });
 
-      await expect(service.confirmPayment(bookingId))
-        .rejects.toThrow(BadRequestException);
+      const result = await service.confirmPayment(bookingId);
+      expect(result.status).toBe(BookingStatus.PAID);
     });
 
     it('should throw BadRequestException if booking expired', async () => {

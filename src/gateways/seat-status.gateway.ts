@@ -83,6 +83,8 @@ export class SeatStatusGateway
     private seatLocks: Map<string, SeatLock> = new Map();
     /** How long locks last before expiring (5 minutes in milliseconds) */
     private readonly LOCK_DURATION = 5 * 60 * 1000; // 5 minutes
+    /** Flag to prevent duplicate CORS logging */
+    private corsConfigured = false;
 
     constructor(
         private readonly configService: ConfigService,
@@ -91,6 +93,13 @@ export class SeatStatusGateway
     ) {
         // Configure CORS dynamically based on environment
         this.updateCorsConfiguration();
+    }
+
+    // Basic UUID validation to avoid empty string or invalid inputs from clients
+    private isValidUuid(id?: string) {
+        if (!id || typeof id !== 'string') return false;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        return uuidRegex.test(id);
     }
 
     /**
@@ -105,8 +114,11 @@ export class SeatStatusGateway
             'http://localhost:8000',
         ].filter(Boolean); // Remove null/undefined values
 
-        this.logger.log(`Frontend URL configured: ${frontendUrl || 'http://localhost:3000'}`);
-        this.logger.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
+        // Only log CORS configuration once during initialization
+        if (!this.corsConfigured) {
+            this.logger.log(`Seat gateway CORS configured for origins: ${allowedOrigins.join(', ')}`);
+            this.corsConfigured = true;
+        }
 
         // Update the server's CORS configuration dynamically
         if (this.server && this.server.httpServer) {
@@ -125,10 +137,7 @@ export class SeatStatusGateway
      * @param client - The connected socket client
      */
     handleConnection(client: Socket) {
-        this.logger.log(`Client connected: ${client.id}`);
-        // Re-apply CORS configuration when first client connects
-        // This ensures the configuration is active
-        this.updateCorsConfiguration();
+        this.logger.debug(`WebSocket client connected: ${client.id}`);
     }
 
     /**
@@ -137,8 +146,7 @@ export class SeatStatusGateway
      * @param client - The disconnected socket client
      */
     async handleDisconnect(client: Socket) {
-        this.logger.log(`Client disconnected: ${client.id}`);
-        // Release all locks held by this client
+        this.logger.debug(`WebSocket client disconnected: ${client.id}`);
         await this.releaseClientLocks(client.id);
     }
 
@@ -154,7 +162,7 @@ export class SeatStatusGateway
         const { tripId } = data;
         // Add client to trip-specific room for targeted broadcasts
         client.join(`trip:${tripId}`);
-        this.logger.log(`Client ${client.id} joined trip ${tripId}`);
+        this.logger.debug(`Client joined trip ${tripId}`);
 
         // Send current locked seats for this trip to the new client
         const lockedSeats = await this.getLockedSeatsForTrip(tripId);
@@ -175,7 +183,7 @@ export class SeatStatusGateway
         const { tripId } = data;
         // Remove client from trip room
         client.leave(`trip:${tripId}`);
-        this.logger.log(`Client ${client.id} left trip ${tripId}`);
+        this.logger.debug(`Client left trip ${tripId}`);
 
         // Release locks for this trip by this client
         await this.releaseClientLocksForTrip(client.id, tripId);
@@ -193,6 +201,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId, userId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid lockSeat request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
         const lockKey = `${tripId}:${seatId}`;
 
         // Check if seat is already locked by someone else
@@ -234,7 +246,7 @@ export class SeatStatusGateway
             expiresAt: lock.expiresAt,
         });
 
-        this.logger.log(`Seat ${seatId} locked for trip ${tripId} by ${userId || client.id}`);
+        this.logger.debug(`Seat ${seatId} locked on trip ${tripId}`);
 
         return { success: true, lock };
     }
@@ -249,6 +261,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid unlockSeat request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
         const lockKey = `${tripId}:${seatId}`;
 
         const lock = this.seatLocks.get(lockKey);
@@ -269,7 +285,7 @@ export class SeatStatusGateway
                 seatId,
             });
 
-            this.logger.log(`Seat ${seatId} unlocked for trip ${tripId}`);
+            this.logger.debug(`Seat ${seatId} unlocked on trip ${tripId}`);
 
             return { success: true };
         }
@@ -287,6 +303,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid refreshLock request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
         const lockKey = `${tripId}:${seatId}`;
 
         const lock = this.seatLocks.get(lockKey);
@@ -320,6 +340,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId, userId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid bookSeat request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
         const lockKey = `${tripId}:${seatId}`;
 
         // Check if seat is locked by this client
@@ -356,7 +380,7 @@ export class SeatStatusGateway
             userId: userId || lock.userId,
         });
 
-        this.logger.log(`Seat ${seatId} booked for trip ${tripId} by ${userId || lock.userId}`);
+        this.logger.debug(`Seat ${seatId} booked on trip ${tripId}`);
 
         return { success: true, seatId, userId: userId || lock.userId };
     }
@@ -372,6 +396,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatIds, userId } = data;
+        if (!this.isValidUuid(tripId) || !Array.isArray(seatIds) || seatIds.some(s => !this.isValidUuid(s))) {
+            this.logger.warn(`Invalid bookSeats request from ${client.id}: tripId=${tripId}`);
+            return { success: false, message: 'Invalid tripId or seatIds' };
+        }
         const bookedSeats: string[] = [];
         const failedSeats: Array<{ seatId: string; reason: string }> = [];
 
@@ -416,7 +444,9 @@ export class SeatStatusGateway
             });
         }
 
-        this.logger.log(`Bulk booking completed for trip ${tripId}: ${bookedSeats.length} successful, ${failedSeats.length} failed`);
+        if (bookedSeats.length > 0) {
+            this.logger.log(`Bulk booking on trip ${tripId}: ${bookedSeats.length} seats booked${failedSeats.length > 0 ? `, ${failedSeats.length} failed` : ''}`);
+        }
 
         return {
             success: bookedSeats.length > 0,
@@ -435,6 +465,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId, userId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid cancelSeat request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
 
         // Update seat status in database to available
         try {
@@ -451,7 +485,7 @@ export class SeatStatusGateway
             userId,
         });
 
-        this.logger.log(`Seat ${seatId} cancelled for trip ${tripId} by ${userId || client.id}`);
+        this.logger.debug(`Seat ${seatId} cancelled on trip ${tripId}`);
 
         return { success: true, seatId };
     }
@@ -474,7 +508,9 @@ export class SeatStatusGateway
             });
         });
 
-        this.logger.log(`Seats ${seatIds.join(', ')} booked for trip ${tripId}`);
+        if (seatIds.length > 1) {
+            this.logger.debug(`${seatIds.length} seats booked on trip ${tripId}`);
+        }
     }
 
     /**
@@ -723,6 +759,10 @@ export class SeatStatusGateway
         state: SeatState,
         lockedUntil: Date | null,
     ): Promise<void> {
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            console.error('Invalid tripId or seatId when attempting to save seat status:', { tripId, seatId });
+            throw new Error('Invalid tripId or seatId');
+        }
         try {
             // Check if seat status already exists for this trip/seat combination
             const existingStatus = await this.seatStatusRepository.findOne({

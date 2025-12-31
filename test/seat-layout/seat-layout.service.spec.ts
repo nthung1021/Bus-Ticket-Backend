@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { SeatLayoutService } from '../../src/seat-layout/seat-layout.service';
+import { Trip } from '../../src/entities/trip.entity';
 import { SeatLayout, SeatLayoutType } from '../../src/entities/seat-layout.entity';
 import { Bus } from '../../src/entities/bus.entity';
 import { Seat, SeatType } from '../../src/entities/seat.entity';
@@ -29,12 +30,18 @@ describe('SeatLayoutService', () => {
   const mockSeatRepo = {
     create: jest.fn(),
     save: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
     update: jest.fn(),
     delete: jest.fn(),
   };
 
   const mockSeatStatusRepo = {
     delete: jest.fn(),
+  };
+
+  const mockTripRepo = {
+    findOne: jest.fn(),
+    find: jest.fn(),
   };
 
   const layoutConfig = {
@@ -77,6 +84,7 @@ describe('SeatLayoutService', () => {
         { provide: getRepositoryToken(Bus), useValue: mockBusRepo },
         { provide: getRepositoryToken(Seat), useValue: mockSeatRepo },
         { provide: getRepositoryToken(SeatStatus), useValue: mockSeatStatusRepo },
+        { provide: getRepositoryToken(Trip), useValue: mockTripRepo },
       ],
     }).compile();
 

@@ -20,6 +20,7 @@ import { RefreshToken } from '../entities/refresh-token.entity';
 import { Conversation } from '../chat/entities/conversation.entity';
 import { Message } from '../chat/entities/message.entity';
 import { BookingModificationHistory } from '../entities/booking-modification-history.entity';
+import { Review } from '../entities/review.entity';
 
 /**
  * Database configuration for the application
@@ -63,6 +64,7 @@ export const databaseConfig = (
     // Chat entities
     Conversation,
     Message,
+    Review,            // User reviews and ratings
   ],
   
   // Automatically synchronize database schema with entities (disabled in production)

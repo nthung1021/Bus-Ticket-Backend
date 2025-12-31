@@ -830,13 +830,15 @@ async function seedDatabase() {
       const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
       const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
       const fullName = `${lastName} ${firstName} ${Math.random() > 0.5 ? 'Nam' : 'Nữ'}`;
-      const documentId = `${Math.floor(Math.random() * 900000000) + 100000000}`;
-      
+      // Make documentId optional in seed data: 70% chance to include, otherwise NULL
+      const hasDocument = Math.random() > 0.3;
+      const documentIdValue = hasDocument ? `${Math.floor(Math.random() * 900000000) + 100000000}` : null;
+
       passengerValues.push(`(
         '${id}', 
         '${seat.booking_id}', 
         '${fullName}', 
-        '${documentId}', 
+        ${documentIdValue ? `'${documentIdValue}'` : 'NULL'}, 
         '${seat.seat_code}'
       )`);
     });

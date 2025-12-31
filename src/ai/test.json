@@ -88,8 +88,8 @@ Let's refine the plan:
    - For seat 2B: code='2B', price=<price from search_seats>, type=<type from search_seats>, id=<id from search_seats>
    - For seat 3A: code='3A', price=<price from search_seats>, type=<type from search_seats>, id=<id from search_seats>
 6. Prepare the `passengers` array for `book_ticket`:
-   - For Nguyễn Tuấn Minh: fullName='Nguyễn Tuấn Minh', documentId='111111111', seatCode='2B'
-   - For Nguyễn Trọng Nhân: fullName='Nguyễn Trọng Nhân', documentId='222222222222', seatCode='3A'
+  - For Nguyễn Tuấn Minh: fullName='Nguyễn Tuấn Minh', seatCode='2B'
+  - For Nguyễn Trọng Nhân: fullName='Nguyễn Trọng Nhân', seatCode='3A'
 7. Call `calculate_total_price` using the `tripBasePrice` from `search_trips` result and the prices of seats 2B and 3A.
 8. Call `book_ticket` with `tripId`, `seats`, `passengers`, and `totalPrice`.
 9. Extract the payment URL from the `book_ticket` response.
