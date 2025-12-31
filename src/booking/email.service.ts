@@ -42,11 +42,11 @@ export class EmailService {
       throw new InternalServerErrorException('No email service configuration provided. Cannot send email');
     }
     try {
-      const from = this.config.get<string>('EMAIL_FROM') || undefined;
+      const from = this.config.get<string>('EMAIL_FROM') || this.config.get<string>('DEFAULT_FROM_EMAIL') || 'nguyentuanminh435@gmail.com';
       this.logger.debug(`Attempting to send email from: ${from}`);
 
       await this.transporter.sendMail({
-        from,
+        from: from,
         to: options.to,
         subject: options.subject,
         text: options.text,
