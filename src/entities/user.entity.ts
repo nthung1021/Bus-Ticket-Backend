@@ -66,6 +66,9 @@ export class User {
   @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
   createdAt: Date;
 
+  @Column({ name: 'avatar_url', nullable: true })
+  avatarUrl: string;
+
   // Relations
   @OneToMany(() => Booking, (booking) => booking.user)
   bookings: Booking[];

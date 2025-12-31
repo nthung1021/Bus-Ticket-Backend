@@ -7,14 +7,47 @@ import { User } from '../entities/user.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    private readonly bookingService: BookingService
+    private readonly bookingService: BookingService,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
+
+  async uploadAvatar(userId: string, file: Express.Multer.File) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const result = await this.cloudinaryService.uploadImage(file).catch(() => {
+     throw new BadRequestException('Invalid file type or upload failed.');
+    });
+
+    if ('secure_url' in result) {
+       user.avatarUrl = result.secure_url;
+    } else {
+       throw new BadRequestException('Upload failed');
+    }
+    
+    const updatedUser = await this.userRepository.save(user);
+
+    return {
+      success: true,
+      message: 'Avatar updated successfully',
+      data: {
+        avatarUrl: updatedUser.avatarUrl,
+      }
+    };
+  }
+
 
   async getUserBookings(userId: string, status?: BookingStatus) {
     const bookings = await this.bookingService.findBookingsByUserWithDetails(userId, status);
