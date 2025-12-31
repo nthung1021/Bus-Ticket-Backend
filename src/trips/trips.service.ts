@@ -242,7 +242,12 @@ export class TripsService {
         await this.seatStatusRepo.save(seatStatusEntities);
       }
 
-      return savedTrip as Trip;
+      // Reload the trip with route and bus relations before returning
+      const tripWithRelations = await this.tripRepo.findOne({
+        where: { id: savedTrip.id },
+        relations: ['route', 'bus'],
+      });
+      return tripWithRelations as Trip;
     } catch (err) {
       // Log and rethrow so caller is aware that seat status creation failed
       this.logger.error(
