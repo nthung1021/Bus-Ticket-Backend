@@ -1,12 +1,12 @@
 import { Controller, Get, Query, Request, UseGuards, HttpStatus, HttpCode } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { BookingService } from '../booking/booking.service';
+import { UserService } from './user.service';
 import { BookingStatus } from '../entities/booking.entity';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UserController {
-  constructor(private readonly bookingService: BookingService) {}
+  constructor(private readonly userService: UserService) {}
 
   @Get('me/bookings')
   @HttpCode(HttpStatus.OK)
@@ -20,13 +20,7 @@ export class UserController {
   }> {
     try {
       const userId = req.user.userId;
-      const bookings = await this.bookingService.findBookingsByUserWithDetails(userId, status);
-      
-      return {
-        success: true,
-        message: 'User bookings retrieved successfully',
-        data: bookings,
-      };
+      return await this.userService.getUserBookings(userId, status);
     } catch (error) {
       throw error;
     }

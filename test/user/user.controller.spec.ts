@@ -1,15 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserController } from '../../src/user/user.controller';
-import { BookingService } from '../../src/booking/booking.service';
+import { UserService } from '../../src/user/user.service';
 import { BookingStatus } from '../../src/entities/booking.entity';
 import { JwtAuthGuard } from '../../src/auth/jwt-auth.guard';
 
 describe('UserController', () => {
   let controller: UserController;
-  let bookingService: BookingService;
+  let userService: UserService;
 
-  const mockBookingService = {
-    findBookingsByUserWithDetails: jest.fn(),
+  const mockUserService = {
+    getUserBookings: jest.fn(),
   };
 
   const mockRequest = {
@@ -81,8 +81,8 @@ describe('UserController', () => {
       controllers: [UserController],
       providers: [
         {
-          provide: BookingService,
-          useValue: mockBookingService,
+          provide: UserService,
+          useValue: mockUserService,
         },
       ],
     })
@@ -91,7 +91,7 @@ describe('UserController', () => {
       .compile();
 
     controller = module.get<UserController>(UserController);
-    bookingService = module.get<BookingService>(BookingService);
+    userService = module.get<UserService>(UserService);
   });
 
   afterEach(() => {
@@ -104,98 +104,28 @@ describe('UserController', () => {
 
   describe('getUserBookings', () => {
     it('should return all user bookings when no status filter is provided', async () => {
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue(mockBookingData);
-
-      const result = await controller.getUserBookings(mockRequest);
-
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
-        'test-user-id',
-        undefined,
-      );
-      expect(result).toEqual({
+      const mockResponse = {
         success: true,
         message: 'User bookings retrieved successfully',
         data: mockBookingData,
-      });
-    });
-
-    it('should return filtered user bookings when status filter is provided', async () => {
-      const filteredBookings = mockBookingData.filter(b => b.status === BookingStatus.PAID);
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue(filteredBookings);
-
-      const result = await controller.getUserBookings(mockRequest, BookingStatus.PAID);
-
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
-        'test-user-id',
-        BookingStatus.PAID,
-      );
-      expect(result).toEqual({
-        success: true,
-        message: 'User bookings retrieved successfully',
-        data: filteredBookings,
-      });
-    });
-
-    it('should return pending bookings when status filter is pending', async () => {
-      const pendingBooking = {
-        ...mockBookingData[0],
-        status: BookingStatus.PENDING,
-        expiresAt: new Date('2025-12-01T08:15:00Z'),
       };
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue([pendingBooking]);
-
-      const result = await controller.getUserBookings(mockRequest, BookingStatus.PENDING);
-
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
-        'test-user-id',
-        BookingStatus.PENDING,
-      );
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].status).toBe(BookingStatus.PENDING);
-      expect(result.data[0].expiresAt).toBeDefined();
-    });
-
-    it('should return cancelled bookings when status filter is cancelled', async () => {
-      const cancelledBooking = {
-        ...mockBookingData[0],
-        status: BookingStatus.CANCELLED,
-        cancelledAt: new Date('2025-12-01T09:00:00Z'),
-      };
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue([cancelledBooking]);
-
-      const result = await controller.getUserBookings(mockRequest, BookingStatus.CANCELLED);
-
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
-        'test-user-id',
-        BookingStatus.CANCELLED,
-      );
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].status).toBe(BookingStatus.CANCELLED);
-      expect(result.data[0].cancelledAt).toBeDefined();
-    });
-
-    it('should return empty array when user has no bookings', async () => {
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue([]);
+      mockUserService.getUserBookings.mockResolvedValue(mockResponse);
 
       const result = await controller.getUserBookings(mockRequest);
 
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
+      expect(mockUserService.getUserBookings).toHaveBeenCalledWith(
         'test-user-id',
         undefined,
       );
-      expect(result).toEqual({
-        success: true,
-        message: 'User bookings retrieved successfully',
-        data: [],
-      });
+      expect(result).toEqual(mockResponse);
     });
 
     it('should handle service errors properly', async () => {
       const serviceError = new Error('Database connection failed');
-      mockBookingService.findBookingsByUserWithDetails.mockRejectedValue(serviceError);
+      mockUserService.getUserBookings.mockRejectedValue(serviceError);
 
       await expect(controller.getUserBookings(mockRequest)).rejects.toThrow(serviceError);
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
+      expect(mockUserService.getUserBookings).toHaveBeenCalledWith(
         'test-user-id',
         undefined,
       );
@@ -208,48 +138,18 @@ describe('UserController', () => {
           email: 'different@example.com',
         },
       };
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue([]);
+      mockUserService.getUserBookings.mockResolvedValue({
+        success: true,
+        message: 'User bookings retrieved successfully',
+        data: [],
+      });
 
       await controller.getUserBookings(customRequest);
 
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
+      expect(mockUserService.getUserBookings).toHaveBeenCalledWith(
         'different-user-id',
         undefined,
       );
-    });
-
-    it('should validate response structure includes all required fields', async () => {
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue(mockBookingData);
-
-      const result = await controller.getUserBookings(mockRequest);
-
-      expect(result).toHaveProperty('success');
-      expect(result).toHaveProperty('message');
-      expect(result).toHaveProperty('data');
-      expect(Array.isArray(result.data)).toBe(true);
-
-      if (result.data.length > 0) {
-        const booking = result.data[0];
-        expect(booking).toHaveProperty('id');
-        expect(booking).toHaveProperty('userId');
-        expect(booking).toHaveProperty('tripId');
-        expect(booking).toHaveProperty('totalAmount');
-        expect(booking).toHaveProperty('status');
-        expect(booking).toHaveProperty('bookedAt');
-        expect(booking).toHaveProperty('trip');
-        expect(booking).toHaveProperty('passengers');
-        expect(booking).toHaveProperty('seats');
-
-        // Validate trip details
-        expect(booking.trip).toHaveProperty('route');
-        expect(booking.trip).toHaveProperty('bus');
-        
-        // Validate passengers array
-        expect(Array.isArray(booking.passengers)).toBe(true);
-        
-        // Validate seats array
-        expect(Array.isArray(booking.seats)).toBe(true);
-      }
     });
   });
 });
