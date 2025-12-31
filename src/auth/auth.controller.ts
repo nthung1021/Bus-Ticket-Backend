@@ -20,6 +20,7 @@ import { ConfigService } from '@nestjs/config';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { VerifyResetTokenDto } from './dto/verify-reset-token.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -92,6 +93,13 @@ export class AuthController {
   async forgotPassword(@Body() forgotDto: ForgotPasswordDto) {
     const { email } = forgotDto;
     return this.authService.forgotPassword(email);
+  }
+
+  @Post('verify-reset-token')
+  @HttpCode(HttpStatus.OK)
+  async verifyResetToken(@Body() verifyDto: VerifyResetTokenDto) {
+    const { token } = verifyDto;
+    return this.authService.verifyResetToken(token);
   }
 
   @Get('me')

@@ -310,6 +310,35 @@ export class AuthService {
     };
   }
 
+  async verifyResetToken(token: string) {
+    const now = new Date();
+
+    // Find candidate tokens that are unused (and optionally recent)
+    const candidates = await this.passwordResetTokenRepository.find({
+      where: { used: false },
+      order: { createdAt: 'DESC' },
+    });
+
+    for (const c of candidates) {
+      // Skip expired
+      if (c.expiredAt < now) continue;
+
+      // Compare using bcrypt (tokenHash is salted)
+      const match = await bcrypt.compare(token, c.tokenHash);
+      if (match) {
+        // Valid token; return minimal identifying info (userId)
+        return {
+          success: true,
+          data: {
+            userId: c.userId,
+          },
+        };
+      }
+    }
+
+    throw new BadRequestException('Invalid or expired token');
+  }
+
   async refreshToken(refreshToken: string) {
     try {
       // verify will throw if token invalid/expired — we don't need the payload variable here
