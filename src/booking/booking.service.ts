@@ -349,7 +349,7 @@ export class BookingService {
 
         const frontendBase = this.configService.get('FRONTEND_URL') || 'http://localhost:8000';
         const returnUrl = `${frontendBase.replace(/\/$/, '')}/payment/success?bookingId=${result.id}`;
-        const cancelUrl = `${frontendBase.replace(/\/$/, '')}/payment/cancel?bookingId=${result.id}`;
+        const cancelUrl = `${frontendBase.replace(/\/$/, '')}/payment/failure?bookingId=${result.id}`;
 
         const payRes = await this.payosService.createPaymentLink({
           amount: paymentAmount, // Truyền số 2000 vào đây
