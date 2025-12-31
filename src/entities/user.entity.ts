@@ -10,6 +10,7 @@ import { Booking } from './booking.entity';
 import { PaymentMethod } from './payment-method.entity';
 import { Feedback } from './feedback.entity';
 import { RefreshToken } from './refresh-token.entity';
+import { PasswordResetToken } from './password-reset-token.entity';
 import { Notification } from './notification.entity';
 import { Review } from './review.entity';
 
@@ -90,6 +91,9 @@ export class User {
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];
+
+  @OneToMany(() => PasswordResetToken, (prt) => prt.user)
+  passwordResetTokens: PasswordResetToken[];
 
   @OneToMany(() => Notification, (notification) => notification.user)
   notifications: Notification[];
