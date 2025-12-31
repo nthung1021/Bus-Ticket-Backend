@@ -166,7 +166,7 @@ export class SeatLayoutService {
       where: { busId },
       relations: ['bus'],
     });
-    console.log(seatLayout?.layoutConfig.seats);
+    // console.log(seatLayout?.layoutConfig.seats);
 
     if (!seatLayout) {
       throw new NotFoundException(`Seat layout for bus ${busId} not found`);
@@ -198,19 +198,26 @@ export class SeatLayoutService {
       
       if (seatLayout.seatPricing?.seatTypePrices) {
         const seatTypePrices = seatLayout.seatPricing.seatTypePrices;
-        switch (seat.seatType) {
-          case 'normal':
-            seatPrice = basePrice * (seatTypePrices.normal || 1);
-            break;
-          case 'vip':
-            seatPrice = basePrice * (seatTypePrices.vip || 1.3);
-            break;
-          case 'business':
-            seatPrice = basePrice * (seatTypePrices.business || 1.5);
-            break;
-          default:
-            seatPrice = basePrice * (seatTypePrices.normal || 1);
-            break;
+        // Treat seatTypePrices as absolute prices per type when provided
+        const specificPrice = (seatTypePrices as any)[seat.seatType];
+        if (typeof specificPrice === 'number' && specificPrice > 0) {
+          seatPrice = specificPrice;
+        } else {
+          // Fallback: apply legacy ratio behavior against basePrice
+          switch (seat.seatType) {
+            case 'normal':
+              seatPrice = basePrice * (seatTypePrices.normal || 1);
+              break;
+            case 'vip':
+              seatPrice = basePrice * (seatTypePrices.vip || 1.3);
+              break;
+            case 'business':
+              seatPrice = basePrice * (seatTypePrices.business || 1.5);
+              break;
+            default:
+              seatPrice = basePrice * (seatTypePrices.normal || 1);
+              break;
+          }
         }
       } else {
         // Fallback if no pricing config
@@ -279,7 +286,7 @@ export class SeatLayoutService {
         row = parseInt(match[1], 10);
         positionLetter = match[2].toUpperCase();
       }
-      console.log(`Seat ${seatCode}: row ${row}, position ${positionLetter}`);
+      // console.log(`Seat ${seatCode}: row ${row}, position ${positionLetter}`);
 
       // Calculate price based on seat type and pricing configuration using ratios
       let basePrice = tripBasePrice; // Start with trip base price
@@ -287,58 +294,45 @@ export class SeatLayoutService {
       if (seatLayout.seatPricing?.seatTypePrices) {
         const seatTypePrices = seatLayout.seatPricing.seatTypePrices;
         const layoutBasePrice = seatLayout.seatPricing.basePrice || 0;
-        
-        // If no trip base price, use layout base price, fallback to 100k VND
+
+        // Fallback: derive from tripBasePrice or layoutBasePrice and apply default ratios
         if (tripBasePrice === 0) {
           basePrice = layoutBasePrice || 100000;
         }
-        
-        // Apply seat type ratio (multiply base price by ratio)
-        let seatPrice = 0;
-        switch (seat.seatType) {
-          case 'normal':
-            seatPrice = basePrice * (seatTypePrices.normal || 1);
-            break;
-          case 'vip':
-            seatPrice = basePrice * (seatTypePrices.vip || 1.3);
-            break;
-          case 'business':
-            seatPrice = basePrice * (seatTypePrices.business || 1.5);
-            break;
-          default:
-            seatPrice = basePrice * (seatTypePrices.normal || 1);
-            break;
+        // If a specific absolute price exists for this seat type, use it.
+        const specificPrice = (seatTypePrices as any)[seat.seatType];
+        if (typeof specificPrice === 'number' && specificPrice > 0) {
+          basePrice = specificPrice;
+        } else {
+          switch (seat.seatType) {
+            case 'normal':
+              basePrice = basePrice * 1;
+              break;
+            case 'vip':
+              basePrice = basePrice * 1.3;
+              break;
+            case 'business':
+              basePrice = basePrice * 1.5;
+              break;
+            default:
+              basePrice = basePrice * 1;
+              break;
+          }
         }
-
-        // Apply row-specific pricing if configured (add to multiplied price)
-        if (seatLayout.seatPricing.rowPricing && seatLayout.seatPricing.rowPricing[row]) {
-          seatPrice += seatLayout.seatPricing.rowPricing[row];
-        }
-
-        // Apply position-specific pricing if configured
-        const positionKey = `${row}-${positionLetter}`;
-        if (seatLayout.seatPricing.positionPricing && seatLayout.seatPricing.positionPricing[positionKey]) {
-          seatPrice += seatLayout.seatPricing.positionPricing[positionKey];
-        }
-        
-        // Use the calculated seatPrice
-        basePrice = seatPrice;
       } else {
         // If no seat pricing config, use trip base price with default ratios
         if (basePrice === 0) {
-          basePrice = 100000; // Default 100k VND base price
+          basePrice = 100000;
         }
-        
-        // Apply default ratios
         switch (seat.seatType) {
           case 'normal':
-            basePrice = basePrice * 1; // Normal seats: 1x base price
+            basePrice = basePrice * 1;
             break;
           case 'vip':
-            basePrice = basePrice * 1.3; // VIP seats: 1.3x base price
+            basePrice = basePrice * 1.3;
             break;
           case 'business':
-            basePrice = basePrice * 1.5; // Business seats: 1.5x base price
+            basePrice = basePrice * 1.5;
             break;
           default:
             basePrice = basePrice * 1;
