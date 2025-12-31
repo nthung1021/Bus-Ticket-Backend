@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Unique,
 } from 'typeorm';
 import { Trip } from './trip.entity';
 import { Seat } from './seat.entity';
@@ -17,6 +18,7 @@ export enum SeatState {
 }
 
 @Entity('seat_status')
+@Unique(['tripId', 'seatId'])
 export class SeatStatus {
   @PrimaryGeneratedColumn('uuid')
   id: string;

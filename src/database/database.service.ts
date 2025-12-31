@@ -273,8 +273,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           -- Connections in an open transaction but not currently executing
           COUNT(*) FILTER (WHERE state = 'idle in transaction') as idle_in_transaction,
           
-          -- Connections waiting for a lock or other resource
-          COUNT(*) FILTER (WHERE wait_event IS NOT NULL) as waiting_clients,
+          -- Connections waiting for a lock or other resource (excluding idle connections)
+          COUNT(*) FILTER (WHERE wait_event IS NOT NULL AND state NOT LIKE 'idle%') as waiting_clients,
           
           -- Additional useful metrics
           COUNT(*) FILTER (WHERE state = 'idle in transaction (aborted)') as idle_in_aborted_tx,
@@ -427,15 +427,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     // During startup initialization, log concise message only
     if (status === 'error' || status === 'disconnected') {
       this.logger.error('Database connection failed');
-    } else if (utilizationRate > 90 || waitingClients > 0) {
+    } else if (utilizationRate > 90 || waitingClients > 5) {
       this.logger.warn(`Database pool under stress: ${utilizationRate}% utilization, ${waitingClients} waiting`);
     } else {
       // Concise startup message without verbose object logging
       this.logger.log(`Database pool ready (max: ${maxConnections} connections)`);
     }
 
-    // Only warn about waiting clients if there are any
-    if (waitingClients > 0) {
+    // Only warn about waiting clients if there are significant number
+    if (waitingClients > 5) {
       this.logger.warn(`${waitingClients} clients waiting for database connections`);
     }
 

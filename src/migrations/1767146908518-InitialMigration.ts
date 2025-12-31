@@ -75,7 +75,15 @@ export class InitialMigration1767146908518 implements MigrationInterface {
         await queryRunner.query(`CREATE INDEX "idx_users_phone" ON "users" ("phone") `);
         await queryRunner.query(`CREATE INDEX "idx_users_role" ON "users" ("role") `);
         await queryRunner.query(`CREATE INDEX "idx_users_role_created" ON "users" ("role", "created_at") `);
-        await queryRunner.query(`CREATE TYPE "public"."booking_modification_history_modification_type_enum" AS ENUM('passenger_info', 'seat_change', 'contact_info')`);
+        await queryRunner.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_modification_history_modification_type_enum') THEN
+                    CREATE TYPE "public"."booking_modification_history_modification_type_enum" AS ENUM('passenger_info', 'seat_change', 'contact_info');
+                END IF;
+            END;
+            $$;
+        `);
         await queryRunner.query(`CREATE TABLE "booking_modification_history" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "booking_id" uuid NOT NULL, "user_id" uuid, "modification_type" "public"."booking_modification_history_modification_type_enum" NOT NULL, "description" text NOT NULL, "changes" jsonb, "previousValues" jsonb, "modified_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_ef0cd664b4d69c6197502cbc8fb" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE INDEX "idx_modification_history_booking_id" ON "booking_modification_history" ("booking_id") `);
         await queryRunner.query(`CREATE INDEX "idx_modification_history_type" ON "booking_modification_history" ("modification_type") `);
@@ -147,7 +155,7 @@ export class InitialMigration1767146908518 implements MigrationInterface {
         await queryRunner.query(`DROP INDEX "public"."idx_modification_history_type"`);
         await queryRunner.query(`DROP INDEX "public"."idx_modification_history_booking_id"`);
         await queryRunner.query(`DROP TABLE "booking_modification_history"`);
-        await queryRunner.query(`DROP TYPE "public"."booking_modification_history_modification_type_enum"`);
+        await queryRunner.query(`DROP TYPE IF EXISTS "public"."booking_modification_history_modification_type_enum"`);
         await queryRunner.query(`DROP INDEX "public"."idx_users_role_created"`);
         await queryRunner.query(`DROP INDEX "public"."idx_users_role"`);
         await queryRunner.query(`DROP INDEX "public"."idx_users_phone"`);

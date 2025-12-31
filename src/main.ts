@@ -5,13 +5,13 @@ import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
-  // Completely suppress NestJS framework logs during startup
-  const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log'],
-  });
-  
   // Create a custom logger for application messages only
   const logger = new Logger('Bootstrap');
+  
+  // Completely suppress NestJS framework logs during startup
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'], // Enable debug logs for development
+  });
   
   const configService = app.get(ConfigService);
 

@@ -23,7 +23,15 @@ export class InitialSchema1765773826067 implements MigrationInterface {
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_bookings_summary_covering"`);
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_bookings_date_status_analytics"`);
         await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_bookings_paid_recent"`);
-        await queryRunner.query(`CREATE TYPE "public"."booking_modification_history_modification_type_enum" AS ENUM('passenger_info', 'seat_change', 'contact_info')`);
+        await queryRunner.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_modification_history_modification_type_enum') THEN
+                    CREATE TYPE "public"."booking_modification_history_modification_type_enum" AS ENUM('passenger_info', 'seat_change', 'contact_info');
+                END IF;
+            END;
+            $$;
+        `);
         await queryRunner.query(`CREATE TABLE IF NOT EXISTS "booking_modification_history" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "booking_id" uuid NOT NULL, "user_id" uuid, "modification_type" "public"."booking_modification_history_modification_type_enum" NOT NULL, "description" text NOT NULL, "changes" jsonb, "previousValues" jsonb, "modified_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_ef0cd664b4d69c6197502cbc8fb" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_modification_history_booking_id" ON "booking_modification_history" ("booking_id") `);
         await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_modification_history_type" ON "booking_modification_history" ("modification_type") `);
@@ -181,7 +189,7 @@ export class InitialSchema1765773826067 implements MigrationInterface {
         await queryRunner.query(`DROP INDEX "public"."idx_modification_history_type"`);
         await queryRunner.query(`DROP INDEX "public"."idx_modification_history_booking_id"`);
         await queryRunner.query(`DROP TABLE "booking_modification_history"`);
-        await queryRunner.query(`DROP TYPE "public"."booking_modification_history_modification_type_enum"`);
+        await queryRunner.query(`DROP TYPE IF EXISTS "public"."booking_modification_history_modification_type_enum"`);
         await queryRunner.query(`CREATE INDEX "idx_bookings_paid_recent" ON "bookings" ("booked_at", "total_amount") WHERE (status = 'paid'::bookings_status_enum)`);
         await queryRunner.query(`CREATE INDEX "idx_bookings_date_status_analytics" ON "bookings" ("booked_at", "status") WHERE (booked_at IS NOT NULL)`);
         await queryRunner.query(`CREATE INDEX "idx_bookings_summary_covering" ON "bookings" ("booked_at", "status", "total_amount", "trip_id") `);

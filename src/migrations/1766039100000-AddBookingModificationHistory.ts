@@ -48,7 +48,7 @@ export class AddBookingModificationHistory1766039100000 implements MigrationInte
         await queryRunner.query(`DROP INDEX "public"."idx_modification_history_type"`);
         await queryRunner.query(`DROP INDEX "public"."idx_modification_history_booking_id"`);
         await queryRunner.query(`DROP TABLE "booking_modification_history"`);
-        await queryRunner.query(`DROP TYPE "public"."booking_modification_history_modification_type_enum"`);
+        await queryRunner.query(`DROP TYPE IF EXISTS "public"."booking_modification_history_modification_type_enum"`);
     }
 
 }
