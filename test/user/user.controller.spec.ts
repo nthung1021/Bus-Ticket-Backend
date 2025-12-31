@@ -3,7 +3,7 @@ import { UserController } from '../../src/user/user.controller';
 import { UserService } from '../../src/user/user.service';
 import { BookingStatus } from '../../src/entities/booking.entity';
 import { JwtAuthGuard } from '../../src/auth/jwt-auth.guard';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 
 describe('UserController', () => {
   let controller: UserController;
@@ -13,6 +13,7 @@ describe('UserController', () => {
     getUserBookings: jest.fn(),
     getProfile: jest.fn(),
     updateProfile: jest.fn(),
+    changePassword: jest.fn(),
   };
 
   const mockRequest = {
@@ -243,6 +244,145 @@ describe('UserController', () => {
 
       await expect(controller.updateProfile(mockRequest, updateDto)).rejects.toThrow(serviceError);
       expect(mockUserService.updateProfile).toHaveBeenCalledWith('test-user-id', updateDto);
+    });
+  });
+
+  describe('changePassword', () => {
+    it('should change password successfully', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockResponse = {
+        success: true,
+        message: 'Password changed successfully',
+      };
+      mockUserService.changePassword.mockResolvedValue(mockResponse);
+
+      const result = await controller.changePassword(mockRequest, changePasswordDto);
+
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should handle BadRequestException for Google users', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'Password change is not available for Google accounts. Your account is linked to Google authentication.',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle BadRequestException for Facebook users', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'Password change is not available for Facebook accounts. Your account is linked to Facebook authentication.',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle BadRequestException for phone users', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'Password change is not available for your account. You signed up using phone number authentication.',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle BadRequestException when passwords do not match', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'DifferentPass789!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'New password and confirm password do not match',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle UnauthorizedException when current password is incorrect', async () => {
+      const changePasswordDto = {
+        currentPassword: 'WrongPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const serviceError = new UnauthorizedException({
+        success: false,
+        message: 'Current password is incorrect',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle BadRequestException when new password is same as current', async () => {
+      const changePasswordDto = {
+        currentPassword: 'SamePass123!',
+        newPassword: 'SamePass123!',
+        confirmPassword: 'SamePass123!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'New password must be different from your current password',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should extract userId from request correctly', async () => {
+      const customRequest = {
+        user: {
+          userId: 'different-user-id',
+          email: 'different@example.com',
+        },
+      };
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockResponse = {
+        success: true,
+        message: 'Password changed successfully',
+      };
+      mockUserService.changePassword.mockResolvedValue(mockResponse);
+
+      await controller.changePassword(customRequest, changePasswordDto);
+
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('different-user-id', changePasswordDto);
     });
   });
 });

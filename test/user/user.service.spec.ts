@@ -3,7 +3,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { UserService } from '../../src/user/user.service';
 import { BookingService } from '../../src/booking/booking.service';
 import { User, UserRole } from '../../src/entities/user.entity';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+
+jest.mock('bcrypt');
 
 describe('UserService', () => {
   let service: UserService;
@@ -183,6 +186,160 @@ describe('UserService', () => {
       mockUserRepository.findOne.mockResolvedValue(null);
 
       await expect(service.updateProfile(userId, updateDto)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('changePassword', () => {
+    it('should change password successfully for email/password user', async () => {
+      const userId = 'user-1';
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockUser = {
+        id: userId,
+        email: 'test@example.com',
+        passwordHash: 'hashedOldPassword',
+        googleId: null,
+        facebookId: null,
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValueOnce(true); // current password valid
+      (bcrypt.compare as jest.Mock).mockResolvedValueOnce(false); // new password different
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashedNewPassword');
+      mockUserRepository.save.mockResolvedValue({ ...mockUser, passwordHash: 'hashedNewPassword' });
+
+      const result = await service.changePassword(userId, changePasswordDto);
+
+      expect(result).toEqual({
+        success: true,
+        message: 'Password changed successfully',
+      });
+      expect(mockUserRepository.save).toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException for Google user', async () => {
+      const userId = 'user-1';
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockUser = {
+        id: userId,
+        email: 'test@example.com',
+        googleId: 'google-123',
+        facebookId: null,
+        passwordHash: 'someHash',
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+
+      await expect(service.changePassword(userId, changePasswordDto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for Facebook user', async () => {
+      const userId = 'user-1';
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockUser = {
+        id: userId,
+        email: 'test@example.com',
+        googleId: null,
+        facebookId: 'facebook-123',
+        passwordHash: 'someHash',
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+
+      await expect(service.changePassword(userId, changePasswordDto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for phone user without password', async () => {
+      const userId = 'user-1';
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockUser = {
+        id: userId,
+        phone: '+84123456789',
+        googleId: null,
+        facebookId: null,
+        passwordHash: null,
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+
+      await expect(service.changePassword(userId, changePasswordDto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when passwords do not match', async () => {
+      const userId = 'user-1';
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'DifferentPass789!',
+      };
+      const mockUser = {
+        id: userId,
+        email: 'test@example.com',
+        passwordHash: 'hashedOldPassword',
+        googleId: null,
+        facebookId: null,
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+
+      await expect(service.changePassword(userId, changePasswordDto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw UnauthorizedException when current password is incorrect', async () => {
+      const userId = 'user-1';
+      const changePasswordDto = {
+        currentPassword: 'WrongPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockUser = {
+        id: userId,
+        email: 'test@example.com',
+        passwordHash: 'hashedOldPassword',
+        googleId: null,
+        facebookId: null,
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.changePassword(userId, changePasswordDto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw BadRequestException when new password is same as current', async () => {
+      const userId = 'user-1';
+      const changePasswordDto = {
+        currentPassword: 'SamePass123!',
+        newPassword: 'SamePass123!',
+        confirmPassword: 'SamePass123!',
+      };
+      const mockUser = {
+        id: userId,
+        email: 'test@example.com',
+        passwordHash: 'hashedPassword',
+        googleId: null,
+        facebookId: null,
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true); // both comparisons return true
+
+      await expect(service.changePassword(userId, changePasswordDto)).rejects.toThrow(BadRequestException);
     });
   });
 });
