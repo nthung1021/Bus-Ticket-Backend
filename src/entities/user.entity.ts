@@ -55,6 +55,15 @@ export class User {
   @Column({ name: 'password_hash' })
   passwordHash: string;
 
+  @Column({ name: 'is_email_verified', default: false })
+  isEmailVerified: boolean;
+
+  @Column({ name: 'email_verification_code', nullable: true })
+  emailVerificationCode: string | null;
+
+  @Column({ name: 'email_verification_expires_at', type: 'timestamp with time zone', nullable: true })
+  emailVerificationExpiresAt: Date | null;
+
   @Column({
     type: 'enum',
     enum: UserRole,

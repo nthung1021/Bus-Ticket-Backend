@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
+import { BookingModule } from '../booking/booking.module';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
@@ -22,6 +23,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
       useClass: JwtConfigService,
       inject: [ConfigService],
     }),
+    BookingModule,
   ],
   controllers: [AuthController],
   providers: [

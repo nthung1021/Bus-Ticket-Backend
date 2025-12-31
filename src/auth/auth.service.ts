@@ -3,6 +3,7 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,6 +15,7 @@ import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
+import { EmailService } from '../booking/email.service';
 
 type GoogleProfile = {
   googleId?: string;
@@ -23,6 +25,8 @@ type GoogleProfile = {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
@@ -30,6 +34,7 @@ export class AuthService {
     private refreshTokenRepository: Repository<RefreshToken>,
     private jwtService: JwtService,
     private jwtConfigService: JwtConfigService,
+    private emailService: EmailService,
   ) { }
 
   /**
@@ -115,6 +120,27 @@ export class AuthService {
 
     const savedUser = await this.usersRepository.save(user);
 
+    // Generate a 6-digit verification code and set expiry (15 minutes)
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+    savedUser.emailVerificationCode = code;
+    savedUser.emailVerificationExpiresAt = expiresAt;
+    await this.usersRepository.save(savedUser);
+
+    // Send verification email (failure to send shouldn't block registration)
+    try {
+      await this.emailService.sendEmail({
+        to: savedUser.email,
+        subject: 'Verify your Busticket account',
+        text: `Your verification code is ${code}. It expires in 15 minutes.`,
+      });
+      this.logger.log(`Verification email sent to ${savedUser.email}`);
+    } catch (err: any) {
+      this.logger.warn(`Failed to send verification email to ${savedUser.email}: ${err?.message || err}`);
+    }
+
     return {
       success: true,
       data: {
@@ -157,6 +183,33 @@ export class AuthService {
           role: user.role,
         },
       },
+    };
+  }
+
+  async verifyEmail(email: string, code: string) {
+    const user = await this.usersRepository.findOne({ where: { email } });
+    if (!user) {
+      throw new BadRequestException('Invalid verification code or email');
+    }
+
+    if (
+      !user.emailVerificationCode ||
+      !user.emailVerificationExpiresAt ||
+      user.emailVerificationCode !== code ||
+      user.emailVerificationExpiresAt < new Date()
+    ) {
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationCode = null;
+    user.emailVerificationExpiresAt = null;
+
+    await this.usersRepository.save(user);
+
+    return {
+      success: true,
+      message: 'Email verified successfully',
     };
   }
 
