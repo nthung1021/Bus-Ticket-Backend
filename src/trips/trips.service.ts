@@ -292,14 +292,18 @@ export class TripsService {
         ? new Date(updateTripDto.arrivalTime)
         : trip.arrivalTime;
 
-      this.validateTripTiming(newDepartureTime, newArrivalTime);
+      // If neither time actually changed (client sent same values), skip validation
+      const timesUnchanged =
+        newDepartureTime.getTime() === trip.departureTime.getTime() &&
+        newArrivalTime.getTime() === trip.arrivalTime.getTime();
+
+      if (!timesUnchanged) {
+        this.validateTripTiming(newDepartureTime, newArrivalTime);
+      }
 
       const newBusId = updateTripDto.busId || trip.busId;
-      if (
-        newBusId !== trip.busId ||
-        updateTripDto.departureTime ||
-        updateTripDto.arrivalTime
-      ) {
+      // Only check availability when bus changed or times actually changed
+      if (newBusId !== trip.busId || !timesUnchanged) {
         const isBusAvailable = await this.checkBusAvailability(
           newBusId,
           newDepartureTime,
