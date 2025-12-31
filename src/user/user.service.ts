@@ -35,6 +35,15 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
+    let authProvider = 'email';
+    if (user.googleId) {
+      authProvider = 'google';
+    } else if (user.facebookId) {
+      authProvider = 'facebook';
+    } else if (!user.passwordHash) {
+      authProvider = 'phone';
+    }
+
     return {
       success: true,
       data: {
@@ -44,6 +53,7 @@ export class UserService {
         fullName: user.name,
         role: user.role,
         createdAt: user.createdAt,
+        authProvider,
       }
     };
   }
