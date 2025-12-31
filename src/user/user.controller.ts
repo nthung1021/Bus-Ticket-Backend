@@ -1,7 +1,8 @@
-import { Controller, Get, Query, Request, UseGuards, HttpStatus, HttpCode } from '@nestjs/common';
+import { Controller, Get, Put, Query, Request, Body, UseGuards, HttpStatus, HttpCode } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UserService } from './user.service';
 import { BookingStatus } from '../entities/booking.entity';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -32,6 +33,20 @@ export class UserController {
     try {
       const userId = req.user.userId;
       return await this.userService.getProfile(userId);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Put('profile')
+  @HttpCode(HttpStatus.OK)
+  async updateProfile(
+    @Request() req: any,
+    @Body() updateProfileDto: UpdateProfileDto,
+  ) {
+    try {
+      const userId = req.user.userId;
+      return await this.userService.updateProfile(userId, updateProfileDto);
     } catch (error) {
       throw error;
     }

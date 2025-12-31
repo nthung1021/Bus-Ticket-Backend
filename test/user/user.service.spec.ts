@@ -16,6 +16,7 @@ describe('UserService', () => {
 
   const mockUserRepository = {
     findOne: jest.fn(),
+    save: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -97,6 +98,91 @@ describe('UserService', () => {
       mockUserRepository.findOne.mockResolvedValue(null);
 
       await expect(service.getProfile(userId)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('should update user profile successfully', async () => {
+      const userId = 'user-1';
+      const updateDto = {
+        fullName: 'Updated Name',
+        phone: '9876543210',
+      };
+      const mockUser = {
+        id: userId,
+        email: 'test@example.com',
+        phone: '123456789',
+        name: 'Test user',
+        role: UserRole.CUSTOMER,
+        createdAt: new Date(),
+      };
+      const updatedUser = {
+        ...mockUser,
+        name: updateDto.fullName,
+        phone: updateDto.phone,
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      mockUserRepository.save.mockResolvedValue(updatedUser);
+
+      const result = await service.updateProfile(userId, updateDto);
+
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({ where: { id: userId } });
+      expect(mockUserRepository.save).toHaveBeenCalledWith({
+        ...mockUser,
+        name: updateDto.fullName,
+        phone: updateDto.phone,
+      });
+      expect(result).toEqual({
+        success: true,
+        message: 'Profile updated successfully',
+        data: {
+          userId: updatedUser.id,
+          fullName: updatedUser.name,
+          phone: updatedUser.phone,
+          email: updatedUser.email,
+          role: updatedUser.role,
+          createdAt: updatedUser.createdAt,
+        }
+      });
+    });
+
+    it('should update only fullName when phone is not provided', async () => {
+      const userId = 'user-1';
+      const updateDto = {
+        fullName: 'Updated Name',
+      };
+      const mockUser = {
+        id: userId,
+        email: 'test@example.com',
+        phone: '123456789',
+        name: 'Test user',
+        role: UserRole.CUSTOMER,
+        createdAt: new Date(),
+      };
+      const updatedUser = {
+        ...mockUser,
+        name: updateDto.fullName,
+      };
+
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      mockUserRepository.save.mockResolvedValue(updatedUser);
+
+      const result = await service.updateProfile(userId, updateDto);
+
+      expect(mockUserRepository.save).toHaveBeenCalledWith({
+        ...mockUser,
+        name: updateDto.fullName,
+      });
+      expect(result.data.fullName).toBe(updateDto.fullName);
+    });
+
+    it('should throw NotFoundException when user does not exist', async () => {
+      const userId = 'non-existent';
+      const updateDto = { fullName: 'New Name' };
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.updateProfile(userId, updateDto)).rejects.toThrow(NotFoundException);
     });
   });
 });

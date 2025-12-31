@@ -12,6 +12,7 @@ describe('UserController', () => {
   const mockUserService = {
     getUserBookings: jest.fn(),
     getProfile: jest.fn(),
+    updateProfile: jest.fn(),
   };
 
   const mockRequest = {
@@ -182,6 +183,66 @@ describe('UserController', () => {
 
       await expect(controller.getProfile(mockRequest)).rejects.toThrow(serviceError);
       expect(mockUserService.getProfile).toHaveBeenCalledWith('test-user-id');
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('should update user profile successfully', async () => {
+      const updateDto = {
+        fullName: 'Updated Name',
+        phone: '9876543210',
+      };
+      const mockResponse = {
+        success: true,
+        message: 'Profile updated successfully',
+        data: {
+          userId: 'test-user-id',
+          fullName: 'Updated Name',
+          phone: '9876543210',
+          email: 'test@example.com',
+          role: 'customer',
+          createdAt: new Date(),
+        }
+      };
+      mockUserService.updateProfile.mockResolvedValue(mockResponse);
+
+      const result = await controller.updateProfile(mockRequest, updateDto);
+
+      expect(mockUserService.updateProfile).toHaveBeenCalledWith('test-user-id', updateDto);
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should handle partial updates', async () => {
+      const updateDto = {
+        fullName: 'New Name Only',
+      };
+      const mockResponse = {
+        success: true,
+        message: 'Profile updated successfully',
+        data: {
+          userId: 'test-user-id',
+          fullName: 'New Name Only',
+          phone: '123456789',
+          email: 'test@example.com',
+          role: 'customer',
+          createdAt: new Date(),
+        }
+      };
+      mockUserService.updateProfile.mockResolvedValue(mockResponse);
+
+      const result = await controller.updateProfile(mockRequest, updateDto);
+
+      expect(mockUserService.updateProfile).toHaveBeenCalledWith('test-user-id', updateDto);
+      expect(result.data.fullName).toBe('New Name Only');
+    });
+
+    it('should handle service errors when updating profile', async () => {
+      const updateDto = { fullName: 'New Name' };
+      const serviceError = new NotFoundException('User not found');
+      mockUserService.updateProfile.mockRejectedValue(serviceError);
+
+      await expect(controller.updateProfile(mockRequest, updateDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.updateProfile).toHaveBeenCalledWith('test-user-id', updateDto);
     });
   });
 });
