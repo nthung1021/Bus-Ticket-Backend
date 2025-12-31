@@ -220,12 +220,12 @@ export class BookingService {
 
       const savedBooking = await manager.save(booking);
 
-      // 7. Create passenger details
+      // 7. Create passenger details (store null when no document provided)
       const passengerDetails = passengers.map(passenger =>
         manager.create(PassengerDetail, {
           bookingId: savedBooking.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId ?? undefined,
           seatCode: passenger.seatCode,
         })
       );
@@ -292,7 +292,7 @@ export class BookingService {
         passengers: savedPassengers.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId || null,
           seatCode: passenger.seatCode,
         })),
         seats: seatIds.map((seatId, index) => ({
@@ -318,12 +318,16 @@ export class BookingService {
         // 4. LƯU Ý: PayOS yêu cầu tối thiểu 2000 VND. Nếu để 1 VND có thể bị lỗi.
         const paymentAmount = isTestMode ? 2000 : result.totalAmount;
 
+        const frontendBase = this.configService.get('FRONTEND_URL') || 'http://localhost:8000';
+        const returnUrl = `${frontendBase.replace(/\/$/, '')}/payment/success?bookingId=${result.id}`;
+        const cancelUrl = `${frontendBase.replace(/\/$/, '')}/payment/cancel?bookingId=${result.id}`;
+
         const payRes = await this.payosService.createPaymentLink({
           amount: paymentAmount, // Truyền số 2000 vào đây
           bookingId: result.id,
           description: `Booking ${result.bookingReference}`, // Thêm ref để dễ tra soát
-          returnUrl: `${this.configService.get('FRONTEND_URL')}/payment/success`, // Nên dùng biến môi trường cho URL
-          cancelUrl: `${this.configService.get('FRONTEND_URL')}/payment/cancel`,
+          returnUrl,
+          cancelUrl,
         });
         
         (result as any).paymentUrl = payRes?.checkoutUrl || null;
@@ -474,7 +478,7 @@ export class BookingService {
       passengers: booking.passengerDetails?.map(passenger => ({
         id: passenger.id,
         fullName: passenger.fullName,
-        documentId: passenger.documentId,
+        documentId: passenger.documentId || null,
         seatCode: passenger.seatCode,
       })) || [],
 
@@ -508,6 +512,32 @@ export class BookingService {
 
       // 2. Validate booking status
       if (booking.status !== BookingStatus.PENDING) {
+        // If booking already marked as PAID, treat as idempotent and return current booking
+        if (booking.status === BookingStatus.PAID) {
+          const seatStatuses = booking.seatStatuses || [];
+
+          return {
+            id: booking.id,
+            bookingReference: booking.bookingReference,
+            tripId: booking.tripId,
+            totalAmount: booking.totalAmount,
+            status: booking.status,
+            bookedAt: booking.bookedAt,
+            expirationTimestamp: null,
+            passengers: booking.passengerDetails?.map(passenger => ({
+              id: passenger.id,
+              fullName: passenger.fullName,
+              documentId: passenger.documentId || null,
+              seatCode: passenger.seatCode,
+            })) || [],
+            seats: seatStatuses.map(status => ({
+              seatId: status.seatId,
+              seatCode: '',
+              status: status.state,
+            })),
+          } as BookingResponseDto;
+        }
+
         throw new BadRequestException(
           `Cannot confirm payment for booking with status: ${booking.status}`,
         );
@@ -552,7 +582,7 @@ export class BookingService {
         passengers: updatedBooking.passengerDetails.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId || null,
           seatCode: passenger.seatCode,
         })),
         seats: seatStatuses.map(status => ({
@@ -591,7 +621,11 @@ export class BookingService {
 
       // 2. Validate booking status
       if (booking.status === BookingStatus.CANCELLED) {
-        throw new BadRequestException('Booking is already cancelled');
+        // Idempotent: if already cancelled, return success without error
+        return {
+          success: true,
+          message: 'Booking is already cancelled',
+        };
       }
 
       if (booking.status === BookingStatus.PAID) {
@@ -747,7 +781,7 @@ export class BookingService {
         passengers: updatedBooking.passengerDetails?.map(p => ({
           id: p.id,
           fullName: p.fullName,
-          documentId: p.documentId,
+          documentId: p.documentId || null,
           seatCode: p.seatCode,
         })) || [],
         seats: updatedBooking.seatStatuses?.map(s => ({
@@ -1000,7 +1034,7 @@ export class BookingService {
         doc
           .fontSize(12)
           .text(
-            `${index + 1}. ${p.fullName} - Doc: ${p.documentId} - Seat: ${p.seatCode}`,
+            `${index + 1}. ${p.fullName} - Doc: ${p.documentId || ''} - Seat: ${p.seatCode}`,
           );
       });
 
@@ -1299,7 +1333,7 @@ export class BookingService {
 
       if (modification.documentId && modification.documentId !== passenger.documentId) {
         changes.documentId = modification.documentId;
-        changeDescription.push(`document ID from "${passenger.documentId}" to "${modification.documentId}"`);
+        changeDescription.push(`document ID from "${passenger.documentId || ''}" to "${modification.documentId || ''}"`);
       }
 
       if (Object.keys(changes).length > 0) {
@@ -1628,7 +1662,7 @@ export class BookingService {
             id: updatedPassenger.id,
             bookingId: updatedPassenger.bookingId,
             fullName: updatedPassenger.fullName,
-            documentId: updatedPassenger.documentId,
+            documentId: updatedPassenger.documentId || null,
             seatCode: updatedPassenger.seatCode,
             modifiedAt: new Date(),
           });
@@ -1677,7 +1711,7 @@ export class BookingService {
     }
 
     if (changes.documentId) {
-      descriptions.push(`document ID from '${previousValues.documentId}' to '${changes.documentId}'`);
+      descriptions.push(`document ID from '${previousValues.documentId || ''}' to '${changes.documentId || ''}'`);
     }
 
     if (changes.seatCode) {

@@ -12,6 +12,8 @@ import {
   Delete,
   Query,
   Res,
+  Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -50,6 +52,8 @@ interface UpdatePassengerDto {
 
 @Controller('bookings')
 export class BookingController {
+  private readonly logger = new Logger(BookingController.name);
+
   constructor(
     private readonly bookingService: BookingService,
     private readonly bookingSchedulerService: BookingSchedulerService,
@@ -150,7 +154,7 @@ export class BookingController {
           booking.passengerDetails?.map((p) => ({
             id: p.id,
             fullName: p.fullName,
-            documentId: p.documentId,
+            documentId: p.documentId || null,
             seatCode: p.seatCode,
           })) || [],
         seats:
@@ -328,15 +332,35 @@ export class BookingController {
     @Param('bookingId') bookingId: string,
     @Body() body: { email?: string } = {},
   ): Promise<{ success: boolean; message: string }> {
-    const result = await this.bookingService.sendEticketEmail(
-      bookingId,
-      body.email,
-    );
+    try {
+      const result = await this.bookingService.sendEticketEmail(
+        bookingId,
+        body.email,
+      );
 
-    return {
-      success: result.success,
-      message: 'e-ticket email sent successfully',
-    };
+      return {
+        success: result.success,
+        message: 'e-ticket email sent successfully',
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send e-ticket email for booking ${bookingId}`,
+        error?.stack || error,
+      );
+
+      // If email service is not configured or send failed due to missing transporter,
+      // return a friendly non-500 response so frontend can proceed gracefully.
+      const message = String(error?.message || '').toLowerCase();
+      if (message.includes('no email service') || message.includes('no email service configuration')) {
+        return {
+          success: false,
+          message: 'Email service not configured. E-ticket could not be sent.',
+        };
+      }
+
+      // For other errors, rethrow to be handled by global exception filter
+      throw error;
+    }
   }
 
   // Admin endpoint - Manual cleanup of expired bookings

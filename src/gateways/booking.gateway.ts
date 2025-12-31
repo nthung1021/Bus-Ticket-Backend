@@ -645,10 +645,16 @@ export class BookingGateway
     this.bookingSessions.forEach((session, key) => {
       if (session.socketId === socketId && session.tripId === tripId) {
         sessionsToRemove.push(key);
-        // Remove client from booking room
-        this.server.sockets.sockets
-          .get(socketId)
-          ?.leave(`booking:${session.bookingId}`);
+        // Remove client from booking room (guard against different socket.io shapes)
+        try {
+          const ioSockets: any = (this.server?.sockets as any)?.sockets;
+          if (ioSockets) {
+            const socket = typeof ioSockets.get === 'function' ? ioSockets.get(socketId) : ioSockets[socketId];
+            socket?.leave?.(`booking:${session.bookingId}`);
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to remove socket ${socketId} from booking room: ${String(err)}`);
+        }
       }
     });
 

@@ -507,8 +507,10 @@ async function seedPassengerDetails(dataSource: DataSource) {
     const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
     const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
     const fullName = `${lastName} ${firstName} ${Math.random() > 0.5 ? 'Nam' : 'Nữ'}`;
-    const documentId = `${Math.floor(Math.random() * 900000000) + 100000000}`;
-    passengerValues.push(`('${id}', '${seat.booking_id}', '${fullName}', '${documentId}', '${seat.seat_code}')`);
+    // 70% chance to include a document ID, otherwise NULL
+    const hasDocument = Math.random() > 0.3;
+    const documentIdValue = hasDocument ? `${Math.floor(Math.random() * 900000000) + 100000000}` : null;
+    passengerValues.push(`('${id}', '${seat.booking_id}', '${fullName}', ${documentIdValue ? `'${documentIdValue}'` : 'NULL'}, '${seat.seat_code}')`);
   });
   if (passengerValues.length > 0) {
     await dataSource.query(`INSERT INTO passenger_details (id, booking_id, full_name, document_id, seat_code) VALUES ${passengerValues.join(',\n')}`);

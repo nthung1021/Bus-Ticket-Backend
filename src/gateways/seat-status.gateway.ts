@@ -95,6 +95,13 @@ export class SeatStatusGateway
         this.updateCorsConfiguration();
     }
 
+    // Basic UUID validation to avoid empty string or invalid inputs from clients
+    private isValidUuid(id?: string) {
+        if (!id || typeof id !== 'string') return false;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        return uuidRegex.test(id);
+    }
+
     /**
      * Updates CORS configuration based on environment variables
      * This method is called in constructor after ConfigService is available
@@ -194,6 +201,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId, userId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid lockSeat request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
         const lockKey = `${tripId}:${seatId}`;
 
         // Check if seat is already locked by someone else
@@ -250,6 +261,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid unlockSeat request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
         const lockKey = `${tripId}:${seatId}`;
 
         const lock = this.seatLocks.get(lockKey);
@@ -288,6 +303,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid refreshLock request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
         const lockKey = `${tripId}:${seatId}`;
 
         const lock = this.seatLocks.get(lockKey);
@@ -321,6 +340,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId, userId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid bookSeat request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
         const lockKey = `${tripId}:${seatId}`;
 
         // Check if seat is locked by this client
@@ -373,6 +396,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatIds, userId } = data;
+        if (!this.isValidUuid(tripId) || !Array.isArray(seatIds) || seatIds.some(s => !this.isValidUuid(s))) {
+            this.logger.warn(`Invalid bookSeats request from ${client.id}: tripId=${tripId}`);
+            return { success: false, message: 'Invalid tripId or seatIds' };
+        }
         const bookedSeats: string[] = [];
         const failedSeats: Array<{ seatId: string; reason: string }> = [];
 
@@ -438,6 +465,10 @@ export class SeatStatusGateway
         @ConnectedSocket() client: Socket,
     ) {
         const { tripId, seatId, userId } = data;
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            this.logger.warn(`Invalid cancelSeat request from ${client.id}: tripId=${tripId} seatId=${seatId}`);
+            return { success: false, message: 'Invalid tripId or seatId' };
+        }
 
         // Update seat status in database to available
         try {
@@ -728,6 +759,10 @@ export class SeatStatusGateway
         state: SeatState,
         lockedUntil: Date | null,
     ): Promise<void> {
+        if (!this.isValidUuid(tripId) || !this.isValidUuid(seatId)) {
+            console.error('Invalid tripId or seatId when attempting to save seat status:', { tripId, seatId });
+            throw new Error('Invalid tripId or seatId');
+        }
         try {
             // Check if seat status already exists for this trip/seat combination
             const existingStatus = await this.seatStatusRepository.findOne({

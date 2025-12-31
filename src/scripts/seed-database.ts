@@ -320,10 +320,12 @@ async function seedDatabase() {
       const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
       const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
       const fullName = `${lastName} ${firstName} ${i % 2 === 0 ? 'Văn' : 'Thị'} ${String.fromCharCode(65 + i % 26)}`;
-      const documentId = `ID${i.toString().padStart(8, '0')}`;
       const seatCode = `${String.fromCharCode(65 + Math.floor(Math.random() * 10))}${Math.floor(Math.random() * 4) + 1}`;
-      
-      passengerValues.push(`('${id}', '${bookingId}', '${fullName}', '${documentId}', '${seatCode}')`);
+      // Make documentId optional in seed data: 70% filled, 30% NULL
+      const hasDocument = Math.random() > 0.3;
+      const documentIdValue = hasDocument ? `ID${i.toString().padStart(8, '0')}` : null;
+
+      passengerValues.push(`('${id}', '${bookingId}', '${fullName}', ${documentIdValue ? `'${documentIdValue}'` : 'NULL'}, '${seatCode}')`);
     }
     
     await dataSource.query(`

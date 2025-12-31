@@ -242,6 +242,18 @@ export class PayosService {
   }
 
   async verifyWebhookData(webhookData: any): Promise<WebhookData> {
+    // Allow disabling verification for local/dev testing using env var
+    const skipVerify =
+      (this.configService.get('PAYOS_SKIP_WEBHOOK_VERIFY') || '')
+        .toString()
+        .trim()
+        .toLowerCase() === 'true';
+
+    if (skipVerify) {
+      this.logger.log('Bypassing PayOS webhook verification (PAYOS_SKIP_WEBHOOK_VERIFY=true)');
+      return webhookData as WebhookData;
+    }
+
     try {
       // Verify webhook signature using PayOS method
       const verifiedData = await this.payos.webhooks.verify(webhookData);

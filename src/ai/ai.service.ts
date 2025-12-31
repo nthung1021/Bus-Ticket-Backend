@@ -132,13 +132,13 @@ export class AiService {
           price: number 
         }], 
         passengers: [{
-          fullName: string, 
-          documentId: string, 
-          seatCode: string, 
-          documentType?: string, 
-          phoneNumber?: string, 
-          email?: string 
-        }], 
+          fullName: string,
+          documentId?: string,
+          seatCode: string,
+          documentType?: string,
+          phoneNumber?: string,
+          email?: string
+        }],
         totalPrice: number, 
         paymentMethod?: string, 
         isGuestCheckout?: boolean, 
@@ -157,7 +157,7 @@ export class AiService {
       ** NOTE **:
       - tripId is fetched from the selected trip in tool 'search_trips' results.
       - Each element in seats array only needs 'code' provided by user, other fields can be filled based on tool 'search_seats' results.
-      - Each element in passengers array must have fullName, documentId, seatCode. Other fields are optional.
+      - Each element in passengers array must have 'fullName' and 'seatCode'. 'documentId' is optional. Other fields are optional.
       - totalPrice is calculated using 'calculate_total_price' tool.
       - Other fields are optional based on user input.
       ---
@@ -185,7 +185,7 @@ export class AiService {
           {
             seatCode: string,
             fullName: string,
-            documentId: string,
+            documentId?: string,
             documentType?: string,
             phoneNumber?: string,
             email?: string
