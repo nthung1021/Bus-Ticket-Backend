@@ -66,11 +66,10 @@ export const databaseConfig = (
   ],
   
   // Automatically synchronize database schema with entities (disabled in production)
-  // synchronize: configService.get<string>('NODE_ENV', 'development') !== 'production',
-  synchronize: false,
+  synchronize: configService.get<string>('DB_SYNC') === 'true' || configService.get<string>('NODE_ENV', 'development') !== 'production',
 
   // Disable query logging for better performance
-  logging: false,
+  logging: configService.get<string>('DB_LOGGING') === 'true',
   
   // Path to database migration files
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
