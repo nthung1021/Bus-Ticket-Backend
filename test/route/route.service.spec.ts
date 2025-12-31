@@ -7,6 +7,7 @@ import { RoutePoint, PointType } from '../../src/entities/route-point.entity';
 import { CreateRouteDto } from '../../src/route/dto/create-route.dto';
 import { UpdateRouteDto } from '../../src/route/dto/update-route.dto';
 import { CreateRoutePointDto } from '../../src/route/dto/create-route-point.dto';
+import { Booking } from '../../src/entities/booking.entity';
 import { UpdateRoutePointDto } from '../../src/route/dto/update-route-point.dto';
 
 describe('RouteService', () => {
@@ -29,6 +30,10 @@ describe('RouteService', () => {
     find: jest.fn(),
     findOne: jest.fn(),
     delete: jest.fn(),
+  };
+
+  const mockBookingRepo = {
+    createQueryBuilder: jest.fn(),
   };
 
   const id = 'route-1';
@@ -78,6 +83,10 @@ describe('RouteService', () => {
         {
           provide: getRepositoryToken(RoutePoint),
           useValue: mockPointRepo,
+        },
+        {
+          provide: getRepositoryToken(Booking),
+          useValue: mockBookingRepo,
         },
       ],
     }).compile();

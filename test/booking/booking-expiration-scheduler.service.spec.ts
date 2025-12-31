@@ -82,7 +82,7 @@ describe('BookingExpirationScheduler', () => {
       scheduler.onModuleInit();
       
       expect(loggerSpy).toHaveBeenCalledWith(
-        '🕒 Booking expiration cron job started - runs every 2 minutes'
+        'Booking expiration cron job started - runs every 2 minutes'
       );
     });
 
@@ -93,7 +93,7 @@ describe('BookingExpirationScheduler', () => {
       scheduler.onModuleDestroy();
       
       expect(loggerSpy).toHaveBeenCalledWith(
-        '🛑 Booking expiration cron job stopped'
+        'Booking expiration cron job stopped'
       );
     });
   });
@@ -187,7 +187,7 @@ describe('BookingExpirationScheduler', () => {
         expect.stringContaining(`🔧 [${result.sessionId}] Manual booking expiration triggered`)
       );
       expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`✅ [${result.sessionId}] Manual expiration completed`)
+        expect.stringContaining(`[${result.sessionId}] Manual expiration completed`)
       );
     });
   });
@@ -254,8 +254,8 @@ describe('BookingExpirationScheduler', () => {
       // Assert
       expect(result.success).toBe(true);
       expect(result.message).toContain('successfully');
-      expect(loggerSpy).toHaveBeenCalledWith('🔄 Restarting booking expiration cron job');
-      expect(loggerSpy).toHaveBeenCalledWith('✅ Cron job restarted successfully');
+      expect(loggerSpy).toHaveBeenCalledWith('Restarting booking expiration cron job');
+      expect(loggerSpy).toHaveBeenCalledWith('Cron job restarted successfully');
     });
 
     it('should handle restart failures gracefully', () => {

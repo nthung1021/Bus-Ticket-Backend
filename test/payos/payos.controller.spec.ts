@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PayosController } from '../../src/payos/payos.controller';
+import { ConfigService } from '@nestjs/config';
 import { PayosService } from '../../src/payos/payos.service';
 
 describe('PayosController', () => {
@@ -22,6 +23,7 @@ describe('PayosController', () => {
           provide: PayosService,
           useValue: mockPayosService,
         },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('') } },
       ],
     }).compile();
 
@@ -71,7 +73,7 @@ describe('PayosController', () => {
       mockPayosService.verifyWebhookData.mockResolvedValue(verifiedData);
       mockPayosService.handleWebhook.mockResolvedValue({ success: true });
 
-      const result = await controller.handleWebhook(body);
+      const result = await controller.handleWebhook(body, { 'x-payos-signature': 'sig' });
 
       expect(service.verifyWebhookData).toHaveBeenCalledWith(body);
       expect(service.handleWebhook).toHaveBeenCalledWith(verifiedData);
@@ -80,7 +82,7 @@ describe('PayosController', () => {
 
     it('should return error if verification fails', async () => {
       mockPayosService.verifyWebhookData.mockRejectedValue(new Error('Invalid'));
-      const result = await controller.handleWebhook({});
+      const result = await controller.handleWebhook({}, { 'x-payos-signature': 'sig' });
       expect(result.success).toBe(false);
       expect(result.message).toBe('Invalid webhook data');
     });
