@@ -264,11 +264,11 @@ async function seedUsers(dataSource: DataSource): Promise<string[]> {
   for (let i = 1; i <= 50; i++) {
     const id = crypto.randomUUID();
     userIds.push(id);
-    const role = i <= 2 ? 'admin' : i <= 7 ? 'operator' : 'customer';
-    const googleId = i <= 10 ? `'google_${i}'` : 'NULL';
+    const role = 'customer';
+    const googleId = 'NULL';
     const phone = `0${(900000000 + i * 1000).toString()}`;
     const name = vietnameseNames[(i - 1) % vietnameseNames.length];
-    userValues.push(`('${id}', ${googleId}, 'user${i}@gmail.com', '${name}', '${phone}', '$2b$10$hashedpassword${i}', '${role}', NOW())`);
+    userValues.push(`('${id}', ${googleId}, 'customer${i}@gmail.com', '${name}', '${phone}', '$2b$10$hashedpassword${i}', '${role}', NOW())`);
   }
   await dataSource.query(`
     INSERT INTO users (id, "googleId", email, name, phone, password_hash, role, created_at) VALUES
@@ -507,9 +507,7 @@ async function seedPassengerDetails(dataSource: DataSource) {
     const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
     const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
     const fullName = `${lastName} ${firstName} ${Math.random() > 0.5 ? 'Nam' : 'Nữ'}`;
-    // 70% chance to include a document ID, otherwise NULL
-    const hasDocument = Math.random() > 0.3;
-    const documentIdValue = hasDocument ? `${Math.floor(Math.random() * 900000000) + 100000000}` : null;
+    const documentIdValue = `0${Math.floor(Math.random() * 80) + 10}${Math.floor(Math.random() * 899999999) + 100000000}`;
     passengerValues.push(`('${id}', '${seat.booking_id}', '${fullName}', ${documentIdValue ? `'${documentIdValue}'` : 'NULL'}, '${seat.seat_code}')`);
   });
   if (passengerValues.length > 0) {
