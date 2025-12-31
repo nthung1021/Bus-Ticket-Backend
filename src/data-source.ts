@@ -14,10 +14,12 @@ export const AppDataSource = new DataSource({
   username: configService.get('DB_USERNAME', 'postgres'),
   password: configService.get('DB_PASSWORD', 'postgres'),
   database: configService.get('DB_NAME', 'bus_booking'),
-  synchronize: false, // Always false for production-like setup
+  synchronize: true, // Enabled for development: auto-create/update schema
   logging: true,
+  // Include all entity folders (some modules keep entities under module folders)
   entities: [
-    'src/entities/**/*.ts'
+    'src/entities/**/*.ts',
+    'src/**/entities/**/*.ts'
   ],
   migrations: [
     'src/migrations/**/*.ts'
@@ -26,6 +28,13 @@ export const AppDataSource = new DataSource({
     'src/subscribers/**/*.ts'
   ],
   extra: {
+    // Force single client (effectively disable pooling) to avoid pool-related behavior
+    max: 1,
+    min: 0,
+    // Make idle connections close immediately
+    idleTimeoutMillis: 0,
+    // Connection timeout short
+    connectionTimeoutMillis: 2000,
     ssl: configService.get('NODE_ENV') === 'production' ? {
       sslmode: "require",
       rejectUnauthorized: false,

@@ -16,7 +16,7 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { BookingModule } from './booking/booking.module';
 import { UserModule } from './user/user.module';
-import { PoolMonitorMiddleware } from './middleware/pool-monitor.middleware';
+// Pool monitoring removed per request: no middleware import
 import { DatabaseService } from './database/database.service';
 import { GatewaysModule } from './gateways/gateways.module';
 import { SeatStatusModule } from './seat-status/seat-status.module';
@@ -59,6 +59,6 @@ import { ChatModule } from './chat/chat.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(PoolMonitorMiddleware).forRoutes('*'); // Apply to all routes
+    // PoolMonitorMiddleware removed to disable pool monitoring
   }
 }
