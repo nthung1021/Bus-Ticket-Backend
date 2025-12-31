@@ -11,6 +11,7 @@ import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
 import { BookingModificationHistory, ModificationType } from '../entities/booking-modification-history.entity';
 import { SeatLayout } from '../entities/seat-layout.entity';
+import { RoutePoint } from '../entities/route-point.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
@@ -125,7 +126,7 @@ export class BookingService {
   }
 
   async createBooking(userId: string | null, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
-    const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
+    const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone, pickupPointId, dropoffPointId } = createBookingDto;
 
     // Start transaction
     const result = await this.dataSource.transaction(async manager => {
@@ -205,6 +206,30 @@ export class BookingService {
         status: BookingStatus.PENDING,
         expiresAt: expiresAt, // Set expiration for pending bookings
       };
+
+      // Validate and attach pickup/dropoff points if provided
+      if (pickupPointId) {
+        const pickupPoint = await manager.findOne(RoutePoint, { where: { id: pickupPointId } });
+        if (!pickupPoint) {
+          throw new BadRequestException('Invalid pickupPointId');
+        }
+        // Ensure it matches trip's route
+        if (pickupPoint.routeId !== trip.routeId) {
+          throw new BadRequestException('pickupPoint does not belong to trip route');
+        }
+        bookingData.pickupPointId = pickupPointId;
+      }
+
+      if (dropoffPointId) {
+        const dropoffPoint = await manager.findOne(RoutePoint, { where: { id: dropoffPointId } });
+        if (!dropoffPoint) {
+          throw new BadRequestException('Invalid dropoffPointId');
+        }
+        if (dropoffPoint.routeId !== trip.routeId) {
+          throw new BadRequestException('dropoffPoint does not belong to trip route');
+        }
+        bookingData.dropoffPointId = dropoffPointId;
+      }
       // Notification for auto-paid booking
       if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
          // We'll handle notification after save to get ID, or here if we have enough info. 
@@ -302,6 +327,8 @@ export class BookingService {
           seatCode: seats[index].code,
           status: SeatState.BOOKED,
         })),
+        pickupPointId: bookingData.pickupPointId || null,
+        dropoffPointId: bookingData.dropoffPointId || null,
       };
     });
 
@@ -352,7 +379,9 @@ export class BookingService {
         'trip.bus',
         'passengerDetails',
         'seatStatuses',
-        'seatStatuses.seat'
+        'seatStatuses.seat',
+        'pickupPoint',
+        'dropoffPoint'
       ],
     });
 

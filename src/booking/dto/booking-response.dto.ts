@@ -20,4 +20,8 @@ export class BookingResponseDto {
     seatCode: string;
     status: string;
   }[];
+
+  // Optional pickup/dropoff points
+  pickupPointId?: string | null;
+  dropoffPointId?: string | null;
 }

@@ -175,6 +175,10 @@ export class BookingController {
           booking.status === 'pending'
             ? new Date(booking.bookedAt.getTime() + 15 * 60 * 1000)
             : null,
+        pickupPointId: booking.pickupPointId || null,
+        dropoffPointId: booking.dropoffPointId || null,
+        pickupPoint: booking.pickupPoint ? { id: booking.pickupPoint.id, name: booking.pickupPoint.name, latitude: booking.pickupPoint.latitude, longitude: booking.pickupPoint.longitude } : null,
+        dropoffPoint: booking.dropoffPoint ? { id: booking.dropoffPoint.id, name: booking.dropoffPoint.name, latitude: booking.dropoffPoint.latitude, longitude: booking.dropoffPoint.longitude } : null,
       };
 
       return {
