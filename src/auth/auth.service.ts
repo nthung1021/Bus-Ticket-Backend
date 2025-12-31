@@ -8,10 +8,13 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtConfigService } from '../config/jwt.config.service';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
+import { PasswordResetToken } from '../entities/password-reset-token.entity';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -32,9 +35,12 @@ export class AuthService {
     private usersRepository: Repository<User>,
     @InjectRepository(RefreshToken)
     private refreshTokenRepository: Repository<RefreshToken>,
+    @InjectRepository(PasswordResetToken)
+    private passwordResetTokenRepository: Repository<PasswordResetToken>,
     private jwtService: JwtService,
     private jwtConfigService: JwtConfigService,
     private emailService: EmailService,
+    private configService: ConfigService,
   ) { }
 
   /**
@@ -243,6 +249,64 @@ export class AuthService {
     return {
       success: true,
       message: 'Verification email resent',
+    };
+  }
+
+  async forgotPassword(email: string) {
+    // Generate a secure token and its hash
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const salt = await bcrypt.genSalt();
+    const tokenHash = await bcrypt.hash(rawToken, salt);
+
+    // Expire in 1 hour
+    const expiredAt = new Date();
+    expiredAt.setHours(expiredAt.getHours() + 1);
+
+    // Try to find user; do not reveal whether it exists to callers
+    const user = await this.usersRepository.findOne({ where: { email } });
+
+    if (user) {
+      // Optionally: invalidate previous unused tokens for this user (cleanup)
+      try {
+        await this.passwordResetTokenRepository
+          .createQueryBuilder()
+          .delete()
+          .where('user_id = :userId AND used = false', { userId: user.id })
+          .execute();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+
+      const tokenEntity = this.passwordResetTokenRepository.create({
+        userId: user.id,
+        tokenHash,
+        expiredAt,
+        used: false,
+      } as Partial<PasswordResetToken> as PasswordResetToken);
+
+      await this.passwordResetTokenRepository.save(tokenEntity);
+
+      // Send reset email (best effort)
+      try {
+        const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
+        await this.emailService.sendEmail({
+          to: user.email,
+          subject: 'Password reset instructions',
+          text: `Use the following link to reset your password: ${frontendUrl}/reset-password?token=${rawToken}`,
+        });
+        this.logger.log(`Password reset email sent to ${user.email}`);
+      } catch (err: any) {
+        this.logger.warn(`Failed to send password reset email to ${user.email}: ${err?.message || err}`);
+      }
+    }
+
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+
+    return {
+      success: true,
+      data: { resetUrl },
+      message: "If an account with that email exists, we've sent password reset instructions.",
     };
   }
 
