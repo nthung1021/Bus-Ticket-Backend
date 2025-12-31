@@ -25,4 +25,15 @@ export class UserController {
       throw error;
     }
   }
+
+  @Get('profile')
+  @HttpCode(HttpStatus.OK)
+  async getProfile(@Request() req: any) {
+    try {
+      const userId = req.user.userId;
+      return await this.userService.getProfile(userId);
+    } catch (error) {
+      throw error;
+    }
+  }
 }

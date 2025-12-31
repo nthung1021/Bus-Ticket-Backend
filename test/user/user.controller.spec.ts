@@ -3,6 +3,7 @@ import { UserController } from '../../src/user/user.controller';
 import { UserService } from '../../src/user/user.service';
 import { BookingStatus } from '../../src/entities/booking.entity';
 import { JwtAuthGuard } from '../../src/auth/jwt-auth.guard';
+import { NotFoundException } from '@nestjs/common';
 
 describe('UserController', () => {
   let controller: UserController;
@@ -10,6 +11,7 @@ describe('UserController', () => {
 
   const mockUserService = {
     getUserBookings: jest.fn(),
+    getProfile: jest.fn(),
   };
 
   const mockRequest = {
@@ -150,6 +152,36 @@ describe('UserController', () => {
         'different-user-id',
         undefined,
       );
+    });
+  });
+
+  describe('getProfile', () => {
+    it('should return user profile successfully', async () => {
+      const mockProfile = {
+        success: true,
+        data: {
+          userId: 'test-user-id',
+          email: 'test@example.com',
+          phone: '123456789',
+          fullName: 'Test User',
+          role: 'customer',
+          createdAt: new Date(),
+        }
+      };
+      mockUserService.getProfile.mockResolvedValue(mockProfile);
+
+      const result = await controller.getProfile(mockRequest);
+
+      expect(mockUserService.getProfile).toHaveBeenCalledWith('test-user-id');
+      expect(result).toEqual(mockProfile);
+    });
+
+    it('should handle service errors when fetching profile', async () => {
+      const serviceError = new NotFoundException('User not found');
+      mockUserService.getProfile.mockRejectedValue(serviceError);
+
+      await expect(controller.getProfile(mockRequest)).rejects.toThrow(serviceError);
+      expect(mockUserService.getProfile).toHaveBeenCalledWith('test-user-id');
     });
   });
 });
