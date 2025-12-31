@@ -55,10 +55,10 @@ export class User {
   @Column({ name: 'password_hash' })
   passwordHash: string;
 
-  @Column({ name: 'is_email_verified', default: false })
+  @Column({ name: 'is_email_verified', type: 'boolean', default: false })
   isEmailVerified: boolean;
 
-  @Column({ name: 'email_verification_code', nullable: true })
+  @Column({ name: 'email_verification_code', type: 'varchar', length: 6, nullable: true })
   emailVerificationCode: string | null;
 
   @Column({ name: 'email_verification_expires_at', type: 'timestamp with time zone', nullable: true })
