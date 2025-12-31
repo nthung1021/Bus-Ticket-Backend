@@ -52,7 +52,7 @@ export class SeatStatus {
   @JoinColumn({ name: 'trip_id' })
   trip: Trip;
 
-  @ManyToOne(() => Seat, (seat) => seat.seatStatuses)
+  @ManyToOne(() => Seat, (seat) => seat.seatStatuses, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'seat_id' })
   seat: Seat;
 
