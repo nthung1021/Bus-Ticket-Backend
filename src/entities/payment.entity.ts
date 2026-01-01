@@ -52,6 +52,9 @@ export class Payment {
   @CreateDateColumn({ name: 'processed_at', type: 'timestamp with time zone' })
   processedAt: Date;
 
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
+  createdAt: Date;
+
   // Relations
   @ManyToOne(() => Booking, (booking) => booking.payments)
   @JoinColumn({ name: 'booking_id' })

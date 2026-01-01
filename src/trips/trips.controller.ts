@@ -16,6 +16,7 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { Trip } from '../entities/trip.entity';
 import { TripsService } from './trips.service';
+import { PayosService } from '../payos/payos.service';
 import { SearchTripsDto } from './dto/search-trips.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -25,7 +26,7 @@ import { AssignBusDto, CheckAvailabilityDto, ScheduleQueryDto } from './dto/assi
 export class TripsController {
   constructor(
     private readonly tripsService: TripsService,
-    private readonly payosService: (import('../payos/payos.service').PayosService),
+    private readonly payosService: PayosService,
   ) { }
 
   // User - Searching trips and get detail trip info
