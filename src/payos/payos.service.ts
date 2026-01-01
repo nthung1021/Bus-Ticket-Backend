@@ -295,9 +295,9 @@ export class PayosService {
         : PaymentStatus.FAILED;
 
       // Extract bank info from webhook (prefer counterAccountNumber, then virtualAccountNumber, then accountNumber)
-      const bankId = (webhookData as any).counterAccountBankId ?? null;
+      const bankId = webhookData.counterAccountBankId ?? null;
       const bankNumber =
-        (webhookData as any).counterAccountNumber ??
+        webhookData.counterAccountNumber ??
         null;
 
       const updatePayload: any = { status: paymentStatus };
