@@ -63,6 +63,10 @@ export class Trip {
   @Column({ name: 'review_count', type: 'int', default: 0 })
   reviewCount: number;
 
+  @Index('idx_trips_deleted')
+  @Column({ name: 'deleted', type: 'boolean', default: false })
+  deleted: boolean;
+
   // Relations
   @ManyToOne(() => Route, (route) => route.trips)
   @JoinColumn({ name: 'route_id' })
