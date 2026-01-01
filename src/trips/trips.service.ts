@@ -633,6 +633,7 @@ export class TripsService {
             seatCapacity: trip.bus?.seatCapacity,
             busType: null, // not defined in entity
             amenities: trip.bus?.amenities ?? [],
+            photo: trip.bus?.photo ?? [],
           },
           schedule: {
             departureTime: trip.departureTime,
@@ -727,6 +728,7 @@ export class TripsService {
         seatCapacity: trip.bus.seatCapacity,
         // busType: trip.bus.busType,
         amenities: trip.bus.amenities || [],
+        photo: trip.bus.photo || [],
       },
 
       schedule: {
