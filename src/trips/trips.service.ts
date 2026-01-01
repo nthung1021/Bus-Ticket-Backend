@@ -259,8 +259,16 @@ export class TripsService {
   }
 
   // GET /trips
-  async findAll(): Promise<Trip[]> {
+  async findAll(includeDeleted = false): Promise<Trip[]> {
+    const whereClause: any = {};
+    if (includeDeleted) {
+      whereClause.deleted = true;
+    } else {
+      whereClause.deleted = false;
+    }
+
     return await this.tripRepo.find({
+      where: whereClause,
       relations: ['route', 'bus', 'bookings', 'seatStatuses', 'feedbacks'],
       order: { departureTime: 'ASC' },
     });
@@ -329,6 +337,7 @@ export class TripsService {
   }
 
   // DELETE /trips/{:tripId}
+  // Note: legacy hard-delete kept for backward-compatibility. Prefer softDelete + refund flow.
   async remove(id: string): Promise<void> {
     const trip = await this.findOne(id);
 
@@ -338,6 +347,13 @@ export class TripsService {
 
     await this.seatStatusRepo.delete({ tripId: trip.id });
     await this.tripRepo.remove(trip);
+  }
+
+  // Soft-delete trip (marks deleted=true)
+  async softDelete(id: string): Promise<Trip> {
+    const trip = await this.findOne(id);
+    trip.deleted = true;
+    return await this.tripRepo.save(trip);
   }
 
   // Get available buses for a specific time slot

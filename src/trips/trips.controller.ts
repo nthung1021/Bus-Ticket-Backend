@@ -23,7 +23,10 @@ import { AssignBusDto, CheckAvailabilityDto, ScheduleQueryDto } from './dto/assi
 
 @Controller('trips')
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) { }
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly payosService: (import('../payos/payos.service').PayosService),
+  ) { }
 
   // User - Searching trips and get detail trip info
 
@@ -84,8 +87,25 @@ export class TripsController {
   }
 
   @Get()
-  findAll(): Promise<Trip[]> {
-    return this.tripsService.findAll();
+  findAll(@Query('deleted') deleted?: string): Promise<Trip[]> {
+    const includeDeleted = deleted === 'true';
+    return this.tripsService.findAll(includeDeleted);
+  }
+
+  // Refund payments for a trip and mark it deleted (admin)
+  @Post(':id/refund')
+  async refundAndDelete(@Param('id') id: string) {
+    try {
+      const refunds = await this.payosService.refundPaymentsByTrip(id);
+      await this.tripsService.softDelete(id);
+
+      return { success: true, refunds };
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to refund and delete trip' });
+    }
   }
 
   @Get('admin/:id')
@@ -195,38 +215,18 @@ export class TripsController {
     return this.tripsService.getRouteSchedule(routeId, start, end);
   }
 
-  // Check if a bus is available for a specific time slot
-  @Get('check-availability/:busId')
-  async checkBusAvailability(
-    @Param('busId') busId: string,
-    @Query() query: CheckAvailabilityDto,
-  ): Promise<{ available: boolean; message?: string }> {
-    const { departureTime, arrivalTime } = query;
-
-    if (!departureTime || !arrivalTime) {
-      throw new BadRequestException('Both departureTime and arrivalTime are required');
+  // Admin: list payments for a trip
+  @Get(':id/payments')
+  async getPayments(@Param('id') id: string) {
+    try {
+      const payments = await this.payosService.getPaymentsByTrip(id);
+      return { success: true, data: payments };
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to fetch payments' });
     }
-
-    const departure = new Date(departureTime);
-    const arrival = new Date(arrivalTime);
-
-    if (isNaN(departure.getTime()) || isNaN(arrival.getTime())) {
-      throw new BadRequestException('Invalid date format. Use ISO 8601 format');
-    }
-
-    if (departure >= arrival) {
-      throw new BadRequestException('Departure time must be before arrival time');
-    }
-
-    const availableBuses = await this.tripsService.getAvailableBuses(departure, arrival);
-    const isAvailable = !availableBuses.includes(busId);
-
-    return {
-      available: isAvailable,
-      message: isAvailable
-        ? 'Bus is available for the selected time slot'
-        : 'Bus is already scheduled during this time period',
-    };
   }
 
   // Assign a bus to a route with conflict checking

@@ -553,5 +553,25 @@ export class PayosService {
     this.logger.log(`Refund process finished for trip ${tripId}: refunded=${result.refunded.length}, skipped=${result.skipped.length}`);
     return result;
   }
+
+  // Get payments associated with a trip (for admin UI)
+  async getPaymentsByTrip(tripId: string) {
+    const payments = await this.paymentRepository
+      .createQueryBuilder('payment')
+      .leftJoinAndSelect('payment.booking', 'booking')
+      .where('booking.trip_id = :tripId', { tripId })
+      .orderBy('payment.created_at', 'ASC')
+      .getMany();
+
+    return payments.map((p) => ({
+      id: p.id,
+      bookingId: p.bookingId,
+      amount: p.amount,
+      status: p.status,
+      bankId: p.bankId,
+      bankNumber: p.bankNumber || (p as any).bank_number || null,
+      createdAt: p.processedAt,
+    }));
+  }
 }
 
