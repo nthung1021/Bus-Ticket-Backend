@@ -183,6 +183,23 @@ export interface SeatOccupancyDto {
   };
 }
 
+export interface PaymentMethodStats {
+  provider: string;
+  count: number;
+  totalAmount: number;
+  percentage: number;
+}
+
+export interface PaymentMethodAnalyticsDto {
+  methods: PaymentMethodStats[];
+  totalTransactions: number;
+  totalRevenue: number;
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+}
+
 export interface DetailedConversionDto {
   searchToBooking: {
     searches: number;

@@ -9,6 +9,7 @@ import { Booking, BookingStatus } from '../entities/booking.entity';
 import { Trip } from '../entities/trip.entity';
 import { Route } from '../entities/route.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
+import { Payment, PaymentStatus } from '../entities/payment.entity';
 import { CacheService, CacheAnalytics } from '../common/cache.service';
 import { 
   AnalyticsQueryDto, 
@@ -23,7 +24,9 @@ import {
   BookingGrowthDto,
   PopularRoutesDto,
   SeatOccupancyDto,
-  DetailedConversionDto
+  DetailedConversionDto,
+  PaymentMethodAnalyticsDto,
+  PaymentMethodStats
 } from './dto/analytics.dto';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subWeeks, subMonths, format, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval } from 'date-fns';
 
@@ -36,6 +39,7 @@ export class AdminService {
     @InjectRepository(Trip) private tripsRepository: Repository<Trip>,
     @InjectRepository(Route) private routesRepository: Repository<Route>,
     @InjectRepository(SeatStatus) private seatStatusRepository: Repository<SeatStatus>,
+    @InjectRepository(Payment) private paymentsRepository: Repository<Payment>,
     private readonly cacheService: CacheService,
   ) {}
 
@@ -162,13 +166,14 @@ export class AdminService {
         'COUNT(CASE WHEN booking.status = :pendingStatus THEN 1 END) as "pendingBookings"',
         'COUNT(CASE WHEN booking.status = :cancelledStatus THEN 1 END) as "cancelledBookings"',
         'COUNT(CASE WHEN booking.status = :expiredStatus THEN 1 END) as "expiredBookings"',
-        'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+        'COALESCE(SUM(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN booking.totalAmount END), 0) as "totalRevenue"'
       ])
       .where('booking.bookedAt BETWEEN :startDate AND :endDate')
       .setParameters({
         startDate,
         endDate,
         paidStatus: BookingStatus.PAID,
+        completedStatus: BookingStatus.COMPLETED,
         pendingStatus: BookingStatus.PENDING,
         cancelledStatus: BookingStatus.CANCELLED,
         expiredStatus: BookingStatus.EXPIRED,
@@ -256,9 +261,9 @@ export class AdminService {
       });
 
       const intervalBookings = bookings.length;
-      const paidBookings = bookings.filter(b => b.status === BookingStatus.PAID).length;
+      const paidBookings = bookings.filter(b => b.status === BookingStatus.PAID || b.status === BookingStatus.COMPLETED).length;
       const revenue = bookings
-        .filter(b => b.status === BookingStatus.PAID)
+        .filter(b => b.status === BookingStatus.PAID || b.status === BookingStatus.COMPLETED)
         .reduce((sum, b) => sum + b.totalAmount, 0);
       const conversionRate = intervalBookings > 0 ? (paidBookings / intervalBookings) * 100 : 0;
 
@@ -310,8 +315,8 @@ export class AdminService {
         'route.origin as "routeOrigin"',
         'route.destination as "routeDestination"',
         'COUNT(*) as "totalBookings"',
-        'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"',
-        'COUNT(CASE WHEN booking.status = :paidStatus THEN 1 END) as "paidBookings"'
+        'COALESCE(SUM(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN booking.totalAmount END), 0) as "totalRevenue"',
+        'COUNT(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN 1 END) as "paidBookings"'
       ])
       .where('booking.bookedAt BETWEEN :startDate AND :endDate')
       .andWhere('route.id IS NOT NULL')
@@ -321,6 +326,7 @@ export class AdminService {
         startDate,
         endDate,
         paidStatus: BookingStatus.PAID,
+        completedStatus: BookingStatus.COMPLETED,
       })
       .getRawMany();
 
@@ -458,7 +464,7 @@ export class AdminService {
   @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
   @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
   @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
-  async getTotalBookingsCount(query: AnalyticsQueryDto): Promise<{ total: number; period: { startDate: string; endDate: string } }> {
+  async getTotalBookingsCount(query: AnalyticsQueryDto): Promise<{ totalBookings: number; period: { startDate: string; endDate: string } }> {
     const { startDate, endDate } = this.getDateRange(query);
     
     const count = await this.bookingsRepository.count({
@@ -468,7 +474,7 @@ export class AdminService {
     });
     
     return {
-      total: count,
+      totalBookings: count,
       period: {
         startDate: format(startDate, 'yyyy-MM-dd'),
         endDate: format(endDate, 'yyyy-MM-dd'),
@@ -494,19 +500,19 @@ export class AdminService {
         .createQueryBuilder('booking')
         .select([
           'COUNT(*) as "totalBookings"',
-          'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+          'COALESCE(SUM(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN booking.totalAmount END), 0) as "totalRevenue"'
         ])
         .where('booking.bookedAt BETWEEN :startDate AND :endDate')
-        .setParameters({ startDate, endDate, paidStatus: BookingStatus.PAID })
+        .setParameters({ startDate, endDate, paidStatus: BookingStatus.PAID, completedStatus: BookingStatus.COMPLETED })
         .getRawOne(),
       this.bookingsRepository
         .createQueryBuilder('booking')
         .select([
           'COUNT(*) as "totalBookings"',
-          'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+          'COALESCE(SUM(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN booking.totalAmount END), 0) as "totalRevenue"'
         ])
         .where('booking.bookedAt BETWEEN :startDate AND :endDate')
-        .setParameters({ startDate: previousStartDate, endDate: previousEndDate, paidStatus: BookingStatus.PAID })
+        .setParameters({ startDate: previousStartDate, endDate: previousEndDate, paidStatus: BookingStatus.PAID, completedStatus: BookingStatus.COMPLETED })
         .getRawOne(),
     ]);
     
@@ -1067,6 +1073,55 @@ export class AdminService {
         bookingId: booking.id,
         amount,
         status: booking.status,
+      },
+    };
+  }
+
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache
+  async getPaymentMethodAnalytics(query: AnalyticsQueryDto): Promise<PaymentMethodAnalyticsDto> {
+    const { startDate, endDate } = this.getDateRange(query);
+
+    // Optimized SQL aggregation query
+    const paymentStats = await this.paymentsRepository
+      .createQueryBuilder('payment')
+      .select([
+        'payment.provider as "provider"',
+        'COUNT(*) as "count"',
+        'SUM(payment.amount) as "totalAmount"'
+      ])
+      .where('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .andWhere('payment.processedAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .groupBy('payment.provider')
+      .orderBy('"totalAmount"', 'DESC')
+      .getRawMany();
+
+    const totalRevenue = paymentStats.reduce((sum, stat) => sum + parseFloat(stat.totalAmount), 0);
+    const totalTransactions = paymentStats.reduce((sum, stat) => sum + parseInt(stat.count), 0);
+
+    // Map provider names to display names
+    const providerDisplayNames: Record<string, string> = {
+      'payos': 'PayOS',
+      'momo': 'MoMo',
+      'zalopay': 'ZaloPay',
+      'vnpay': 'VNPay',
+      'banking': 'Bank Transfer',
+      'cash': 'Cash'
+    };
+
+    const methods: PaymentMethodStats[] = paymentStats.map(stat => ({
+      provider: providerDisplayNames[stat.provider.toLowerCase()] || stat.provider,
+      count: parseInt(stat.count),
+      totalAmount: parseFloat(stat.totalAmount),
+      percentage: totalRevenue > 0 ? (parseFloat(stat.totalAmount) / totalRevenue) * 100 : 0,
+    }));
+
+    return {
+      methods,
+      totalTransactions,
+      totalRevenue,
+      period: {
+        startDate: format(startDate, 'yyyy-MM-dd'),
+        endDate: format(endDate, 'yyyy-MM-dd'),
       },
     };
   }

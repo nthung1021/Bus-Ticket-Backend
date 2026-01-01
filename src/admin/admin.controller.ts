@@ -120,6 +120,12 @@ export class AdminController {
     return await this.adminService.getDetailedConversionRate(query);
   }
 
+  @Roles('admin')
+  @Get('analytics/metrics/payment-methods')
+  async getPaymentMethodAnalytics(@Query() query: AnalyticsQueryDto) {
+    return await this.adminService.getPaymentMethodAnalytics(query);
+  }
+
   // Booking Management Endpoints
   @Roles('admin')
   @Get('bookings')
