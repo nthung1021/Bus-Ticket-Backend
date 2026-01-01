@@ -26,6 +26,7 @@ export class AnalyticsQueryDto {
 export interface BookingSummaryDto {
   totalBookings: number;
   paidBookings: number;
+  completedBookings: number;
   pendingBookings: number;
   cancelledBookings: number;
   expiredBookings: number;

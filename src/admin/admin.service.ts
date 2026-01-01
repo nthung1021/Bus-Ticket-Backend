@@ -163,6 +163,7 @@ export class AdminService {
       .select([
         'COUNT(*) as "totalBookings"',
         'COUNT(CASE WHEN booking.status = :paidStatus THEN 1 END) as "paidBookings"',
+        'COUNT(CASE WHEN booking.status = :completedStatus THEN 1 END) as "completedBookings"',
         'COUNT(CASE WHEN booking.status = :pendingStatus THEN 1 END) as "pendingBookings"',
         'COUNT(CASE WHEN booking.status = :cancelledStatus THEN 1 END) as "cancelledBookings"',
         'COUNT(CASE WHEN booking.status = :expiredStatus THEN 1 END) as "expiredBookings"',
@@ -182,6 +183,7 @@ export class AdminService {
 
     const totalBookings = parseInt(result.totalBookings);
     const paidBookings = parseInt(result.paidBookings);
+    const completedBookings = parseInt(result.completedBookings);
     const pendingBookings = parseInt(result.pendingBookings);
     const cancelledBookings = parseInt(result.cancelledBookings);
     const expiredBookings = parseInt(result.expiredBookings);
@@ -193,6 +195,7 @@ export class AdminService {
     return {
       totalBookings,
       paidBookings,
+      completedBookings,
       pendingBookings,
       cancelledBookings,
       expiredBookings,
