@@ -71,14 +71,7 @@ export class AiService {
       {
         origin: string, 
         destination: string, 
-        date: string, 
-        passengers: number, 
-        departureTime: string,
-        minPrice: number, 
-        maxPrice: number, 
-        operatorId: string,
-        page: number,
-        limit: number 
+        date: string
       }
       origin: Optional, The starting location of the trip
       destination: Optional, The ending location of the trip
@@ -92,13 +85,6 @@ export class AiService {
           'Hoi An', 'Sapa', 'Da Lat', 'Phu Quoc', 'Bac Lieu'
         ]
       date: Optional, The date of the trip in YYYY-MM-DD format
-      passengers: Optional, Number of passengers
-      departureTime: Optional, Preferred departure time (morning, afternoon, evening, night)
-      minPrice: Optional, Minimum price
-      maxPrice: Optional, Maximum price
-      operatorId: Optional, Bus operator ID
-      page: Optional, Pagination page number
-      limit: Optional, Number of results per page
       ---
       2. search_seats: Use this tool to search for information about a seat.
       Parameters for search_seats:
