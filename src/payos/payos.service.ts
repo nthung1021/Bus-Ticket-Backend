@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -21,6 +21,7 @@ import { Booking, BookingStatus } from '../entities/booking.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
 import { SeatStatusGateway } from '../gateways/seat-status.gateway';
 import { BookingGateway } from '../gateways/booking.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PayosService {
@@ -37,6 +38,8 @@ export class PayosService {
     private seatStatusRepository: Repository<SeatStatus>,
     private seatStatusGateway: SeatStatusGateway,
     private bookingGateway: BookingGateway,
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService: NotificationsService,
   ) {
     const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
@@ -364,6 +367,23 @@ export class PayosService {
             this.logger.log(
               `Real-time notification sent for ${seatIds.length} seats now booked for trip ${tripId}`,
             );
+          }
+
+          // Send In-App Notification if user is logged in
+          if (booking && booking.userId) {
+            try {
+              this.logger.log(`Sending success notification via webhook for booking ${booking.bookingReference} to user ${booking.userId}`);
+              await this.notificationsService.createInAppNotification(
+                booking.userId,
+                'Booking Successful',
+                `Your booking ${booking.bookingReference} has been successfully confirmed and payment was completed. We have sent an email to your email address. Please check your email for the e-ticket.`,
+                { bookingId: booking.id, reference: booking.bookingReference },
+                booking.id,
+              );
+              this.logger.log(`Successfully sent in-app notification for booking ${booking.id} (webhook)`);
+            } catch (error) {
+              this.logger.error(`Failed to send in-app notification for booking ${booking.id} (webhook): ${error.message}`);
+            }
           }
         } else {
           // Payment failed - release seats back to AVAILABLE

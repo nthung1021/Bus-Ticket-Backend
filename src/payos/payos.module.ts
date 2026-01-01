@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PayosService } from './payos.service';
@@ -8,11 +8,13 @@ import { Booking } from '../entities/booking.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { SeatStatusGateway } from '../gateways/seat-status.gateway';
 import { BookingGateway } from '../gateways/booking.gateway';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     ConfigModule,
     TypeOrmModule.forFeature([Payment, Booking, SeatStatus]),
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [PayosController],
   providers: [PayosService, SeatStatusGateway, BookingGateway],

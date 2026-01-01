@@ -233,6 +233,7 @@ export class BookingService {
       // Notification for auto-paid booking
       if (bookingData.status === BookingStatus.PAID && userId) {
         try {
+          this.logger.log(`Sending auto-paid notification for booking ${bookingData.bookingReference}`);
           await this.notificationsService.createInAppNotification(
             userId,
             'Booking Successful',
@@ -303,6 +304,7 @@ export class BookingService {
       // Send notification for auto-paid booking
       if (savedBooking.status === BookingStatus.PAID && userId) {
         try {
+          this.logger.log(`Sending saved auto-paid notification for booking ${savedBooking.bookingReference}`);
           await this.notificationsService.createInAppNotification(
             userId,
             'Booking Successful',
@@ -635,13 +637,22 @@ export class BookingService {
 
       // 7. Send notification
       if (updatedBooking.userId) {
-        await this.notificationsService.createInAppNotification(
-          updatedBooking.userId,
-          'Booking Successful',
-          `Your booking ${updatedBooking.bookingReference} has been successfully confirmed and payment was completed.  We have sent an email to your email address. Please check your email for the e-ticket.`,
-           { bookingId: updatedBooking.id, reference: updatedBooking.bookingReference },
-           updatedBooking.id
-        );
+        this.logger.log(`Sending success notification for confirmed booking ${updatedBooking.bookingReference} to user ${updatedBooking.userId}`);
+        try {
+          await this.notificationsService.createInAppNotification(
+            updatedBooking.userId,
+            'Booking Successful',
+            `Your booking ${updatedBooking.bookingReference} has been successfully confirmed and payment was completed. We have sent an email to your email address. Please check your email for the e-ticket.`,
+             { bookingId: updatedBooking.id, reference: updatedBooking.bookingReference },
+             updatedBooking.id
+          );
+          this.logger.log(`Successfully sent in-app notification for booking ${updatedBooking.id}`);
+        } catch (error) {
+          this.logger.error(`Failed to send in-app notification for booking ${updatedBooking.id}: ${error.message}`);
+          // Don't throw here to avoid rolling back payment confirmation
+        }
+      } else {
+        this.logger.log(`No userId for booking ${updatedBooking.id}, skipping in-app notification`);
       }
       
       return response;
