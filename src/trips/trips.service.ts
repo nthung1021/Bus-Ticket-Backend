@@ -599,9 +599,23 @@ export class TripsService {
       );
     }
 
-    // ordering — cheapest first as example, then departureTime
-    // Use dot notation (no double quotes) to avoid driver/metadata mapping issues
-    qb.orderBy('trip.basePrice', 'ASC').addOrderBy('trip.departureTime', 'ASC');
+    // Dynamic ordering based on query parameters
+    const sortBy = dto.sortBy || 'price';
+    const sortOrder = (dto.sortOrder?.toUpperCase() as 'ASC' | 'DESC') || 'ASC';
+    
+    switch (sortBy) {
+      case 'price':
+        qb.orderBy('trip.basePrice', sortOrder).addOrderBy('trip.departureTime', 'ASC');
+        break;
+      case 'departureTime':
+        qb.orderBy('trip.departureTime', sortOrder).addOrderBy('trip.basePrice', 'ASC');
+        break;
+      case 'duration':
+        qb.orderBy('route.estimatedMinutes', sortOrder).addOrderBy('trip.basePrice', 'ASC');
+        break;
+      default:
+        qb.orderBy('trip.basePrice', 'ASC').addOrderBy('trip.departureTime', 'ASC');
+    }
 
     // count total
     const [items, total] = await qb.skip(offset).take(limit).getManyAndCount();
@@ -631,7 +645,7 @@ export class TripsService {
             model: trip.bus?.model,
             plateNumber: trip.bus?.plateNumber,
             seatCapacity: trip.bus?.seatCapacity,
-            busType: null, // not defined in entity
+            busType: trip.bus?.busType,
             amenities: trip.bus?.amenities ?? [],
           },
           schedule: {

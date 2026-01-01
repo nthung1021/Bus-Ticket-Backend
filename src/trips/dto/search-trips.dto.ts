@@ -23,7 +23,7 @@ export class SearchTripsDto {
   passengers?: number;
 
   @IsOptional()
-  @IsIn(['standard', 'limousine', 'sleeper'])
+  @IsIn(['standard', 'limousine', 'sleeper', 'seater', 'vip', 'business'])
   busType?: string;
 
   @IsOptional()
@@ -59,4 +59,12 @@ export class SearchTripsDto {
   @Min(1)
   @Max(100)
   limit?: number;
+
+  @IsOptional()
+  @IsIn(['price', 'departureTime', 'duration', 'rating'])
+  sortBy?: string;
+
+  @IsOptional() 
+  @IsIn(['ASC', 'DESC', 'asc', 'desc'])
+  sortOrder?: string;
 }

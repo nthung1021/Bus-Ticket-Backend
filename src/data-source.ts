@@ -14,7 +14,7 @@ export const AppDataSource = new DataSource({
   username: configService.get('DB_USERNAME', 'postgres'),
   password: configService.get('DB_PASSWORD', 'postgres'),
   database: configService.get('DB_NAME', 'bus_booking'),
-  synchronize: true, // Enabled for development: auto-create/update schema
+  synchronize: false, // Disabled to prevent conflicts with migrations
   logging: true,
   // include entities located across the project (not only src/entities)
   entities: [
