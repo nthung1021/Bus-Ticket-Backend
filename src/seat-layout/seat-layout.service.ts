@@ -180,16 +180,18 @@ export class SeatLayoutService {
 
     // Convert database seats to SeatInfo format
     const seatInfos: SeatInfo[] = seats.map(seat => {
-      // Extract position (number) and row (letter) from seat code (e.g., 11A, 2B)
+      // Extract row (letter) and position (number) from seat code (e.g., A1, B2)
       const seatCode = seat.seatCode;
-      // Seat code format: number+letter (e.g., 1A, 11B)
-      // Row should be the numeric part, position should be the letter(s)
+      // Seat code format: letter+number (e.g., A1, B2)
+      // Row should be derived from the letter part, position should be the numeric part
       let row = 1;
-      let positionLetter = 'A';
-      const match = seatCode.match(/^(\d+)([A-Z]+)$/i);
+      let positionNumber = 1;
+      const match = seatCode.match(/^([A-Z]+)(\d+)$/i);
       if (match) {
-        row = parseInt(match[1], 10);
-        positionLetter = match[2].toUpperCase();
+        const letterPart = match[1].toUpperCase();
+        positionNumber = parseInt(match[2], 10);
+        // Convert letter to row number (A=1, B=2, C=3, etc.)
+        row = letterPart.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
       }
 
       // Calculate price based on seat type and pricing configuration using ratios
@@ -230,7 +232,7 @@ export class SeatLayoutService {
         type: seat.seatType as 'normal' | 'vip' | 'business',
         position: {
           row: row,
-          position: positionLetter,
+          position: positionNumber,
           x: 0, y: 0, width: 40, height: 40 // Default values
         },
         isAvailable: seat.isActive,
@@ -276,17 +278,19 @@ export class SeatLayoutService {
 
     // Convert database seats to SeatInfo format with proper pricing
     const seatInfos: SeatInfo[] = seats.map(seat => {
-      // Extract position (number) and row (letter) from seat code (e.g., 11A, 2B)
+      // Extract row (letter) and position (number) from seat code (e.g., A1, B2)
       const seatCode = seat.seatCode;
-      // Parse seat code where numeric part is row and letter part is position
+      // Parse seat code where letter part is row and numeric part is position
       let row = 1;
-      let positionLetter = 'A';
-      const match = seatCode.match(/^(\d+)([A-Z]+)$/i);
+      let positionNumber = 1;
+      const match = seatCode.match(/^([A-Z]+)(\d+)$/i);
       if (match) {
-        row = parseInt(match[1], 10);
-        positionLetter = match[2].toUpperCase();
+        const letterPart = match[1].toUpperCase();
+        positionNumber = parseInt(match[2], 10);
+        // Convert letter to row number (A=1, B=2, C=3, etc.)
+        row = letterPart.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
       }
-      // console.log(`Seat ${seatCode}: row ${row}, position ${positionLetter}`);
+      // console.log(`Seat ${seatCode}: row ${row}, position ${positionNumber}`);
 
       // Calculate price based on seat type and pricing configuration using ratios
       let basePrice = tripBasePrice; // Start with trip base price
@@ -346,7 +350,7 @@ export class SeatLayoutService {
         type: seat.seatType as 'normal' | 'vip' | 'business',
         position: {
           row: row,
-          position: positionLetter,
+          position: positionNumber,
           x: 0, y: 0, width: 40, height: 40 // Default values
         },
         isAvailable: seat.isActive,
@@ -529,7 +533,7 @@ export class SeatLayoutService {
           type: 'normal',
           position: {
             row,
-            position: String.fromCharCode(64 + pos),
+            position: pos,
             x: (pos - 1) * (seatWidth + aisleWidth),
             y: (row - 1) * (seatHeight + rowSpacing),
             width: seatWidth,
@@ -577,7 +581,7 @@ export class SeatLayoutService {
           type: pos === 2 ? 'vip' : 'normal', // Middle seat is VIP
           position: {
             row,
-            position: String.fromCharCode(64 + pos),
+            position: pos,
             x: pos > 1 ? (pos - 1) * seatWidth + aisleWidth : 0,
             y: (row - 1) * (seatHeight + rowSpacing),
             width: seatWidth,
@@ -625,7 +629,7 @@ export class SeatLayoutService {
           type: 'vip',
           position: {
             row,
-            position: String.fromCharCode(64 + pos),
+            position: pos,
             x: (pos - 1) * (seatWidth + aisleWidth),
             y: (row - 1) * (seatHeight + rowSpacing),
             width: seatWidth,
@@ -673,7 +677,7 @@ export class SeatLayoutService {
           type: 'business',
           position: {
             row,
-            position: String.fromCharCode(64 + pos),
+            position: pos,
             x: (pos - 1) * (seatWidth + aisleWidth),
             y: (row - 1) * (seatHeight + rowSpacing),
             width: seatWidth,

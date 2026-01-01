@@ -152,15 +152,54 @@ export class BookingService {
       const seatIds: string[] = [];
       for (const seatDto of seats) {
         const normalizedCode = normalizeSeatCode(seatDto.code);
-        const seat = await manager.findOne(Seat, {
+        // Try to find seat with normalized code first
+        let seat = await manager.findOne(Seat, {
           where: {
             seatCode: normalizedCode,
             busId: trip.busId
           }
         });
 
+        // If not found, try the original code as-is
         if (!seat) {
-          throw new BadRequestException(`Seat ${normalizedCode} not found on this bus`);
+          seat = await manager.findOne(Seat, {
+            where: {
+              seatCode: seatDto.code,
+              busId: trip.busId
+            }
+          });
+        }
+
+        // If still not found, try both formats (number+letter and letter+number)
+        if (!seat) {
+          const originalCode = seatDto.code.trim().toUpperCase();
+          const match = originalCode.match(/^(\d+)([A-Z]+)$/i);
+          if (match) {
+            // Try letter+number format (e.g., 2C -> C2)
+            const alternativeCode = `${match[2]}${match[1]}`;
+            seat = await manager.findOne(Seat, {
+              where: {
+                seatCode: alternativeCode,
+                busId: trip.busId
+              }
+            });
+          } else {
+            // Try number+letter format (e.g., C2 -> 2C)
+            const letterMatch = originalCode.match(/^([A-Z]+)(\d+)$/i);
+            if (letterMatch) {
+              const alternativeCode = `${letterMatch[2]}${letterMatch[1]}`;
+              seat = await manager.findOne(Seat, {
+                where: {
+                  seatCode: alternativeCode,
+                  busId: trip.busId
+                }
+              });
+            }
+          }
+        }
+
+        if (!seat) {
+          throw new BadRequestException(`Seat ${seatDto.code} not found on this bus (tried formats: ${normalizedCode}, ${seatDto.code})`);
         }
         seatIds.push(seat.id);
       }
@@ -1415,10 +1454,45 @@ export class BookingService {
       }
 
       // Check if new seat exists and is available
-      const newSeat = await manager.findOne(Seat, {
+      // Try multiple seat code formats
+      let newSeat = await manager.findOne(Seat, {
         where: { seatCode: seatChange.newSeatCode },
         relations: ['bus'],
       });
+
+      // If not found, try normalized version
+      if (!newSeat) {
+        const normalizedCode = normalizeSeatCode(seatChange.newSeatCode);
+        newSeat = await manager.findOne(Seat, {
+          where: { seatCode: normalizedCode },
+          relations: ['bus'],
+        });
+      }
+
+      // If not found, try alternative format (number+letter <-> letter+number)
+      if (!newSeat) {
+        const originalCode = seatChange.newSeatCode.trim().toUpperCase();
+        let alternativeCode = '';
+        
+        const match = originalCode.match(/^(\d+)([A-Z]+)$/i);
+        if (match) {
+          // Convert number+letter to letter+number (e.g., 2C -> C2)
+          alternativeCode = `${match[2]}${match[1]}`;
+        } else {
+          const letterMatch = originalCode.match(/^([A-Z]+)(\d+)$/i);
+          if (letterMatch) {
+            // Convert letter+number to number+letter (e.g., C2 -> 2C)
+            alternativeCode = `${letterMatch[2]}${letterMatch[1]}`;
+          }
+        }
+        
+        if (alternativeCode) {
+          newSeat = await manager.findOne(Seat, {
+            where: { seatCode: alternativeCode },
+            relations: ['bus'],
+          });
+        }
+      }
 
       if (!newSeat) {
         throw new BadRequestException(`Seat ${seatChange.newSeatCode} does not exist`);
@@ -1805,9 +1879,42 @@ export class BookingService {
         }
 
         // Step 4: Check seat availability
-        const newSeat = await manager.findOne(Seat, {
+        // Try multiple seat code formats
+        let newSeat = await manager.findOne(Seat, {
           where: { seatCode: seatChange.newSeatCode, busId: booking.trip.busId },
         });
+
+        // If not found, try normalized version
+        if (!newSeat) {
+          const normalizedCode = normalizeSeatCode(seatChange.newSeatCode);
+          newSeat = await manager.findOne(Seat, {
+            where: { seatCode: normalizedCode, busId: booking.trip.busId },
+          });
+        }
+
+        // If not found, try alternative format (number+letter <-> letter+number)
+        if (!newSeat) {
+          const originalCode = seatChange.newSeatCode.trim().toUpperCase();
+          let alternativeCode = '';
+          
+          const match = originalCode.match(/^(\d+)([A-Z]+)$/i);
+          if (match) {
+            // Convert number+letter to letter+number (e.g., 2C -> C2)
+            alternativeCode = `${match[2]}${match[1]}`;
+          } else {
+            const letterMatch = originalCode.match(/^([A-Z]+)(\d+)$/i);
+            if (letterMatch) {
+              // Convert letter+number to number+letter (e.g., C2 -> 2C)
+              alternativeCode = `${letterMatch[2]}${letterMatch[1]}`;
+            }
+          }
+          
+          if (alternativeCode) {
+            newSeat = await manager.findOne(Seat, {
+              where: { seatCode: alternativeCode, busId: booking.trip.busId },
+            });
+          }
+        }
 
         if (!newSeat) {
           throw new NotFoundException(`Seat ${seatChange.newSeatCode} not found on this bus`);
