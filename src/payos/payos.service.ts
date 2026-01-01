@@ -294,10 +294,30 @@ export class PayosService {
         ? PaymentStatus.COMPLETED
         : PaymentStatus.FAILED;
 
+      // Extract bank info from webhook (prefer counterAccountNumber, then virtualAccountNumber, then accountNumber)
+      const bankId = (webhookData as any).counterAccountBankId ?? null;
+      const bankNumber =
+        (webhookData as any).counterAccountNumber ??
+        null;
+
+      const updatePayload: any = { status: paymentStatus };
+      if (bankId) updatePayload.bankId = bankId;
+      if (bankNumber) updatePayload.bankNumber = bankNumber;
+
       await this.paymentRepository.update(
         { payosOrderCode: orderCode },
-        { status: paymentStatus },
+        updatePayload,
       );
+
+      this.logger.log(
+        `Payment status updated to ${paymentStatus} in database for order ${orderCode}`,
+      );
+
+      if (bankId || bankNumber) {
+        this.logger.log(
+          `Stored bank info for order ${orderCode}: bankId=${bankId}, bankNumber=${bankNumber}`,
+        );
+      }
 
       this.logger.log(
         `Payment status updated to ${paymentStatus} in database for order ${orderCode}`,
