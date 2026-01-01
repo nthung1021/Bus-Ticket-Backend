@@ -36,6 +36,12 @@ export class Payment {
   @Column()
   amount: number;
 
+  @Column({ name: 'bank_id', nullable: true })
+  bankId?: string;
+
+  @Column({ name: 'bank_number', nullable: true })
+  bankNumber?: string;
+
   @Column({
     type: 'enum',
     enum: PaymentStatus,
