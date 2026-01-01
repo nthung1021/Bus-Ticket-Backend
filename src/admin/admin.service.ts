@@ -868,4 +868,206 @@ export class AdminService {
   async getCacheStats(): Promise<{ size: number; hitRate?: number }> {
     return this.cacheService.getStats();
   }
+
+  // Booking Management Methods
+  async getAllBookings(params: {
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const queryBuilder = this.bookingsRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.user', 'user')
+      .leftJoinAndSelect('booking.trip', 'trip')
+      .leftJoinAndSelect('trip.route', 'route')
+      .leftJoinAndSelect('trip.bus', 'bus')
+      .leftJoinAndSelect('booking.passengerDetails', 'passengers')
+      .leftJoinAndSelect('booking.seatStatuses', 'seats')
+      .leftJoinAndSelect('seats.seat', 'seat')
+      .leftJoinAndSelect('booking.payments', 'payment')
+      .orderBy('booking.bookedAt', 'DESC');
+
+    if (params.status && params.status !== 'all') {
+      queryBuilder.andWhere('booking.status = :status', { status: params.status });
+    }
+
+    if (params.startDate) {
+      queryBuilder.andWhere('booking.bookedAt >= :startDate', {
+        startDate: new Date(params.startDate),
+      });
+    }
+
+    if (params.endDate) {
+      queryBuilder.andWhere('booking.bookedAt <= :endDate', {
+        endDate: new Date(params.endDate),
+      });
+    }
+
+    const page = params.page || 1;
+    const limit = params.limit || 50;
+    const skip = (page - 1) * limit;
+
+    const [bookings, total] = await queryBuilder
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      success: true,
+      message: 'Bookings retrieved successfully',
+      data: bookings,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getBookingById(bookingId: string) {
+    const booking = await this.bookingsRepository.findOne({
+      where: { id: bookingId },
+      relations: [
+        'user',
+        'trip',
+        'trip.route',
+        'trip.bus',
+        'passengerDetails',
+        'seatStatuses',
+        'seatStatuses.seat',
+        'payments',
+      ],
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    return {
+      success: true,
+      message: 'Booking retrieved successfully',
+      data: booking,
+    };
+  }
+
+  async updateBookingStatus(
+    bookingId: string,
+    status: string,
+    actorId?: string,
+    reason?: string,
+  ) {
+    const booking = await this.bookingsRepository.findOne({
+      where: { id: bookingId },
+      relations: ['trip', 'seatStatuses'],
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const oldStatus = booking.status;
+    booking.status = status as BookingStatus;
+
+    if (status === BookingStatus.CANCELLED && !booking.cancelledAt) {
+      booking.cancelledAt = new Date();
+
+      // Release seats
+      for (const seatStatus of booking.seatStatuses) {
+        seatStatus.state = SeatState.AVAILABLE;
+        seatStatus.bookingId = null;
+        await this.seatStatusRepository.save(seatStatus);
+      }
+    }
+
+    await this.bookingsRepository.save(booking);
+
+    // Log the action
+    await this.auditRepository.save({
+      actorId,
+      action: 'UPDATE_BOOKING_STATUS',
+      details: `Booking ${booking.bookingReference}: ${oldStatus} -> ${status}`,
+      metadata: {
+        bookingId: booking.id,
+        oldStatus,
+        newStatus: status,
+        reason,
+        by: actorId,
+        at: new Date().toISOString(),
+      },
+    });
+
+    // Clear cache
+    await this.invalidateAnalyticsCache();
+
+    return {
+      success: true,
+      message: 'Booking status updated successfully',
+      data: booking,
+    };
+  }
+
+  async processRefund(
+    bookingId: string,
+    amount: number,
+    reason: string,
+    actorId?: string,
+  ) {
+    const booking = await this.bookingsRepository.findOne({
+      where: { id: bookingId },
+      relations: ['payments', 'seatStatuses'],
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.status !== BookingStatus.PAID) {
+      throw new ConflictException(
+        'Only paid bookings can be refunded',
+      );
+    }
+
+    // Update booking status
+    booking.status = BookingStatus.CANCELLED;
+    booking.cancelledAt = new Date();
+
+    // Release seats
+    for (const seatStatus of booking.seatStatuses) {
+      seatStatus.state = SeatState.AVAILABLE;
+      seatStatus.bookingId = null;
+      await this.seatStatusRepository.save(seatStatus);
+    }
+
+    await this.bookingsRepository.save(booking);
+
+    // Log the refund
+    await this.auditRepository.save({
+      actorId,
+      action: 'PROCESS_REFUND',
+      details: `Refund processed for booking ${booking.bookingReference}`,
+      metadata: {
+        bookingId: booking.id,
+        amount,
+        reason,
+        by: actorId,
+        at: new Date().toISOString(),
+      },
+    });
+
+    // Clear cache
+    await this.invalidateAnalyticsCache();
+
+    return {
+      success: true,
+      message: 'Refund processed successfully',
+      data: {
+        bookingId: booking.id,
+        amount,
+        status: booking.status,
+      },
+    };
+  }
 }

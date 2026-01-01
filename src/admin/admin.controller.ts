@@ -119,4 +119,61 @@ export class AdminController {
   async getDetailedConversionRate(@Query() query: AnalyticsQueryDto) {
     return await this.adminService.getDetailedConversionRate(query);
   }
+
+  // Booking Management Endpoints
+  @Roles('admin')
+  @Get('bookings')
+  async getAllBookings(
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return await this.adminService.getAllBookings({
+      status,
+      startDate,
+      endDate,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  @Roles('admin')
+  @Get('bookings/:bookingId')
+  async getBookingById(@Param('bookingId') bookingId: string) {
+    return await this.adminService.getBookingById(bookingId);
+  }
+
+  @Roles('admin')
+  @Patch('bookings/:bookingId/status')
+  async updateBookingStatus(
+    @Param('bookingId') bookingId: string,
+    @Body() body: { status: string; reason?: string },
+    @Req() req: Request & { user?: { sub?: string } },
+  ) {
+    const actorId = req.user?.sub;
+    return await this.adminService.updateBookingStatus(
+      bookingId,
+      body.status,
+      actorId,
+      body.reason,
+    );
+  }
+
+  @Roles('admin')
+  @Post('bookings/:bookingId/refund')
+  async processRefund(
+    @Param('bookingId') bookingId: string,
+    @Body() body: { amount: number; reason: string },
+    @Req() req: Request & { user?: { sub?: string } },
+  ) {
+    const actorId = req.user?.sub;
+    return await this.adminService.processRefund(
+      bookingId,
+      body.amount,
+      body.reason,
+      actorId,
+    );
+  }
 }
