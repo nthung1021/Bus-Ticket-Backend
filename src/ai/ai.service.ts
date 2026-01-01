@@ -214,8 +214,8 @@ export class AiService {
     private readonly seatRepo: Repository<Seat>,
   ) {
     this.llm = new ChatGoogleGenerativeAI({
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
-      temperature: 0.2
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      temperature: 0.5
     })
     // Gemini will be called via REST per-invoke using GOOGLE_API_KEY
     const systemMsg = new SystemMessage(this.systemPrompt);
@@ -436,6 +436,7 @@ export class AiService {
             this.logger.debug('Executing get_faqs tool');
             try {
               const faqs = await this.faqService.getAllFaqs();
+              this.logger.debug(`get_faqs returned\n${JSON.stringify(faqs, null, 2)}`);
               const aiMsg = new HumanMessage(JSON.stringify({ content: `Here are the frequently asked questions and answers: \n${JSON.stringify(faqs, null, 2)}` }));
               this.msgs.push(aiMsg);
             } 

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { AiService } from '../ai/ai.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
@@ -84,9 +84,21 @@ export class ChatService {
   }
 
   async deleteHistory(conversationId: string) {
-    // Delete messages belonging to the conversation, then delete the conversation
-    await this.msgRepo.createQueryBuilder().delete().where('"conversationId" = :id', { id: conversationId }).execute();
-    await this.convRepo.delete(conversationId);
-    return { deleted: true, conversationId };
+    try {
+      // Verify conversation exists
+      const conv = await this.convRepo.findOne({ where: { id: conversationId } });
+      if (!conv) {
+        throw new NotFoundException(`Conversation with ID ${conversationId} not found`);
+      }
+
+      // Delete messages belonging to the conversation, then delete the conversation
+      await this.msgRepo.createQueryBuilder().delete().where('"conversationId" = :id', { id: conversationId }).execute();
+      await this.convRepo.delete(conversationId);
+
+      return { deleted: true, conversationId };
+    } catch (err) {
+      this.logger.error(`Failed to delete conversation history for ${conversationId}`, err as any);
+      throw new InternalServerErrorException('Failed to delete conversation history');
+    }
   }
 }
