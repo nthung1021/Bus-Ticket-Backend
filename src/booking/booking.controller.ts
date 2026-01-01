@@ -204,6 +204,7 @@ export class BookingController {
   }
 
   @Put(':id/update')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async updatePassengerInfo(
     @Param('id') bookingId: string,
@@ -232,6 +233,7 @@ export class BookingController {
   }
 
   @Put(':id/cancel')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async cancelBookingByUser(
     @Param('id') bookingId: string,
