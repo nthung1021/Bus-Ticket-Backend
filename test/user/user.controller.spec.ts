@@ -1,15 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserController } from '../../src/user/user.controller';
-import { BookingService } from '../../src/booking/booking.service';
+import { UserService } from '../../src/user/user.service';
 import { BookingStatus } from '../../src/entities/booking.entity';
 import { JwtAuthGuard } from '../../src/auth/jwt-auth.guard';
+import { NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 
 describe('UserController', () => {
   let controller: UserController;
-  let bookingService: BookingService;
+  let userService: UserService;
 
-  const mockBookingService = {
-    findBookingsByUserWithDetails: jest.fn(),
+  const mockUserService = {
+    getUserBookings: jest.fn(),
+    getProfile: jest.fn(),
+    updateProfile: jest.fn(),
+    changePassword: jest.fn(),
   };
 
   const mockRequest = {
@@ -81,8 +85,8 @@ describe('UserController', () => {
       controllers: [UserController],
       providers: [
         {
-          provide: BookingService,
-          useValue: mockBookingService,
+          provide: UserService,
+          useValue: mockUserService,
         },
       ],
     })
@@ -91,7 +95,7 @@ describe('UserController', () => {
       .compile();
 
     controller = module.get<UserController>(UserController);
-    bookingService = module.get<BookingService>(BookingService);
+    userService = module.get<UserService>(UserService);
   });
 
   afterEach(() => {
@@ -104,98 +108,28 @@ describe('UserController', () => {
 
   describe('getUserBookings', () => {
     it('should return all user bookings when no status filter is provided', async () => {
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue(mockBookingData);
-
-      const result = await controller.getUserBookings(mockRequest);
-
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
-        'test-user-id',
-        undefined,
-      );
-      expect(result).toEqual({
+      const mockResponse = {
         success: true,
         message: 'User bookings retrieved successfully',
         data: mockBookingData,
-      });
-    });
-
-    it('should return filtered user bookings when status filter is provided', async () => {
-      const filteredBookings = mockBookingData.filter(b => b.status === BookingStatus.PAID);
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue(filteredBookings);
-
-      const result = await controller.getUserBookings(mockRequest, BookingStatus.PAID);
-
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
-        'test-user-id',
-        BookingStatus.PAID,
-      );
-      expect(result).toEqual({
-        success: true,
-        message: 'User bookings retrieved successfully',
-        data: filteredBookings,
-      });
-    });
-
-    it('should return pending bookings when status filter is pending', async () => {
-      const pendingBooking = {
-        ...mockBookingData[0],
-        status: BookingStatus.PENDING,
-        expiresAt: new Date('2025-12-01T08:15:00Z'),
       };
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue([pendingBooking]);
-
-      const result = await controller.getUserBookings(mockRequest, BookingStatus.PENDING);
-
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
-        'test-user-id',
-        BookingStatus.PENDING,
-      );
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].status).toBe(BookingStatus.PENDING);
-      expect(result.data[0].expiresAt).toBeDefined();
-    });
-
-    it('should return cancelled bookings when status filter is cancelled', async () => {
-      const cancelledBooking = {
-        ...mockBookingData[0],
-        status: BookingStatus.CANCELLED,
-        cancelledAt: new Date('2025-12-01T09:00:00Z'),
-      };
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue([cancelledBooking]);
-
-      const result = await controller.getUserBookings(mockRequest, BookingStatus.CANCELLED);
-
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
-        'test-user-id',
-        BookingStatus.CANCELLED,
-      );
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].status).toBe(BookingStatus.CANCELLED);
-      expect(result.data[0].cancelledAt).toBeDefined();
-    });
-
-    it('should return empty array when user has no bookings', async () => {
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue([]);
+      mockUserService.getUserBookings.mockResolvedValue(mockResponse);
 
       const result = await controller.getUserBookings(mockRequest);
 
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
+      expect(mockUserService.getUserBookings).toHaveBeenCalledWith(
         'test-user-id',
         undefined,
       );
-      expect(result).toEqual({
-        success: true,
-        message: 'User bookings retrieved successfully',
-        data: [],
-      });
+      expect(result).toEqual(mockResponse);
     });
 
     it('should handle service errors properly', async () => {
       const serviceError = new Error('Database connection failed');
-      mockBookingService.findBookingsByUserWithDetails.mockRejectedValue(serviceError);
+      mockUserService.getUserBookings.mockRejectedValue(serviceError);
 
       await expect(controller.getUserBookings(mockRequest)).rejects.toThrow(serviceError);
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
+      expect(mockUserService.getUserBookings).toHaveBeenCalledWith(
         'test-user-id',
         undefined,
       );
@@ -208,48 +142,247 @@ describe('UserController', () => {
           email: 'different@example.com',
         },
       };
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue([]);
+      mockUserService.getUserBookings.mockResolvedValue({
+        success: true,
+        message: 'User bookings retrieved successfully',
+        data: [],
+      });
 
       await controller.getUserBookings(customRequest);
 
-      expect(mockBookingService.findBookingsByUserWithDetails).toHaveBeenCalledWith(
+      expect(mockUserService.getUserBookings).toHaveBeenCalledWith(
         'different-user-id',
         undefined,
       );
     });
+  });
 
-    it('should validate response structure includes all required fields', async () => {
-      mockBookingService.findBookingsByUserWithDetails.mockResolvedValue(mockBookingData);
+  describe('getProfile', () => {
+    it('should return user profile successfully', async () => {
+      const mockProfile = {
+        success: true,
+        data: {
+          userId: 'test-user-id',
+          email: 'test@example.com',
+          phone: '123456789',
+          fullName: 'Test User',
+          role: 'customer',
+          createdAt: new Date(),
+        }
+      };
+      mockUserService.getProfile.mockResolvedValue(mockProfile);
 
-      const result = await controller.getUserBookings(mockRequest);
+      const result = await controller.getProfile(mockRequest);
 
-      expect(result).toHaveProperty('success');
-      expect(result).toHaveProperty('message');
-      expect(result).toHaveProperty('data');
-      expect(Array.isArray(result.data)).toBe(true);
+      expect(mockUserService.getProfile).toHaveBeenCalledWith('test-user-id');
+      expect(result).toEqual(mockProfile);
+    });
 
-      if (result.data.length > 0) {
-        const booking = result.data[0];
-        expect(booking).toHaveProperty('id');
-        expect(booking).toHaveProperty('userId');
-        expect(booking).toHaveProperty('tripId');
-        expect(booking).toHaveProperty('totalAmount');
-        expect(booking).toHaveProperty('status');
-        expect(booking).toHaveProperty('bookedAt');
-        expect(booking).toHaveProperty('trip');
-        expect(booking).toHaveProperty('passengers');
-        expect(booking).toHaveProperty('seats');
+    it('should handle service errors when fetching profile', async () => {
+      const serviceError = new NotFoundException('User not found');
+      mockUserService.getProfile.mockRejectedValue(serviceError);
 
-        // Validate trip details
-        expect(booking.trip).toHaveProperty('route');
-        expect(booking.trip).toHaveProperty('bus');
-        
-        // Validate passengers array
-        expect(Array.isArray(booking.passengers)).toBe(true);
-        
-        // Validate seats array
-        expect(Array.isArray(booking.seats)).toBe(true);
-      }
+      await expect(controller.getProfile(mockRequest)).rejects.toThrow(serviceError);
+      expect(mockUserService.getProfile).toHaveBeenCalledWith('test-user-id');
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('should update user profile successfully', async () => {
+      const updateDto = {
+        fullName: 'Updated Name',
+        phone: '9876543210',
+      };
+      const mockResponse = {
+        success: true,
+        message: 'Profile updated successfully',
+        data: {
+          userId: 'test-user-id',
+          fullName: 'Updated Name',
+          phone: '9876543210',
+          email: 'test@example.com',
+          role: 'customer',
+          createdAt: new Date(),
+        }
+      };
+      mockUserService.updateProfile.mockResolvedValue(mockResponse);
+
+      const result = await controller.updateProfile(mockRequest, updateDto);
+
+      expect(mockUserService.updateProfile).toHaveBeenCalledWith('test-user-id', updateDto);
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should handle partial updates', async () => {
+      const updateDto = {
+        fullName: 'New Name Only',
+      };
+      const mockResponse = {
+        success: true,
+        message: 'Profile updated successfully',
+        data: {
+          userId: 'test-user-id',
+          fullName: 'New Name Only',
+          phone: '123456789',
+          email: 'test@example.com',
+          role: 'customer',
+          createdAt: new Date(),
+        }
+      };
+      mockUserService.updateProfile.mockResolvedValue(mockResponse);
+
+      const result = await controller.updateProfile(mockRequest, updateDto);
+
+      expect(mockUserService.updateProfile).toHaveBeenCalledWith('test-user-id', updateDto);
+      expect(result.data.fullName).toBe('New Name Only');
+    });
+
+    it('should handle service errors when updating profile', async () => {
+      const updateDto = { fullName: 'New Name' };
+      const serviceError = new NotFoundException('User not found');
+      mockUserService.updateProfile.mockRejectedValue(serviceError);
+
+      await expect(controller.updateProfile(mockRequest, updateDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.updateProfile).toHaveBeenCalledWith('test-user-id', updateDto);
+    });
+  });
+
+  describe('changePassword', () => {
+    it('should change password successfully', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockResponse = {
+        success: true,
+        message: 'Password changed successfully',
+      };
+      mockUserService.changePassword.mockResolvedValue(mockResponse);
+
+      const result = await controller.changePassword(mockRequest, changePasswordDto);
+
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should handle BadRequestException for Google users', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'Password change is not available for Google accounts. Your account is linked to Google authentication.',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle BadRequestException for Facebook users', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'Password change is not available for Facebook accounts. Your account is linked to Facebook authentication.',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle BadRequestException for phone users', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'Password change is not available for your account. You signed up using phone number authentication.',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle BadRequestException when passwords do not match', async () => {
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'DifferentPass789!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'New password and confirm password do not match',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle UnauthorizedException when current password is incorrect', async () => {
+      const changePasswordDto = {
+        currentPassword: 'WrongPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const serviceError = new UnauthorizedException({
+        success: false,
+        message: 'Current password is incorrect',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should handle BadRequestException when new password is same as current', async () => {
+      const changePasswordDto = {
+        currentPassword: 'SamePass123!',
+        newPassword: 'SamePass123!',
+        confirmPassword: 'SamePass123!',
+      };
+      const serviceError = new BadRequestException({
+        success: false,
+        message: 'New password must be different from your current password',
+      });
+      mockUserService.changePassword.mockRejectedValue(serviceError);
+
+      await expect(controller.changePassword(mockRequest, changePasswordDto)).rejects.toThrow(serviceError);
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('test-user-id', changePasswordDto);
+    });
+
+    it('should extract userId from request correctly', async () => {
+      const customRequest = {
+        user: {
+          userId: 'different-user-id',
+          email: 'different@example.com',
+        },
+      };
+      const changePasswordDto = {
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+        confirmPassword: 'NewPass456!',
+      };
+      const mockResponse = {
+        success: true,
+        message: 'Password changed successfully',
+      };
+      mockUserService.changePassword.mockResolvedValue(mockResponse);
+
+      await controller.changePassword(customRequest, changePasswordDto);
+
+      expect(mockUserService.changePassword).toHaveBeenCalledWith('different-user-id', changePasswordDto);
     });
   });
 });

@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { AdminCreateAccountDto } from './dto/create-account.dto';
+import * as bcrypt from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
@@ -67,6 +69,51 @@ export class AdminService {
     });
 
     return { id: user.id, email: user.email, name: user.name, role: user.role };
+  }
+
+  async createAccount(dto: AdminCreateAccountDto, actorId?: string) {
+    // Check if email already exists
+    const existingUser = await this.usersRepository.findOne({
+      where: { email: dto.email },
+    });
+    if (existingUser) {
+      throw new ConflictException('Email already in use');
+    }
+
+    // Check if phone already exists
+    const existingPhone = await this.usersRepository.findOne({
+      where: { phone: dto.phone },
+    });
+    if (existingPhone) {
+      throw new ConflictException('Phone number already in use');
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(dto.password, salt);
+
+    // Create user
+    const newUser = this.usersRepository.create({
+      email: dto.email,
+      name: dto.fullName,
+      phone: dto.phone,
+      passwordHash: hashedPassword,
+      role: dto.role,
+    });
+
+    const savedUser = await this.usersRepository.save(newUser);
+
+    // Logs
+    await this.auditRepository.save({
+      actorId: actorId || null,
+      targetUserId: savedUser.id,
+      action: 'CREATE_ACCOUNT',
+      details: `Created account for ${dto.email} with role ${dto.role}`,
+      metadata: { by: actorId || 'system', at: new Date().toISOString() },
+    });
+
+    const { passwordHash, ...result } = savedUser;
+    return result;
   }
 
   // Analytics Methods

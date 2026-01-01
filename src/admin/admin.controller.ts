@@ -7,6 +7,7 @@ import {
   Body,
   Req,
   Query,
+  Post,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AdminService } from './admin.service';
@@ -14,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles/roles.decorator';
 import { RolesGuard } from '../auth/roles/roles.guard';
 import { ChangeRoleDto } from './dto/change-role.dto';
+import { AdminCreateAccountDto } from './dto/create-account.dto';
 import { AnalyticsQueryDto } from './dto/analytics.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -45,6 +47,21 @@ export class AdminController {
       actorId,
     );
     return { ok: true, updated };
+  }
+
+  @Roles('admin')
+  @Post('account')
+  async createAccount(
+    @Body() body: AdminCreateAccountDto,
+    @Req() req: Request & { user?: { sub?: string } },
+  ) {
+    const actorId = req.user?.sub;
+    const user = await this.adminService.createAccount(body, actorId);
+    return {
+      success: true,
+      message: 'Account created successfully',
+      data: user,
+    };
   }
 
   // Analytics Endpoints
