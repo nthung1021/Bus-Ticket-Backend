@@ -7,11 +7,12 @@ import * as streamifier from 'streamifier';
 export class CloudinaryService {
   async uploadImage(
     file: Express.Multer.File,
+    folder: string,
   ): Promise<UploadApiResponse | UploadApiErrorResponse> {
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
-          folder: 'Bus-Ticket/Avatars',
+          folder: folder,
         },
         (error, result) => {
           if (error) return reject(error);
