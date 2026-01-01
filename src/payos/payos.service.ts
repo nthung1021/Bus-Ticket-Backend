@@ -297,10 +297,30 @@ export class PayosService {
         ? PaymentStatus.COMPLETED
         : PaymentStatus.FAILED;
 
+      // Extract bank info from webhook (prefer counterAccountNumber, then virtualAccountNumber, then accountNumber)
+      const bankId = webhookData.counterAccountBankId ?? null;
+      const bankNumber =
+        webhookData.counterAccountNumber ??
+        null;
+
+      const updatePayload: any = { status: paymentStatus };
+      if (bankId) updatePayload.bankId = bankId;
+      if (bankNumber) updatePayload.bankNumber = bankNumber;
+
       await this.paymentRepository.update(
         { payosOrderCode: orderCode },
-        { status: paymentStatus },
+        updatePayload,
       );
+
+      this.logger.log(
+        `Payment status updated to ${paymentStatus} in database for order ${orderCode}`,
+      );
+
+      if (bankId || bankNumber) {
+        this.logger.log(
+          `Stored bank info for order ${orderCode}: bankId=${bankId}, bankNumber=${bankNumber}`,
+        );
+      }
 
       this.logger.log(
         `Payment status updated to ${paymentStatus} in database for order ${orderCode}`,
@@ -468,4 +488,110 @@ export class PayosService {
     // Ensure it's within integer range
     return Math.min(orderCode, 2147483647);
   }
+
+  /**
+   * Refund completed payments for a given trip by creating payouts when
+   * the PayOS payout account has sufficient balance.
+   * Returns a summary of refunded and skipped payments.
+   */
+  async refundPaymentsByTrip(tripId: string): Promise<{
+    refunded: string[];
+    skipped: Array<{ paymentId: string; reason: string }>;
+  }> {
+    this.logger.log(`Starting refund process for trip ${tripId}`);
+
+    // Find all completed payments associated with bookings that belong to the trip
+    const payments = await this.paymentRepository
+      .createQueryBuilder('payment')
+      .innerJoin('payment.booking', 'booking')
+      .where('booking.trip_id = :tripId', { tripId })
+      .andWhere('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .getMany();
+
+    const result = { refunded: [] as string[], skipped: [] as Array<{ paymentId: string; reason: string }> };
+
+    if (payments.length === 0) {
+      this.logger.log(`No completed payments found for trip ${tripId}`);
+      return result;
+    }
+
+    // Get current payout account balance
+    let accountInfo;
+    try {
+      accountInfo = await this.payos.payoutsAccount.balance();
+      this.logger.log(`Payout account balance: ${accountInfo.balance} ${accountInfo.currency}`);
+    } catch (err) {
+      this.logger.error('Failed to fetch payout account balance', err);
+      // If we cannot fetch balance, skip processing to avoid accidental overdraft
+      payments.forEach((p) => result.skipped.push({ paymentId: p.id, reason: 'failed_to_fetch_balance' }));
+      return result;
+    }
+
+    let availableBalance = parseFloat(accountInfo.balance || '0');
+
+    for (const payment of payments) {
+      try {
+        if (!payment.bankId || !payment.bankNumber) {
+          result.skipped.push({ paymentId: payment.id, reason: 'missing_bank_info' });
+          this.logger.warn(`Skipping refund for payment ${payment.id}: missing bank info`);
+          continue;
+        }
+
+        // If available balance is insufficient for this refund amount, skip it
+        if (availableBalance < payment.amount) {
+          result.skipped.push({ paymentId: payment.id, reason: 'insufficient_balance' });
+          this.logger.warn(`Insufficient payout balance for payment ${payment.id}: need ${payment.amount}, have ${availableBalance}`);
+          continue;
+        }
+
+        // Create payout
+        const payoutRequest = {
+          referenceId: `refund-${payment.id}`,
+          amount: payment.amount,
+          description: `Refund for payment ${payment.id}`,
+          toBin: payment.bankId,
+          toAccountNumber: payment.bankNumber,
+        } as any;
+
+        const payout = await this.payos.payouts.create(payoutRequest, payment.id);
+
+        this.logger.log(`Payout created for payment ${payment.id}, payoutId=${payout.id}`);
+
+        // Update payment status to REFUNDED
+        await this.paymentRepository.update({ id: payment.id }, { status: PaymentStatus.REFUNDED });
+
+        result.refunded.push(payment.id);
+
+        // Decrease local available balance so subsequent refunds account for it
+        availableBalance -= payment.amount;
+      } catch (err) {
+        this.logger.error(`Failed to refund payment ${payment.id}`, err);
+        result.skipped.push({ paymentId: payment.id, reason: 'payout_failed' });
+      }
+    }
+
+    this.logger.log(`Refund process finished for trip ${tripId}: refunded=${result.refunded.length}, skipped=${result.skipped.length}`);
+    return result;
+  }
+
+  // Get payments associated with a trip (for admin UI)
+  async getPaymentsByTrip(tripId: string) {
+    const payments = await this.paymentRepository
+      .createQueryBuilder('payment')
+      .leftJoinAndSelect('payment.booking', 'booking')
+      .where('booking.trip_id = :tripId', { tripId })
+      .orderBy('payment.created_at', 'ASC')
+      .getMany();
+
+    return payments.map((p) => ({
+      id: p.id,
+      bookingId: p.bookingId,
+      amount: p.amount,
+      status: p.status,
+      bankId: p.bankId,
+      bankNumber: p.bankNumber || (p as any).bank_number || null,
+      createdAt: p.processedAt,
+    }));
+  }
 }
+
