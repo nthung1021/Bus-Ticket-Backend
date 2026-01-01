@@ -546,10 +546,10 @@ export class TripsService {
       // Optional date filter: trips whose departure date = dto.date (if provided)
       if (dto.date) {
         const startDate = new Date(dto.date);
-        startDate.setUTCHours(0, 0, 0, 0);
+        startDate.setHours(0, 0, 0, 0);
         const startOfDay = startDate.toISOString();
         const endDate = new Date(dto.date);
-        endDate.setUTCHours(23, 59, 59, 999);
+        endDate.setHours(23, 59, 59, 999);
         const endOfDay = endDate.toISOString();
         qb.andWhere('trip.departureTime BETWEEN :startOfDay AND :endOfDay', {
           startOfDay,
