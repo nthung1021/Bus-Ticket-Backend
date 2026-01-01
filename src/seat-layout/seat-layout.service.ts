@@ -180,19 +180,10 @@ export class SeatLayoutService {
 
     // Convert database seats to SeatInfo format
     const seatInfos: SeatInfo[] = seats.map(seat => {
-      // Extract row (letter) and position (number) from seat code (e.g., A1, B2)
+      // Extract row (number) and position (letter) from seat code (e.g., 1A, 2B)
       const seatCode = seat.seatCode;
-      // Seat code format: letter+number (e.g., A1, B2)
-      // Row should be derived from the letter part, position should be the numeric part
-      let row = 1;
-      let positionNumber = 1;
-      const match = seatCode.match(/^([A-Z]+)(\d+)$/i);
-      if (match) {
-        const letterPart = match[1].toUpperCase();
-        positionNumber = parseInt(match[2], 10);
-        // Convert letter to row number (A=1, B=2, C=3, etc.)
-        row = letterPart.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
-      }
+      // Seat code format: number+letter (e.g., 1A, 2B)
+      const { row, position: positionNumber } = this.parseSeatCode(seatCode);
 
       // Calculate price based on seat type and pricing configuration using ratios
       let seatPrice = 0;
@@ -278,18 +269,10 @@ export class SeatLayoutService {
 
     // Convert database seats to SeatInfo format with proper pricing
     const seatInfos: SeatInfo[] = seats.map(seat => {
-      // Extract row (letter) and position (number) from seat code (e.g., A1, B2)
+      // Extract row (number) and position (letter) from seat code (e.g., 1A, 2B)
       const seatCode = seat.seatCode;
-      // Parse seat code where letter part is row and numeric part is position
-      let row = 1;
-      let positionNumber = 1;
-      const match = seatCode.match(/^([A-Z]+)(\d+)$/i);
-      if (match) {
-        const letterPart = match[1].toUpperCase();
-        positionNumber = parseInt(match[2], 10);
-        // Convert letter to row number (A=1, B=2, C=3, etc.)
-        row = letterPart.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
-      }
+      // Parse seat code where number is row and letter(s) indicate position
+      const { row, position: positionNumber } = this.parseSeatCode(seatCode);
       // console.log(`Seat ${seatCode}: row ${row}, position ${positionNumber}`);
 
       // Calculate price based on seat type and pricing configuration using ratios
@@ -357,7 +340,7 @@ export class SeatLayoutService {
         price: Math.max(0, Math.round(basePrice)) // Ensure non-negative and round to VND
       };
     });
-
+    // console.log("seatInfos:", seatInfos);
     // Add seats to layoutConfig
     seatLayout.layoutConfig = {
       ...seatLayout.layoutConfig,
@@ -513,6 +496,29 @@ export class SeatLayoutService {
       default:
         return SeatType.NORMAL;
     }
+  }
+
+  /**
+   * Parse seat code of the form number+letters (e.g., 1A, 12B) into row and position
+   * - row: numeric prefix (e.g., 1 or 12)
+   * - position: letters converted to 1-based index (A=1, B=2, ..., Z=26, AA=27, ...)
+   */
+  private parseSeatCode(seatCode: string): { row: number; position: number } {
+    let row = 1;
+    let position = 1;
+    const match = seatCode.match(/^(\d+)([A-Z]+)$/i);
+    if (match) {
+      // Leading number is the row
+      row = parseInt(match[1], 10);
+      const letterPart = match[2].toUpperCase();
+      // Convert letters (base-26) to number: A=1, Z=26, AA=27, etc.
+      let p = 0;
+      for (let i = 0; i < letterPart.length; i++) {
+        p = p * 26 + (letterPart.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+      }
+      position = p || 1;
+    }
+    return { row, position };
   }
 
   private createStandard2x2Template() {
