@@ -231,9 +231,19 @@ export class BookingService {
         bookingData.dropoffPointId = dropoffPointId;
       }
       // Notification for auto-paid booking
-      if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
-         // We'll handle notification after save to get ID, or here if we have enough info. 
-         // Actually better to do it after save to ensure FK constraints if any, though userId is available.
+      if (bookingData.status === BookingStatus.PAID && userId) {
+        try {
+          await this.notificationsService.createInAppNotification(
+            userId,
+            'Booking Successful',
+            `Your booking ${bookingData.bookingReference} has been successfully confirmed. We have sent an email to your email address. Please check your email for the e-ticket.`,
+            { bookingId: bookingData.id, reference: bookingData.bookingReference },
+            bookingData.id
+          );
+        } catch (error) {
+          this.logger.error(`Failed to create in-app notification for booking ${bookingData.id}`, error.stack);
+          // Suppress error so booking doesn't fail
+        }
       }
 
       if (!isGuestCheckout && userId) {
