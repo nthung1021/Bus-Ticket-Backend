@@ -99,13 +99,15 @@ export class NotificationsService {
 
     // Map entity to API response format if needed, or return/transform in controller
     const mappedNotifications = notifications.map(n => ({
-      notificationId: n.id,
+      id: n.id,
+      userId: n.userId,
       type: n.type || 'system', // Default type if missing
       title: n.title,
       message: n.message,
       data: n.data,
-      status: n.status === NotificationStatus.READ ? 'read' : 'unread',
-      createdAt: n.sentAt
+      isRead: n.status === NotificationStatus.READ,
+      createdAt: n.sentAt,
+      updatedAt: n.sentAt,
     }));
 
     return {

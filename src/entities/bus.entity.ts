@@ -56,6 +56,9 @@ export class Bus {
   @Column({ name: 'amenities_json', type: 'json', nullable: true })
   amenities: string[];
 
+  @Column({ type: 'json', nullable: true })
+  photo: string[];
+
   // Relations
   @ManyToOne(() => Operator, (operator) => operator.buses)
   @JoinColumn({ name: 'operator_id' })

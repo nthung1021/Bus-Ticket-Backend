@@ -27,7 +27,7 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    const result = await this.cloudinaryService.uploadImage(file).catch(() => {
+    const result = await this.cloudinaryService.uploadImage(file, 'Bus-Ticket/Avatars').catch(() => {
      throw new BadRequestException('Invalid file type or upload failed.');
     });
 

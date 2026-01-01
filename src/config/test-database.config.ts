@@ -17,6 +17,7 @@ import { Notification } from '../entities/notification.entity';
 import { AuditLog } from '../entities/audit-log.entity';
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
+import { PasswordResetToken } from '../entities/password-reset-token.entity';
 import { BookingModificationHistory } from '../entities/booking-modification-history.entity';
 
 /**
@@ -55,6 +56,7 @@ export const testDatabaseConfig = (
     Notification,
     AuditLog,
     RefreshToken,
+    PasswordResetToken,
     BookingModificationHistory,
   ],
   

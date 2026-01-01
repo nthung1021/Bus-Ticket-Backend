@@ -19,6 +19,9 @@ import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { VerifyResetTokenDto } from './dto/verify-reset-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -47,7 +50,8 @@ export class AuthController {
     const response = await this.authService.googleLogin(req.user);
 
     if (!response) {
-      return res.redirect(`${process.env.FRONTEND_URL}/`);
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
+      return res.redirect(`${frontendUrl}/`);
     }
 
     const cookieOptions = this.getCookieOptions();
@@ -61,7 +65,8 @@ export class AuthController {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    res.redirect(`${process.env.FRONTEND_URL}/`);
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
+    res.redirect(`${frontendUrl}/`);
   }
 
   @Post('register')
@@ -82,6 +87,27 @@ export class AuthController {
   async resendVerification(@Body() resendDto: ResendVerificationDto) {
     const { email } = resendDto;
     return this.authService.resendVerification(email);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() forgotDto: ForgotPasswordDto) {
+    const { email } = forgotDto;
+    return this.authService.forgotPassword(email);
+  }
+
+  @Post('verify-reset-token')
+  @HttpCode(HttpStatus.OK)
+  async verifyResetToken(@Body() verifyDto: VerifyResetTokenDto) {
+    const { token } = verifyDto;
+    return this.authService.verifyResetToken(token);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() resetDto: ResetPasswordDto) {
+    const { token, newPassword } = resetDto;
+    return this.authService.resetPassword(token, newPassword);
   }
 
   @Get('me')

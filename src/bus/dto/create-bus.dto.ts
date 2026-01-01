@@ -1,4 +1,4 @@
-import { IsArray, IsNumber, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateBusDto {
   @IsUUID()
@@ -16,4 +16,9 @@ export class CreateBusDto {
   @IsArray()
   @IsString({ each: true })
   amenities: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  photo?: string[];
 }
