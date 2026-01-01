@@ -49,7 +49,7 @@ export class AuthService {
    */
   private determineUserRole(email: string): UserRole {
     // Auto-assign admin role to specific email
-    if (email === 'minh@gmail.com') {
+    if (email === 'nguyentuanminh435@gmail.com') {
       return UserRole.ADMIN;
     }
     return UserRole.CUSTOMER;
