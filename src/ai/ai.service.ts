@@ -137,8 +137,8 @@ export class AiService {
       totalPrice: Total price for the booking
       paymentMethod: Optional, Payment method (e.g., credit card, paypal)
       isGuestCheckout: Optional, Whether the user is checking out as a guest
-      contactEmail: Optional, Contact email for booking confirmation
-      contactPhone: Optional, Contact phone number for booking confirmation
+      contactEmail: Contact email for booking confirmation
+      contactPhone: Contact phone number for booking confirmation
       ---
       ** NOTE **:
       - tripId is fetched from the selected trip in tool 'search_trips' results.
@@ -179,8 +179,8 @@ export class AiService {
         ],
         totalPrice: number,
         isGuestCheckout: boolean,
-        contactEmail?: string | undefined,
-        contactPhone?: string | undefined
+        contactEmail: string,
+        contactPhone: string
       }
       ** NOTE **: 
       You MUST use this tool everytime a booking is completed successfully.
