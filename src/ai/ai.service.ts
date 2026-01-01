@@ -66,7 +66,7 @@ export class AiService {
       Here is a list of tools you can use:
       1. search_trips: Use this tool to search for bus trips based on user criteria.
       If you already called this tool and got results, you can use that information to answer the user's query.
-      Otherwise, call this tool with appropriate parameters.  
+      Otherwise, call this tool with appropriate parameters. For optional parameters, you MUST choose to omit them if the user does not want to provide that information. 
       Parameters for search_trips:
       {
         origin: string, 
@@ -335,6 +335,7 @@ export class AiService {
       }
 
       const parsed: any = this.robustParseJson(rawContent);
+      this.logger.debug(`LLM response parsed as JSON:\n${JSON.stringify(parsed, null, 2)}`);
       if (parsed && typeof parsed === 'object' && parsed.content === rawContent) {
         this.logger.warn('LLM output could not be parsed as JSON, requesting proper format');
         this.msgs.push(new HumanMessage({ content: `
@@ -369,6 +370,7 @@ export class AiService {
           if (toolCall.tool_name === 'search_trips') {
             this.logger.debug(`Executing search_trips tool`);
             const toolResult = await this.tripsService.search(toolCall.parameters);
+            this.logger.debug(`search_trips returned\n${JSON.stringify(toolResult, null, 2)}`);
             const aiMsg = new HumanMessage(JSON.stringify({ content: `Here are the search results: ${JSON.stringify(toolResult, null, 2)}` }));
             this.msgs.push(aiMsg);
           } else if (toolCall.tool_name === 'book_ticket') {
