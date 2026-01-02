@@ -45,7 +45,13 @@ export async function seedTrips(dataSource: DataSource): Promise<void> {
     // Find available bus and time slot
     do {
       busId = random(buses).id;
-      departureTime = new Date(Date.now() + (Math.random() * 90 - 30) * 24 * 60 * 60 * 1000);
+      // Create date in Vietnam timezone (UTC+7)
+      const baseDate = new Date(Date.now() + (Math.random() * 90 - 30) * 24 * 60 * 60 * 1000);
+      const vietnamOffset = 7 * 60; // UTC+7 in minutes
+      const localOffset = baseDate.getTimezoneOffset(); // Local timezone offset from UTC
+      const offsetDiff = vietnamOffset + localOffset; // Difference to add
+      baseDate.setMinutes(baseDate.getMinutes() + offsetDiff);
+      departureTime = baseDate;
       
       // Round to nearest hour for scheduling
       departureTime.setMinutes(0, 0, 0);
@@ -149,8 +155,16 @@ export async function seedSeatStatus(dataSource: DataSource): Promise<void> {
       const bookingId = state === 'booked' && idCollections.bookings.length > 0 ? 
         `'${random(idCollections.bookings)}'` : 'NULL';
       
-      const lockedUntil = state === 'locked' ? 
-        `'${new Date(Date.now() + Math.random() * 3600000).toISOString()}'` : 'NULL';
+      // Create locked until time in Vietnam timezone
+      let lockedUntil = 'NULL';
+      if (state === 'locked') {
+        const lockDate = new Date(Date.now() + Math.random() * 3600000);
+        const vietnamOffset = 7 * 60;
+        const localOffset = lockDate.getTimezoneOffset();
+        const offsetDiff = vietnamOffset + localOffset;
+        lockDate.setMinutes(lockDate.getMinutes() + offsetDiff);
+        lockedUntil = `'${lockDate.toISOString()}'`;
+      }
 
       seatStatusValues.push(
         `('${id}', '${trip.id}', '${seatId}', ${bookingId}, '${state}', ${lockedUntil})`
@@ -232,7 +246,16 @@ export async function seedBookings(dataSource: DataSource, vietnamData: VietnamS
     const bookedAt = generateRandomDate(-Math.floor(Math.random() * 90));
     const lastModifiedAt = Math.random() > 0.7 ? generateRandomDate(-Math.floor(Math.random() * 30)) : null;
     const cancelledAt = status === 'cancelled' ? generateRandomDate(-Math.floor(Math.random() * 60)) : null;
-    const expiresAt = status === 'pending' ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
+    // Create expiration time in Vietnam timezone for pending bookings
+    let expiresAt: string | null = null;
+    if (status === 'pending') {
+      const expDate = new Date(Date.now() + 30 * 60 * 1000);
+      const vietnamOffset = 7 * 60;
+      const localOffset = expDate.getTimezoneOffset();
+      const offsetDiff = vietnamOffset + localOffset;
+      expDate.setMinutes(expDate.getMinutes() + offsetDiff);
+      expiresAt = expDate.toISOString();
+    }
 
     bookingValues.push(
       `('${id}', '${bookingReference}', ${userId ? `'${userId}'` : 'NULL'}, '${tripId}', ${totalAmount}, '${status}', '${contactEmail}', '${contactPhone}', ${pickupPointId ? `'${pickupPointId}'` : 'NULL'}, ${dropoffPointId ? `'${dropoffPointId}'` : 'NULL'}, '${bookedAt}', ${lastModifiedAt ? `'${lastModifiedAt}'` : 'NULL'}, ${cancelledAt ? `'${cancelledAt}'` : 'NULL'}, ${expiresAt ? `'${expiresAt}'` : 'NULL'})`

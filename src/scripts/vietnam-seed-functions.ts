@@ -110,7 +110,15 @@ export async function seedRefreshTokens(dataSource: DataSource): Promise<void> {
     const id = randomUUID();
     const userId = random(idCollections.users);
     const token = `rt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
+    
+    // Create expiration time in Vietnam timezone (30 days from now)
+    const expDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const vietnamOffset = 7 * 60;
+    const localOffset = expDate.getTimezoneOffset();
+    const offsetDiff = vietnamOffset + localOffset;
+    expDate.setMinutes(expDate.getMinutes() + offsetDiff);
+    const expiresAt = expDate.toISOString();
+    
     const createdAt = generateRandomDate(-Math.floor(Math.random() * 30));
 
     tokenValues.push(`('${id}', '${userId}', '${token}', '${expiresAt}', '${createdAt}')`);
@@ -283,17 +291,21 @@ export async function seedSeats(dataSource: DataSource): Promise<void> {
   
   for (const bus of busCapacities) {
     const capacity = bus.seat_capacity;
+    const seatsPerRow = 4; // Standard 4 seats per row (2-aisle-2 layout)
     
     for (let seatNum = 1; seatNum <= capacity; seatNum++) {
       const id = randomUUID();
       idCollections.seats.push(id);
       
-      // Generate seat code: A1, A2, B1, B2, etc.
-      const row = String.fromCharCode(65 + Math.floor((seatNum - 1) / 4)); // A, B, C, D...
-      const position = ((seatNum - 1) % 4) + 1;
-      const seatCode = `${row}${position}`;
+      // Generate seat code: 1A, 1B, 1C, 1D, 2A, 2B, etc.
+      // Row number comes first, then column letter
+      const rowNumber = Math.floor((seatNum - 1) / seatsPerRow) + 1;
+      const columnIndex = (seatNum - 1) % seatsPerRow;
+      const columnLetter = String.fromCharCode(65 + columnIndex); // A, B, C, D...
+      const seatCode = `${rowNumber}${columnLetter}`;
       
-      const seatType = seatNum <= 4 ? 'vip' : seatNum <= 8 ? 'business' : 'normal';
+      // First row is business, rows 2-3 are VIP, rest are normal
+      const seatType = rowNumber === 1 ? 'business' : rowNumber <= 3 ? 'vip' : 'normal';
       
       seatValues.push(
         `('${id}', '${bus.id}', '${seatCode}', '${seatType}', true)`
