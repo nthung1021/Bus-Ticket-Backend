@@ -1,72 +1,72 @@
 # 🗄️ Database Structure Documentation
 
-## 📊 Tổng quan cấu trúc Database
+## 📊 Database Structure Overview
 
-Hệ thống Bus Booking System có **19 bảng chính** được tổ chức thành 7 nhóm chức năng:
+The Bus Booking System has **19 main tables** organized into 7 functional groups:
 
 ### 🔐 1. User Management & Authentication
-- `users` - Thông tin người dùng (admin/customer)
-- `refresh_tokens` - Token xác thực 
-- `payment_methods` - Phương thức thanh toán của user
+- `users` - User information (admin/customer)
+- `refresh_tokens` - Authentication tokens 
+- `payment_methods` - User payment methods
 
 ### 🚌 2. Operator & Bus Fleet Management  
-- `operators` - Nhà xe/công ty vận tải
-- `buses` - Thông tin xe buýt
-- `seats` - Ghế ngồi trên xe
-- `seat_layouts` - Sơ đồ bố trí ghế
+- `operators` - Bus operators/transport companies
+- `buses` - Bus information
+- `seats` - Bus seats
+- `seat_layouts` - Seat layout diagrams
 
 ### 🛣️ 3. Route & Trip Management
-- `routes` - Tuyến đường
-- `route_points` - Điểm đón/trả khách
-- `trips` - Chuyến xe theo lịch trình
+- `routes` - Routes
+- `route_points` - Pickup/dropoff points
+- `trips` - Scheduled trips
 
 ### 💺 4. Booking & Payment System
-- `bookings` - Đặt vé
-- `passenger_details` - Thông tin hành khách
-- `seat_status` - Trạng thái ghế (available/booked/locked)
-- `payments` - Giao dịch thanh toán
+- `bookings` - Ticket bookings
+- `passenger_details` - Passenger information
+- `seat_status` - Seat status (available/booked/locked)
+- `payments` - Payment transactions
 
 ### ⭐ 5. Review & Feedback
-- `reviews` - Đánh giá chuyến xe
-- `feedbacks` - Phản hồi từ khách hàng
+- `reviews` - Trip reviews
+- `feedbacks` - Customer feedback
 
 ### 🔔 6. Notification System
-- `notifications` - Thông báo hệ thống
+- `notifications` - System notifications
 
 ### 📋 7. Audit & History Tracking
-- `audit_logs` - Nhật ký hệ thống
-- `booking_modification_history` - Lịch sử thay đổi booking
+- `audit_logs` - System logs
+- `booking_modification_history` - Booking modification history
 
-## 🎨 Cách vẽ Database Diagram
+## 🎨 How to Draw Database Diagram
 
-### Sử dụng dbdiagram.io (Khuyên dùng)
+### Using dbdiagram.io (Recommended)
 
-1. **Truy cập**: https://dbdiagram.io/
-2. **Click**: "Go to App" hoặc "Try it now"
-3. **Copy nội dung** từ file: [`docs/database-diagram.dbml`](./database-diagram.dbml)
-4. **Paste** vào editor của dbdiagram.io
-5. **Diagram tự động hiển thị** với đầy đủ relationships
+1. **Visit**: https://dbdiagram.io/
+2. **Click**: "Go to App" or "Try it now"
+3. **Copy content** from file: [`docs/database-diagram.dbml`](./database-diagram.dbml)
+4. **Paste** into dbdiagram.io editor
+5. **Diagram will automatically display** with full relationships
 
-### Chạy script tự động
+### Run automated script
 
 ```bash
-# Tạo/cập nhật file diagram
+# Create/update diagram file
 npx ts-node src/scripts/generate-db-diagram.ts
 ```
 
 ## 📈 Database Statistics
 
-| Thống kê | Số lượng |
+| Statistic | Count |
 |----------|----------|
-| **Core Tables** | 19 bảng |
+| **Core Tables** | 19 tables |
 | **Enums** | 9 enums |
 | **Foreign Keys** | 30+ relationships |
 | **Indexes** | 50+ indexes |
-| **UUID Primary Keys** | Tất cả bảng |
+| **UUID Primary Keys** | All tables |
 
 ## 🔗 Key Relationships
 
-### Quan hệ chính:
+### Main relationships:
 - `User` → `Booking` (1:n)
 - `Trip` → `Booking` (1:n) 
 - `Bus` → `Trip` (1:n)
@@ -76,19 +76,19 @@ npx ts-node src/scripts/generate-db-diagram.ts
 - `Booking` → `Review` (1:1)
 - `Booking` → `Payment` (1:n)
 
-### Quan hệ phức tạp:
-- `SeatStatus` liên kết `Trip`, `Seat`, `Booking`
-- `RoutePoint` định nghĩa pickup/dropoff points
-- `PassengerDetail` lưu thông tin từng hành khách
+### Complex relationships:
+- `SeatStatus` links `Trip`, `Seat`, `Booking`
+- `RoutePoint` defines pickup/dropoff points
+- `PassengerDetail` stores individual passenger information
 
 ## 🏗️ Database Design Principles
 
-### ✅ Best Practices đã áp dụng:
+### ✅ Applied Best Practices:
 
-1. **UUID Primary Keys** - Bảo mật và scalability
-2. **Proper Indexing** - Tối ưu performance cho queries
-3. **Enum Types** - Type safety và data consistency  
-4. **Timestamp with timezone** - Hỗ trợ multiple timezones
+1. **UUID Primary Keys** - Security and scalability
+2. **Proper Indexing** - Optimized query performance
+3. **Enum Types** - Type safety and data consistency  
+4. **Timestamp with timezone** - Multiple timezone support
 5. **Cascade Delete** - Maintain data integrity
 6. **Unique Constraints** - Prevent duplicates
 7. **Nullable Foreign Keys** - Handle optional relationships
@@ -98,36 +98,36 @@ npx ts-node src/scripts/generate-db-diagram.ts
 - **Tables**: snake_case (users, booking_modification_history)
 - **Columns**: snake_case (user_id, created_at)
 - **Indexes**: idx_table_column(s) format
-- **Enums**: lowercase với underscore
+- **Enums**: lowercase with underscore
 - **Foreign Keys**: {table_name}_id format
 
 ## 🔧 Schema Maintenance
 
-### Cập nhật Database:
+### Update Database:
 ```bash
-# Tạo migration mới
+# Create new migration
 npm run migration:generate -- --name=DescriptiveName
 
-# Chạy migrations
+# Run migrations
 npm run migration:run
 
 # Revert migration
 npm run migration:revert
 ```
 
-### Cập nhật Diagram:
+### Update Diagram:
 ```bash
-# Tự động tạo lại diagram khi có thay đổi schema
+# Automatically regenerate diagram when schema changes
 npx ts-node src/scripts/generate-db-diagram.ts
 ```
 
 ## 📚 Entity Documentation
 
-Mỗi entity được document chi tiết tại:
-- [`src/entities/`](../src/entities/) - Source code với TypeORM decorators
-- Enum definitions trong từng entity file
-- Relationship mappings với JoinColumn decorators
+Each entity is documented in detail at:
+- [`src/entities/`](../src/entities/) - Source code with TypeORM decorators
+- Enum definitions in each entity file
+- Relationship mappings with JoinColumn decorators
 
 ---
 
-**💡 Tip**: Sử dụng dbdiagram.io để visualize và export sang các format khác nhau (PNG, PDF, SQL) cho presentation hoặc documentation.
+**💡 Tip**: Use dbdiagram.io to visualize and export to different formats (PNG, PDF, SQL) for presentations or documentation.
