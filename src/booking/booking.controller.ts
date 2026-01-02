@@ -37,6 +37,7 @@ import {
   ChangeSeatsDto,
   ChangeSeatsResponseDto 
 } from './dto/change-seats.dto';
+import { CancelBookingResponseDto } from './dto/cancel-booking.dto';
 
 // Inline DTO to avoid import issues
 interface PassengerUpdateDto {
@@ -603,6 +604,41 @@ export class BookingController {
     }
   }
 
+  @Post(':id/cancel-with-refund')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async cancelBookingWithRefund(
+    @Request() req: any,
+    @Param('id') bookingId: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: CancelBookingResponseDto;
+  }> {
+    try {
+      const userId = req.user.userId;
+      const result = await this.bookingService.cancelBookingWithRefund(bookingId, userId);
+
+      const refundMessage = result.refund.amount > 0 
+        ? ` A refund of ${result.refund.amount.toLocaleString()} VND will be processed if approved by admin.`
+        : ' No refund is applicable.';
+
+      const cancelResponse: CancelBookingResponseDto = {
+        bookingId: result.bookingId,
+        bookingStatus: result.bookingStatus,
+        refund: result.refund
+      };
+
+      return {
+        success: true,
+        message: `Cancellation request submitted successfully and is awaiting admin approval.${refundMessage}`,
+        data: cancelResponse,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
   @Post('admin/expiration/restart')
   @HttpCode(HttpStatus.OK)
   async restartExpirationScheduler(): Promise<{
@@ -615,6 +651,70 @@ export class BookingController {
       return {
         success: true,
         message: 'Booking expiration scheduler restarted successfully',
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Post('admin/:id/approve-cancellation')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async approveCancellationRequest(
+    @Request() req: any,
+    @Param('id') bookingId: string,
+    @Body() body: { approvalNote?: string },
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    try {
+      const adminUserId = req.user.userId;
+      const result = await this.bookingService.approveCancellationRequest(
+        bookingId, 
+        adminUserId, 
+        body.approvalNote
+      );
+
+      const refundMessage = result.refund && result.refund.amount > 0 
+        ? ` Refund of ${result.refund.amount.toLocaleString()} VND has been processed.`
+        : ' No refund was processed.';
+
+      return {
+        success: true,
+        message: `Cancellation request approved successfully.${refundMessage}`,
+        data: result,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Post('admin/:id/reject-cancellation')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async rejectCancellationRequest(
+    @Request() req: any,
+    @Param('id') bookingId: string,
+    @Body() body: { rejectionReason: string },
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    try {
+      const adminUserId = req.user.userId;
+      const result = await this.bookingService.rejectCancellationRequest(
+        bookingId, 
+        adminUserId, 
+        body.rejectionReason
+      );
+
+      return {
+        success: true,
+        message: result.message,
+        data: result,
       };
     } catch (error) {
       throw error;

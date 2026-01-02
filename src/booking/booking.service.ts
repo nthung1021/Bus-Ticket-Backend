@@ -9,6 +9,7 @@ import { SeatStatus, SeatState } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
+import { Payment, PaymentStatus } from '../entities/payment.entity';
 import { BookingModificationHistory, ModificationType } from '../entities/booking-modification-history.entity';
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { RoutePoint } from '../entities/route-point.entity';
@@ -2319,5 +2320,273 @@ export class BookingService {
 
     const remainingMs = booking.expiresAt.getTime() - new Date().getTime();
     return Math.max(0, Math.ceil(remainingMs / (1000 * 60))); // Convert to minutes
+  }
+
+  /**
+   * Cancel booking with refund (user-initiated)
+   * Sets status to PENDING for admin approval
+   */
+  async cancelBookingWithRefund(bookingId: string, userId?: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const booking = await queryRunner.manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'trip.route', 'seatStatuses', 'user', 'passengerDetails'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.status !== BookingStatus.PAID) {
+        throw new BadRequestException('Only paid bookings can be cancelled');
+      }
+
+      // Check if trip allows cancellation (e.g., not within 24 hours)
+      const now = new Date();
+      const tripDate = new Date(booking.trip.departureTime);
+      const hoursUntilTrip = (tripDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+      if (hoursUntilTrip < 24) {
+        throw new BadRequestException('Cannot cancel booking within 24 hours of departure');
+      }
+
+      // Update booking status to PENDING (waiting for admin approval)
+      await queryRunner.manager.update(Booking, 
+        { id: bookingId }, 
+        { 
+          status: BookingStatus.PENDING,
+          lastModifiedAt: new Date()
+        }
+      );
+
+      // Create audit log
+      await queryRunner.manager.save(AuditLog, {
+        action: 'CANCELLATION_REQUESTED',
+        actorId: userId || null,
+        metadata: {
+          bookingId,
+          originalStatus: BookingStatus.PAID,
+          reason: 'User-initiated cancellation request'
+        },
+      });
+
+      // Get passenger name for notification
+      const customerName = booking.passengerDetails?.[0]?.fullName || booking.user?.name || 'Unknown';
+      const customerEmail = booking.contactEmail || booking.user?.email || '';
+
+      // Notify admins about the cancellation request
+      await this.notificationsService.notifyAdminsAboutCancellationRequest(
+        booking.bookingReference,
+        customerName,
+        customerEmail,
+        booking.totalAmount,
+        booking.totalAmount,
+        bookingId,
+        {
+          origin: booking.trip.route?.origin || 'Unknown',
+          destination: booking.trip.route?.destination || 'Unknown',
+          departureTime: booking.trip.departureTime
+        }
+      );
+
+      await queryRunner.commitTransaction();
+
+      return {
+        success: true,
+        message: 'Cancellation request submitted successfully. An admin will review your request.',
+        booking: await this.findBookingById(bookingId),
+        bookingId: bookingId,
+        bookingStatus: BookingStatus.PENDING,
+        refund: {
+          amount: booking.totalAmount,
+          status: 'PENDING' as const
+        }
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('Error requesting booking cancellation:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Approve cancellation request (admin only)
+   */
+  async approveCancellationRequest(bookingId: string, adminId: string, reason?: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const booking = await queryRunner.manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'seatStatuses', 'user', 'payments'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException('Booking must be in pending status to approve cancellation');
+      }
+
+      // Check if there was a cancellation request (look in audit logs)
+      const cancellationRequest = await queryRunner.manager
+        .createQueryBuilder(AuditLog, 'audit')
+        .where('audit.action = :action', { action: 'CANCELLATION_REQUESTED' })
+        .andWhere('audit.metadata ->> \'bookingId\' = :bookingId', { bookingId })
+        .orderBy('audit.createdAt', 'DESC')
+        .getOne();
+
+      if (!cancellationRequest) {
+        throw new BadRequestException('No cancellation request found for this booking');
+      }
+
+      // Process refund through payment
+      let refundResult: any = null;
+      let refundAmount = 0;
+      
+      if (booking.payments && booking.payments.length > 0) {
+        const lastPayment = booking.payments.find(p => p.status === PaymentStatus.COMPLETED);
+        if (lastPayment && lastPayment.payosOrderCode) {
+          try {
+            refundResult = await this.payosService.cancelPayment(lastPayment.payosOrderCode);
+            refundAmount = booking.totalAmount;
+          } catch (error) {
+            this.logger.warn(`Refund processing failed for booking ${bookingId}:`, error.message);
+            // Continue with cancellation even if refund fails
+          }
+        }
+      }
+
+      // Free up the seats
+      for (const seatStatus of booking.seatStatuses) {
+        await queryRunner.manager.update(SeatStatus, 
+          { id: seatStatus.id },
+          { state: SeatState.AVAILABLE }
+        );
+      }
+
+      // Update booking status to CANCELLED
+      await queryRunner.manager.update(Booking, 
+        { id: bookingId }, 
+        { 
+          status: BookingStatus.CANCELLED,
+          cancelledAt: new Date(),
+          lastModifiedAt: new Date()
+        }
+      );
+
+      // Create audit log
+      await queryRunner.manager.save(AuditLog, {
+        action: 'CANCELLATION_APPROVED',
+        actorId: adminId,
+        metadata: {
+          bookingId,
+          refundResult,
+          refundAmount,
+          reason: reason || 'Admin approved cancellation request'
+        },
+      });
+
+      await queryRunner.commitTransaction();
+
+      return {
+        success: true,
+        message: 'Cancellation request approved successfully',
+        refundProcessed: !!refundResult,
+        booking: await this.findBookingById(bookingId),
+        refund: {
+          amount: refundAmount,
+          status: refundResult ? 'SUCCESS' : 'FAILED'
+        }
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('Error approving cancellation request:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Reject cancellation request (admin only)
+   */
+  async rejectCancellationRequest(bookingId: string, adminId: string, reason?: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const booking = await queryRunner.manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'user'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException('Booking must be in pending status to reject cancellation');
+      }
+
+      // Check if there was a cancellation request (look in audit logs)
+      const cancellationRequest = await queryRunner.manager
+        .createQueryBuilder(AuditLog, 'audit')
+        .where('audit.action = :action', { action: 'CANCELLATION_REQUESTED' })
+        .andWhere('audit.metadata ->> \'bookingId\' = :bookingId', { bookingId })
+        .orderBy('audit.createdAt', 'DESC')
+        .getOne();
+
+      if (!cancellationRequest) {
+        throw new BadRequestException('No cancellation request found for this booking');
+      }
+
+      // Restore original booking status (should be PAID)
+      await queryRunner.manager.update(Booking, 
+        { id: bookingId }, 
+        { 
+          status: BookingStatus.PAID,
+          lastModifiedAt: new Date()
+        }
+      );
+
+      // Create audit log
+      await queryRunner.manager.save(AuditLog, {
+        action: 'CANCELLATION_REJECTED',
+        actorId: adminId,
+        metadata: {
+          bookingId,
+          restoredStatus: BookingStatus.PAID,
+          reason: reason || 'Admin rejected cancellation request'
+        },
+      });
+
+      await queryRunner.commitTransaction();
+
+      return {
+        success: true,
+        message: 'Cancellation request rejected successfully',
+        booking: await this.findBookingById(bookingId)
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('Error rejecting cancellation request:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }

@@ -8,6 +8,7 @@ import { BookingExpirationScheduler } from './booking-expiration-scheduler.servi
 import { BookingMigrationService } from './booking-migration.service';
 import { BookingModificationPermissionService } from './booking-modification-permission.service';
 import { Booking } from '../entities/booking.entity';
+import { Payment } from '../entities/payment.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
@@ -23,6 +24,7 @@ import { PayosModule } from '../payos/payos.module';
   imports: [
     TypeOrmModule.forFeature([
       Booking,
+      Payment,
       PassengerDetail,
       SeatStatus,
       Trip,

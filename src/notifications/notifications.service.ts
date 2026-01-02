@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
 import { Notification, NotificationChannel, NotificationStatus } from '../entities/notification.entity';
+import { User, UserRole } from '../entities/user.entity';
 import { BookingService } from '../booking/booking.service';
 import { EmailService } from '../booking/email.service';
 import { getTripReminderTemplate } from '../booking/email.templates';
@@ -14,6 +15,8 @@ export class NotificationsService {
   constructor(
     @InjectRepository(Notification)
     private notificationRepository: Repository<Notification>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
     @Inject(forwardRef(() => BookingService))
     private readonly bookingService: BookingService,
     private readonly emailService: EmailService,
@@ -164,5 +167,144 @@ export class NotificationsService {
     });
 
     return await this.notificationRepository.save(notification);
+  }
+
+  /**
+   * Notify all admin users about a booking cancellation
+   */
+  async notifyAdminsAboutCancellationRequest(
+    bookingReference: string,
+    customerName: string,
+    customerEmail: string,
+    refundAmount: number,
+    totalAmount: number,
+    bookingId: string,
+    tripInfo: { origin: string; destination: string; departureTime: Date }
+  ): Promise<void> {
+    try {
+      this.logger.log(`Starting admin notification for booking cancellation request: ${bookingReference}`);
+      
+      // Get all admin users
+      const adminUsers = await this.userRepository.find({
+        where: { role: UserRole.ADMIN }
+      });
+
+      this.logger.log(`Found ${adminUsers.length} admin users for notification`);
+
+      if (adminUsers.length === 0) {
+        this.logger.warn('No admin users found to notify about cancellation request');
+        return;
+      }
+
+      // Prepare notification data
+      const title = 'Cancellation Request - Action Required';
+      const refundPercentage = Math.round((refundAmount / totalAmount) * 100);
+      const message = `Customer ${customerName} (${customerEmail}) has requested to cancel booking ${bookingReference}. ` +
+        `Trip: ${tripInfo.origin} → ${tripInfo.destination} (${tripInfo.departureTime.toLocaleDateString()}). ` +
+        `Requested refund: ${refundAmount.toLocaleString()} VND (${refundPercentage}% of ${totalAmount.toLocaleString()} VND). ` +
+        `Please review and approve/reject this cancellation request.`;
+
+      const notificationData = {
+        bookingId,
+        bookingReference,
+        customerName,
+        customerEmail,
+        refundAmount,
+        totalAmount,
+        refundPercentage,
+        tripInfo,
+        type: 'cancellation_request',
+        status: 'pending_approval'
+      };
+
+      // Send notification to each admin
+      const notifications = adminUsers.map(admin => 
+        this.notificationRepository.create({
+          userId: admin.id,
+          bookingId,
+          title,
+          message,
+          type: 'cancellation_request',
+          data: notificationData,
+          channel: NotificationChannel.IN_APP,
+          status: NotificationStatus.SENT,
+          sentAt: new Date(),
+          template: 'admin_cancellation_request',
+        })
+      );
+
+      await this.notificationRepository.save(notifications);
+      
+      this.logger.log(`Sent cancellation request notifications to ${adminUsers.length} admin(s) for booking ${bookingReference}`);
+    } catch (error) {
+      this.logger.error(`Failed to notify admins about cancellation request ${bookingReference}: ${error.message}`);
+    }
+  }
+
+  async notifyAdminsAboutCancellation(
+    bookingReference: string,
+    customerName: string,
+    customerEmail: string,
+    refundAmount: number,
+    totalAmount: number,
+    bookingId: string,
+    tripInfo: { origin: string; destination: string; departureTime: Date }
+  ): Promise<void> {
+    try {
+      this.logger.log(`Starting admin notification for booking cancellation: ${bookingReference}`);
+      
+      // Get all admin users
+      const adminUsers = await this.userRepository.find({
+        where: { role: UserRole.ADMIN }
+      });
+
+      this.logger.log(`Found ${adminUsers.length} admin users for notification`);
+
+      if (adminUsers.length === 0) {
+        this.logger.warn('No admin users found to notify about booking cancellation');
+        return;
+      }
+
+      // Prepare notification data
+      const title = 'Booking Cancelled by Customer';
+      const refundPercentage = Math.round((refundAmount / totalAmount) * 100);
+      const message = `Customer ${customerName} (${customerEmail}) has cancelled booking ${bookingReference}. ` +
+        `Trip: ${tripInfo.origin} → ${tripInfo.destination} (${tripInfo.departureTime.toLocaleDateString()}). ` +
+        `Refund: ${refundAmount.toLocaleString()} VND (${refundPercentage}% of ${totalAmount.toLocaleString()} VND).`;
+
+      const notificationData = {
+        bookingId,
+        bookingReference,
+        customerName,
+        customerEmail,
+        refundAmount,
+        totalAmount,
+        refundPercentage,
+        tripInfo,
+        type: 'booking_cancellation'
+      };
+
+      // Send notification to each admin
+      const notifications = adminUsers.map(admin => 
+        this.notificationRepository.create({
+          userId: admin.id,
+          bookingId,
+          title,
+          message,
+          type: 'booking_cancellation',
+          data: notificationData,
+          channel: NotificationChannel.IN_APP,
+          status: NotificationStatus.SENT,
+          sentAt: new Date(),
+          template: 'admin_booking_cancellation',
+        })
+      );
+
+      await this.notificationRepository.save(notifications);
+      
+      this.logger.log(`Sent cancellation notifications to ${adminUsers.length} admin(s) for booking ${bookingReference}`);
+    } catch (error) {
+      this.logger.error(`Failed to notify admins about booking cancellation ${bookingReference}: ${error.message}`);
+    }
   }
 }

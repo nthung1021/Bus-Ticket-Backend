@@ -574,6 +574,79 @@ export class PayosService {
     return result;
   }
 
+  /**
+   * Process refund for a specific payment
+   * Used for user-initiated booking cancellations
+   */
+  async refundPayment(
+    transactionRef: string, 
+    refundAmount: number
+  ): Promise<{ success: boolean; status: 'SUCCESS' | 'FAILED' | 'PENDING'; message: string }> {
+    try {
+      this.logger.log(`Processing refund for transaction ${transactionRef}, amount: ${refundAmount}`);
+
+      // Find payment record
+      const payment = await this.paymentRepository.findOne({
+        where: { transactionRef },
+        relations: ['booking']
+      });
+
+      if (!payment) {
+        this.logger.error(`Payment not found for transaction ${transactionRef}`);
+        return { success: false, status: 'FAILED', message: 'Payment not found' };
+      }
+
+      if (payment.status !== PaymentStatus.COMPLETED) {
+        this.logger.error(`Payment ${payment.id} is not completed (current status: ${payment.status})`);
+        return { success: false, status: 'FAILED', message: 'Payment is not completed' };
+      }
+
+      if (!payment.bankId || !payment.bankNumber) {
+        this.logger.error(`Missing bank information for payment ${payment.id}`);
+        return { success: false, status: 'FAILED', message: 'Missing bank information for refund' };
+      }
+
+      if (refundAmount <= 0) {
+        this.logger.error(`Invalid refund amount: ${refundAmount}`);
+        return { success: false, status: 'FAILED', message: 'Invalid refund amount' };
+      }
+
+      // Check payout account balance
+      let accountInfo;
+      try {
+        accountInfo = await this.payos.payoutsAccount.balance();
+        const availableBalance = parseFloat(accountInfo.balance || '0');
+        
+        if (availableBalance < refundAmount) {
+          this.logger.error(`Insufficient payout balance: need ${refundAmount}, have ${availableBalance}`);
+          return { success: false, status: 'FAILED', message: 'Insufficient balance for refund' };
+        }
+      } catch (err) {
+        this.logger.error('Failed to fetch payout account balance for refund', err);
+        return { success: false, status: 'FAILED', message: 'Failed to verify account balance' };
+      }
+
+      // Create payout for refund
+      const payoutRequest = {
+        referenceId: `refund-${payment.id}-${Date.now()}`,
+        amount: refundAmount,
+        description: `Booking cancellation refund for ${payment.booking?.bookingReference || payment.bookingId}`,
+        toBin: payment.bankId,
+        toAccountNumber: payment.bankNumber,
+      } as any;
+
+      const payout = await this.payos.payouts.create(payoutRequest, payment.id);
+
+      this.logger.log(`Payout created for refund: payoutId=${payout.id}, amount=${refundAmount}`);
+
+      return { success: true, status: 'SUCCESS', message: 'Refund processed successfully' };
+
+    } catch (error) {
+      this.logger.error(`Failed to process refund for transaction ${transactionRef}`, error);
+      return { success: false, status: 'FAILED', message: 'Refund processing failed' };
+    }
+  }
+
   // Get payments associated with a trip (for admin UI)
   async getPaymentsByTrip(tripId: string) {
     const payments = await this.paymentRepository
