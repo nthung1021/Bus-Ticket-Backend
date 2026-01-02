@@ -27,6 +27,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 export class PayosService {
   private readonly logger = new Logger(PayosService.name);
   private readonly payos: PayOS;
+  private readonly payosPayout: PayOS;
 
   constructor(
     private configService: ConfigService,
@@ -55,6 +56,21 @@ export class PayosService {
       clientId,
       apiKey,
       checksumKey,
+    });
+
+    // Initialize PayOS instance for Payouts
+    const payoutClientId = this.configService.get<string>('PAYOS_PAYOUT_CLIENT_ID');
+    const payoutApiKey = this.configService.get<string>('PAYOS_PAYOUT_API_KEY');
+    const payoutChecksumKey = this.configService.get<string>('PAYOS_PAYOUT_CHECKSUM_KEY');
+    if (!payoutClientId || !payoutApiKey || !payoutChecksumKey) {
+      throw new Error(
+        'PayOS Payout configuration is missing. Please check environment variables.',
+      );
+    }
+    this.payosPayout = new PayOS({
+      clientId: payoutClientId,
+      apiKey: payoutApiKey,
+      checksumKey: payoutChecksumKey,
     });
   }
 
@@ -518,7 +534,7 @@ export class PayosService {
     // Get current payout account balance
     let accountInfo;
     try {
-      accountInfo = await this.payos.payoutsAccount.balance();
+      accountInfo = await this.payosPayout.payoutsAccount.balance();
       this.logger.log(`Payout account balance: ${accountInfo.balance} ${accountInfo.currency}`);
     } catch (err) {
       this.logger.error('Failed to fetch payout account balance', err);
@@ -553,7 +569,7 @@ export class PayosService {
           toAccountNumber: payment.bankNumber,
         } as any;
 
-        const payout = await this.payos.payouts.create(payoutRequest, payment.id);
+        const payout = await this.payosPayout.payouts.create(payoutRequest, payment.id);
 
         this.logger.log(`Payout created for payment ${payment.id}, payoutId=${payout.id}`);
 
@@ -614,7 +630,7 @@ export class PayosService {
       // Check payout account balance
       let accountInfo;
       try {
-        accountInfo = await this.payos.payoutsAccount.balance();
+        accountInfo = await this.payosPayout.payoutsAccount.balance();
         const availableBalance = parseFloat(accountInfo.balance || '0');
         
         if (availableBalance < refundAmount) {
@@ -635,7 +651,7 @@ export class PayosService {
         toAccountNumber: payment.bankNumber,
       } as any;
 
-      const payout = await this.payos.payouts.create(payoutRequest, payment.id);
+      const payout = await this.payosPayout.payouts.create(payoutRequest, payment.id);
 
       this.logger.log(`Payout created for refund: payoutId=${payout.id}, amount=${refundAmount}`);
 
