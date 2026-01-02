@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
   CreateDateColumn,
   Index,
@@ -106,7 +107,7 @@ export class Booking {
   @OneToMany(() => Notification, (notification) => notification.booking)
   notifications: Notification[];
 
-  @OneToMany(() => Review, (review) => review.booking)
+  @OneToOne(() => Review, (review) => review.booking)
   review: Review;
 
   // Relations to route points for pickup / dropoff

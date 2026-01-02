@@ -510,6 +510,7 @@ export class BookingService {
       .leftJoinAndSelect('booking.passengerDetails', 'passengerDetails')
       .leftJoinAndSelect('booking.seatStatuses', 'seatStatuses')
       .leftJoinAndSelect('seatStatuses.seat', 'seat')
+      .leftJoinAndSelect('booking.review', 'review')
       .where('booking.userId = :userId', { userId })
       .orderBy('booking.bookedAt', 'DESC');
 
@@ -578,6 +579,14 @@ export class BookingService {
           isActive: seatStatus.seat.isActive,
         } : null,
       })) || [],
+
+      // Review details (if exists)
+      review: booking.review ? {
+        id: booking.review.id,
+        rating: booking.review.rating,
+        comment: booking.review.comment,
+        createdAt: booking.review.createdAt,
+      } : null,
     }));
   }
 
