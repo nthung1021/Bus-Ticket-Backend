@@ -19,6 +19,7 @@ import {
   Not,
 } from 'typeorm';
 import { Trip, TripStatus } from '../entities/trip.entity';
+import { Booking, BookingStatus } from '../entities/booking.entity';
 import { Route } from '../entities/route.entity';
 import { Bus } from '../entities/bus.entity';
 import { SeatState, SeatStatus } from '../entities/seat-status.entity';
@@ -276,10 +277,24 @@ export class TripsService {
 
   // GET /trips/admin/{:tripId}
   async findOne(id: string): Promise<Trip> {
-    const trip = await this.tripRepo.findOne({
-      where: { id },
-      relations: ['route', 'bus', 'bookings', 'bookings.passengerDetails', 'bookings.payments', 'seatStatuses', 'feedbacks'],
-    });
+    const trip = await this.tripRepo
+      .createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.route', 'route')
+      .leftJoinAndSelect('trip.bus', 'bus')
+      .leftJoinAndSelect('bus.operator', 'operator')
+      // only include bookings with status = completed
+      .leftJoinAndSelect(
+        'trip.bookings',
+        'booking',
+        'booking.status = :status',
+        { status: BookingStatus.COMPLETED },
+      )
+      .leftJoinAndSelect('booking.passengerDetails', 'passengerDetails')
+      .leftJoinAndSelect('booking.payments', 'payments')
+      .leftJoinAndSelect('trip.seatStatuses', 'seatStatuses')
+      .leftJoinAndSelect('trip.feedbacks', 'feedbacks')
+      .where('trip.id = :id', { id })
+      .getOne();
 
     if (!trip) {
       throw new NotFoundException(`Trip with ID ${id} not found`);
