@@ -111,11 +111,12 @@ export class Booking {
   review: Review;
 
   // Relations to route points for pickup / dropoff
-  @ManyToOne(() => RoutePoint, (point) => point, { nullable: true })
+  // Use ON DELETE SET NULL so if a RoutePoint is removed or updated, bookings do not break
+  @ManyToOne(() => RoutePoint, (point) => point, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'pickup_point_id' })
   pickupPoint?: RoutePoint;
 
-  @ManyToOne(() => RoutePoint, (point) => point, { nullable: true })
+  @ManyToOne(() => RoutePoint, (point) => point, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'dropoff_point_id' })
   dropoffPoint?: RoutePoint;
 }
