@@ -6,13 +6,14 @@ import { Route } from '../entities/route.entity';
 import { Bus } from '../entities/bus.entity';
 import { Operator } from '../entities/operator.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
+import { PassengerDetail } from '../entities/passenger-detail.entity';
 
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 import { PayosModule } from '../payos/payos.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Trip, Route, Bus, Operator, SeatStatus]), PayosModule],
+  imports: [TypeOrmModule.forFeature([Trip, Route, Bus, Operator, SeatStatus, PassengerDetail]), PayosModule],
   controllers: [TripsController],
   providers: [TripsService],
   exports: [TripsService],

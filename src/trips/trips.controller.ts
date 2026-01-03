@@ -230,6 +230,25 @@ export class TripsController {
     }
   }
 
+  // Mark passenger as boarded for a trip (admin)
+  @Post(':tripId/passengers/:passengerId/board')
+  async markPassengerBoarded(
+    @Param('tripId') tripId: string,
+    @Param('passengerId') passengerId: string,
+    @Body() body: { boarded?: boolean },
+  ) {
+    try {
+      const boarded = body?.boarded ?? true;
+      const updated = await this.tripsService.markPassengerBoarded(tripId, passengerId, boarded);
+      return { success: true, data: updated };
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to mark passenger boarded' });
+    }
+  }
+
   // Assign a bus to a route with conflict checking
   @Post('assign-bus')
   async assignBusToRoute(

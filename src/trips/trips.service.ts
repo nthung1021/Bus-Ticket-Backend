@@ -19,9 +19,11 @@ import {
   Not,
 } from 'typeorm';
 import { Trip, TripStatus } from '../entities/trip.entity';
+import { Booking, BookingStatus } from '../entities/booking.entity';
 import { Route } from '../entities/route.entity';
 import { Bus } from '../entities/bus.entity';
 import { SeatState, SeatStatus } from '../entities/seat-status.entity';
+import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SearchTripsDto } from './dto/search-trips.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -43,6 +45,9 @@ export class TripsService {
 
     @InjectRepository(Route)
     private readonly routeRepository: Repository<Route>,
+
+    @InjectRepository(PassengerDetail)
+    private readonly passengerRepo: Repository<PassengerDetail>,
   ) {}
 
   // Return list of distinct origin/destination names from routes (for fuzzy matching)
@@ -276,10 +281,24 @@ export class TripsService {
 
   // GET /trips/admin/{:tripId}
   async findOne(id: string): Promise<Trip> {
-    const trip = await this.tripRepo.findOne({
-      where: { id },
-      relations: ['route', 'bus', 'bookings', 'seatStatuses', 'feedbacks'],
-    });
+    const trip = await this.tripRepo
+      .createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.route', 'route')
+      .leftJoinAndSelect('trip.bus', 'bus')
+      .leftJoinAndSelect('bus.operator', 'operator')
+      // only include bookings with status = completed
+      .leftJoinAndSelect(
+        'trip.bookings',
+        'booking',
+        'booking.status = :status',
+        { status: BookingStatus.COMPLETED },
+      )
+      .leftJoinAndSelect('booking.passengerDetails', 'passengerDetails')
+      .leftJoinAndSelect('booking.payments', 'payments')
+      .leftJoinAndSelect('trip.seatStatuses', 'seatStatuses')
+      .leftJoinAndSelect('trip.feedbacks', 'feedbacks')
+      .where('trip.id = :id', { id })
+      .getOne();
 
     if (!trip) {
       throw new NotFoundException(`Trip with ID ${id} not found`);
@@ -518,6 +537,25 @@ export class TripsService {
     };
   }
 
+  // Mark a specific passenger as boarded (admin)
+  async markPassengerBoarded(tripId: string, passengerId: string, boarded: boolean): Promise<PassengerDetail> {
+    const passenger = await this.passengerRepo.findOne({
+      where: { id: passengerId },
+      relations: ['booking'],
+    });
+
+    if (!passenger) {
+      throw new NotFoundException(`Passenger with ID ${passengerId} not found`);
+    }
+
+    if (!passenger.booking || passenger.booking.tripId !== tripId) {
+      throw new BadRequestException('Passenger does not belong to the specified trip');
+    }
+
+    passenger.boarded = boarded;
+    return await this.passengerRepo.save(passenger);
+  }
+
   // GET /trips/search
   async search(dto: SearchTripsDto) {
     const page = dto.page || 1;
@@ -526,6 +564,8 @@ export class TripsService {
 
     const qb = this.tripRepo
       .createQueryBuilder('trip')
+      // exclude soft-deleted trips from public search results
+      .where('trip.deleted = false')
       // join route, bus, operator — adapt relation names to your entities
       .leftJoinAndSelect('trip.route', 'route')
       .leftJoinAndSelect('trip.bus', 'bus')
