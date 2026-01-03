@@ -132,7 +132,7 @@ export class BookingService {
     // Start transaction
     const result = await this.dataSource.transaction(async manager => {
       // 1. Validate trip exists
-      const trip = await manager.findOne(Trip, { where: { id: tripId } });
+      const trip = await manager.findOne(Trip, { where: { id: tripId, deleted: false } });
       if (!trip) {
         throw new NotFoundException('Trip not found');
       }
@@ -496,6 +496,7 @@ export class BookingService {
       .leftJoinAndSelect('booking.passengerDetails', 'passenger')
       .leftJoinAndSelect('booking.user', 'user')
       .where('booking.status = :status', { status: BookingStatus.PAID })
+      .andWhere('trip.deleted = false')
       .andWhere('trip.departureTime BETWEEN :now AND :futureDate', { now, futureDate })
       .getMany();
   }

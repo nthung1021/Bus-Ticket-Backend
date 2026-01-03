@@ -255,7 +255,7 @@ export class SeatLayoutService {
     // If tripId is provided, try to get trip-specific base price
     let tripBasePrice = 0;
     if (tripId) {
-      const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+      const trip = await this.tripRepository.findOne({ where: { id: tripId, deleted: false } });
       if (trip) {
         tripBasePrice = trip.basePrice || 0;
       }
