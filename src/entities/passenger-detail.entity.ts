@@ -24,6 +24,9 @@ export class PassengerDetail {
   @Column({ name: 'seat_code' })
   seatCode: string;
 
+  @Column({ name: 'boarded', type: 'boolean', default: false })
+  boarded: boolean;
+
   // Relations
   @ManyToOne(() => Booking, (booking) => booking.passengerDetails)
   @JoinColumn({ name: 'booking_id' })

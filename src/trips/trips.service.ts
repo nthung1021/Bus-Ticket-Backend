@@ -23,6 +23,7 @@ import { Booking, BookingStatus } from '../entities/booking.entity';
 import { Route } from '../entities/route.entity';
 import { Bus } from '../entities/bus.entity';
 import { SeatState, SeatStatus } from '../entities/seat-status.entity';
+import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SearchTripsDto } from './dto/search-trips.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -44,6 +45,9 @@ export class TripsService {
 
     @InjectRepository(Route)
     private readonly routeRepository: Repository<Route>,
+
+    @InjectRepository(PassengerDetail)
+    private readonly passengerRepo: Repository<PassengerDetail>,
   ) {}
 
   // Return list of distinct origin/destination names from routes (for fuzzy matching)
@@ -531,6 +535,25 @@ export class TripsService {
         ? Math.round(((totalSeats - availableSeats) / totalSeats) * 10000) / 100
         : null,
     };
+  }
+
+  // Mark a specific passenger as boarded (admin)
+  async markPassengerBoarded(tripId: string, passengerId: string, boarded: boolean): Promise<PassengerDetail> {
+    const passenger = await this.passengerRepo.findOne({
+      where: { id: passengerId },
+      relations: ['booking'],
+    });
+
+    if (!passenger) {
+      throw new NotFoundException(`Passenger with ID ${passengerId} not found`);
+    }
+
+    if (!passenger.booking || passenger.booking.tripId !== tripId) {
+      throw new BadRequestException('Passenger does not belong to the specified trip');
+    }
+
+    passenger.boarded = boarded;
+    return await this.passengerRepo.save(passenger);
   }
 
   // GET /trips/search
