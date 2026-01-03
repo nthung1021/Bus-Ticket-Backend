@@ -8,7 +8,9 @@ export class PassengerDto {
 
   @IsNotEmpty()
   @IsString()
-  documentId: string;
+  @IsOptional()
+  @IsString()
+  documentId?: string;
 
   @IsNotEmpty()
   @IsString()
@@ -83,4 +85,13 @@ export class CreateBookingDto {
   @ValidateIf(o => o.isGuestCheckout === true)
   @IsString()
   contactPhone?: string;
+
+  // Optional pickup and dropoff points (route point IDs)
+  @IsOptional()
+  @IsUUID()
+  pickupPointId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  dropoffPointId?: string;
 }

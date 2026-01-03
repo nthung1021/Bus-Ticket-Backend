@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
   CreateDateColumn,
   Index,
@@ -14,10 +15,13 @@ import { PassengerDetail } from './passenger-detail.entity';
 import { SeatStatus } from './seat-status.entity';
 import { Payment } from './payment.entity';
 import { Notification } from './notification.entity';
+import { Review } from './review.entity';
+import { RoutePoint } from './route-point.entity';
 
 export enum BookingStatus {
   PENDING = 'pending',
   PAID = 'paid',
+  COMPLETED = 'completed',
   CANCELLED = 'cancelled', 
   EXPIRED = 'expired',
 }
@@ -72,6 +76,13 @@ export class Booking {
   @Column({ name: 'expires_at', type: 'timestamp with time zone', nullable: true })
   expiresAt?: Date;
 
+  // Optional pickup and dropoff route points chosen by passenger
+  @Column({ name: 'pickup_point_id', nullable: true })
+  pickupPointId?: string;
+
+  @Column({ name: 'dropoff_point_id', nullable: true })
+  dropoffPointId?: string;
+
   // Relations
   @ManyToOne(() => User, (user) => user.bookings)
   @JoinColumn({ name: 'user_id' })
@@ -95,4 +106,17 @@ export class Booking {
 
   @OneToMany(() => Notification, (notification) => notification.booking)
   notifications: Notification[];
+
+  @OneToOne(() => Review, (review) => review.booking)
+  review: Review;
+
+  // Relations to route points for pickup / dropoff
+  // Use ON DELETE SET NULL so if a RoutePoint is removed or updated, bookings do not break
+  @ManyToOne(() => RoutePoint, (point) => point, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'pickup_point_id' })
+  pickupPoint?: RoutePoint;
+
+  @ManyToOne(() => RoutePoint, (point) => point, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'dropoff_point_id' })
+  dropoffPoint?: RoutePoint;
 }

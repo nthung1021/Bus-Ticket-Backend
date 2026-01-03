@@ -13,6 +13,15 @@ import { Trip } from './trip.entity';
 import { Seat } from './seat.entity';
 import { SeatLayout } from './seat-layout.entity';
 
+export enum BusType {
+  STANDARD = 'standard',
+  LIMOUSINE = 'limousine', 
+  SLEEPER = 'sleeper',
+  SEATER = 'seater',
+  VIP = 'vip',
+  BUSINESS = 'business'
+}
+
 @Entity('buses')
 @Index('idx_buses_operator_model', ['operatorId', 'model'])
 @Index('idx_buses_operator_capacity', ['operatorId', 'seatCapacity'])
@@ -35,8 +44,20 @@ export class Bus {
   @Column({ name: 'seat_capacity' })
   seatCapacity: number;
 
+  @Column({
+    type: 'enum',
+    enum: BusType,
+    default: BusType.STANDARD,
+    name: 'bus_type'
+  })
+  @Index('idx_buses_bus_type')
+  busType: BusType;
+
   @Column({ name: 'amenities_json', type: 'json', nullable: true })
   amenities: string[];
+
+  @Column({ type: 'json', nullable: true })
+  photo: string[];
 
   // Relations
   @ManyToOne(() => Operator, (operator) => operator.buses)

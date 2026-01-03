@@ -61,7 +61,7 @@ export class SeatLayout {
 
 export interface SeatPosition {
   row: number;
-  position: number; // Position in row (1, 2, 3, etc.)
+  position: number; // Position in row represented as a number (1, 2, 3...)
   x: number; // X coordinate for visual positioning
   y: number; // Y coordinate for visual positioning
   width: number; // Width of seat

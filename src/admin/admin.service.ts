@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { AdminCreateAccountDto } from './dto/create-account.dto';
+import * as bcrypt from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
@@ -7,6 +9,7 @@ import { Booking, BookingStatus } from '../entities/booking.entity';
 import { Trip } from '../entities/trip.entity';
 import { Route } from '../entities/route.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
+import { Payment, PaymentStatus } from '../entities/payment.entity';
 import { CacheService, CacheAnalytics } from '../common/cache.service';
 import { 
   AnalyticsQueryDto, 
@@ -21,7 +24,9 @@ import {
   BookingGrowthDto,
   PopularRoutesDto,
   SeatOccupancyDto,
-  DetailedConversionDto
+  DetailedConversionDto,
+  PaymentMethodAnalyticsDto,
+  PaymentMethodStats
 } from './dto/analytics.dto';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subWeeks, subMonths, format, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval } from 'date-fns';
 
@@ -34,6 +39,7 @@ export class AdminService {
     @InjectRepository(Trip) private tripsRepository: Repository<Trip>,
     @InjectRepository(Route) private routesRepository: Repository<Route>,
     @InjectRepository(SeatStatus) private seatStatusRepository: Repository<SeatStatus>,
+    @InjectRepository(Payment) private paymentsRepository: Repository<Payment>,
     private readonly cacheService: CacheService,
   ) {}
 
@@ -67,6 +73,51 @@ export class AdminService {
     });
 
     return { id: user.id, email: user.email, name: user.name, role: user.role };
+  }
+
+  async createAccount(dto: AdminCreateAccountDto, actorId?: string) {
+    // Check if email already exists
+    const existingUser = await this.usersRepository.findOne({
+      where: { email: dto.email },
+    });
+    if (existingUser) {
+      throw new ConflictException('Email already in use');
+    }
+
+    // Check if phone already exists
+    const existingPhone = await this.usersRepository.findOne({
+      where: { phone: dto.phone },
+    });
+    if (existingPhone) {
+      throw new ConflictException('Phone number already in use');
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(dto.password, salt);
+
+    // Create user
+    const newUser = this.usersRepository.create({
+      email: dto.email,
+      name: dto.fullName,
+      phone: dto.phone,
+      passwordHash: hashedPassword,
+      role: dto.role,
+    });
+
+    const savedUser = await this.usersRepository.save(newUser);
+
+    // Logs
+    await this.auditRepository.save({
+      actorId: actorId || null,
+      targetUserId: savedUser.id,
+      action: 'CREATE_ACCOUNT',
+      details: `Created account for ${dto.email} with role ${dto.role}`,
+      metadata: { by: actorId || 'system', at: new Date().toISOString() },
+    });
+
+    const { passwordHash, ...result } = savedUser;
+    return result;
   }
 
   // Analytics Methods
@@ -112,16 +163,18 @@ export class AdminService {
       .select([
         'COUNT(*) as "totalBookings"',
         'COUNT(CASE WHEN booking.status = :paidStatus THEN 1 END) as "paidBookings"',
+        'COUNT(CASE WHEN booking.status = :completedStatus THEN 1 END) as "completedBookings"',
         'COUNT(CASE WHEN booking.status = :pendingStatus THEN 1 END) as "pendingBookings"',
         'COUNT(CASE WHEN booking.status = :cancelledStatus THEN 1 END) as "cancelledBookings"',
         'COUNT(CASE WHEN booking.status = :expiredStatus THEN 1 END) as "expiredBookings"',
-        'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+        'COALESCE(SUM(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN booking.totalAmount END), 0) as "totalRevenue"'
       ])
       .where('booking.bookedAt BETWEEN :startDate AND :endDate')
       .setParameters({
         startDate,
         endDate,
         paidStatus: BookingStatus.PAID,
+        completedStatus: BookingStatus.COMPLETED,
         pendingStatus: BookingStatus.PENDING,
         cancelledStatus: BookingStatus.CANCELLED,
         expiredStatus: BookingStatus.EXPIRED,
@@ -130,6 +183,7 @@ export class AdminService {
 
     const totalBookings = parseInt(result.totalBookings);
     const paidBookings = parseInt(result.paidBookings);
+    const completedBookings = parseInt(result.completedBookings);
     const pendingBookings = parseInt(result.pendingBookings);
     const cancelledBookings = parseInt(result.cancelledBookings);
     const expiredBookings = parseInt(result.expiredBookings);
@@ -141,6 +195,7 @@ export class AdminService {
     return {
       totalBookings,
       paidBookings,
+      completedBookings,
       pendingBookings,
       cancelledBookings,
       expiredBookings,
@@ -209,9 +264,9 @@ export class AdminService {
       });
 
       const intervalBookings = bookings.length;
-      const paidBookings = bookings.filter(b => b.status === BookingStatus.PAID).length;
+      const paidBookings = bookings.filter(b => b.status === BookingStatus.PAID || b.status === BookingStatus.COMPLETED).length;
       const revenue = bookings
-        .filter(b => b.status === BookingStatus.PAID)
+        .filter(b => b.status === BookingStatus.PAID || b.status === BookingStatus.COMPLETED)
         .reduce((sum, b) => sum + b.totalAmount, 0);
       const conversionRate = intervalBookings > 0 ? (paidBookings / intervalBookings) * 100 : 0;
 
@@ -263,8 +318,8 @@ export class AdminService {
         'route.origin as "routeOrigin"',
         'route.destination as "routeDestination"',
         'COUNT(*) as "totalBookings"',
-        'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"',
-        'COUNT(CASE WHEN booking.status = :paidStatus THEN 1 END) as "paidBookings"'
+        'COALESCE(SUM(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN booking.totalAmount END), 0) as "totalRevenue"',
+        'COUNT(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN 1 END) as "paidBookings"'
       ])
       .where('booking.bookedAt BETWEEN :startDate AND :endDate')
       .andWhere('route.id IS NOT NULL')
@@ -274,6 +329,7 @@ export class AdminService {
         startDate,
         endDate,
         paidStatus: BookingStatus.PAID,
+        completedStatus: BookingStatus.COMPLETED,
       })
       .getRawMany();
 
@@ -411,7 +467,7 @@ export class AdminService {
   @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
   @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
   @CacheAnalytics(5 * 60 * 1000) // 5 minutes cache
-  async getTotalBookingsCount(query: AnalyticsQueryDto): Promise<{ total: number; period: { startDate: string; endDate: string } }> {
+  async getTotalBookingsCount(query: AnalyticsQueryDto): Promise<{ totalBookings: number; period: { startDate: string; endDate: string } }> {
     const { startDate, endDate } = this.getDateRange(query);
     
     const count = await this.bookingsRepository.count({
@@ -421,7 +477,7 @@ export class AdminService {
     });
     
     return {
-      total: count,
+      totalBookings: count,
       period: {
         startDate: format(startDate, 'yyyy-MM-dd'),
         endDate: format(endDate, 'yyyy-MM-dd'),
@@ -447,19 +503,19 @@ export class AdminService {
         .createQueryBuilder('booking')
         .select([
           'COUNT(*) as "totalBookings"',
-          'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+          'COALESCE(SUM(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN booking.totalAmount END), 0) as "totalRevenue"'
         ])
         .where('booking.bookedAt BETWEEN :startDate AND :endDate')
-        .setParameters({ startDate, endDate, paidStatus: BookingStatus.PAID })
+        .setParameters({ startDate, endDate, paidStatus: BookingStatus.PAID, completedStatus: BookingStatus.COMPLETED })
         .getRawOne(),
       this.bookingsRepository
         .createQueryBuilder('booking')
         .select([
           'COUNT(*) as "totalBookings"',
-          'COALESCE(SUM(CASE WHEN booking.status = :paidStatus THEN booking.totalAmount END), 0) as "totalRevenue"'
+          'COALESCE(SUM(CASE WHEN booking.status IN (:paidStatus, :completedStatus) THEN booking.totalAmount END), 0) as "totalRevenue"'
         ])
         .where('booking.bookedAt BETWEEN :startDate AND :endDate')
-        .setParameters({ startDate: previousStartDate, endDate: previousEndDate, paidStatus: BookingStatus.PAID })
+        .setParameters({ startDate: previousStartDate, endDate: previousEndDate, paidStatus: BookingStatus.PAID, completedStatus: BookingStatus.COMPLETED })
         .getRawOne(),
     ]);
     
@@ -820,5 +876,256 @@ export class AdminService {
   
   async getCacheStats(): Promise<{ size: number; hitRate?: number }> {
     return this.cacheService.getStats();
+  }
+
+  // Booking Management Methods
+  async getAllBookings(params: {
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const queryBuilder = this.bookingsRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.user', 'user')
+      .leftJoinAndSelect('booking.trip', 'trip')
+      .leftJoinAndSelect('trip.route', 'route')
+      .leftJoinAndSelect('trip.bus', 'bus')
+      .leftJoinAndSelect('booking.passengerDetails', 'passengers')
+      .leftJoinAndSelect('booking.seatStatuses', 'seats')
+      .leftJoinAndSelect('seats.seat', 'seat')
+      .leftJoinAndSelect('booking.payments', 'payment')
+      .orderBy('booking.bookedAt', 'DESC');
+
+    if (params.status && params.status !== 'all') {
+      queryBuilder.andWhere('booking.status = :status', { status: params.status });
+    }
+
+    if (params.startDate) {
+      queryBuilder.andWhere('booking.bookedAt >= :startDate', {
+        startDate: new Date(params.startDate),
+      });
+    }
+
+    if (params.endDate) {
+      queryBuilder.andWhere('booking.bookedAt <= :endDate', {
+        endDate: new Date(params.endDate),
+      });
+    }
+
+    const page = params.page || 1;
+    const limit = params.limit || 50;
+    const skip = (page - 1) * limit;
+
+    const [bookings, total] = await queryBuilder
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      success: true,
+      message: 'Bookings retrieved successfully',
+      data: bookings,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getBookingById(bookingId: string) {
+    const booking = await this.bookingsRepository.findOne({
+      where: { id: bookingId },
+      relations: [
+        'user',
+        'trip',
+        'trip.route',
+        'trip.bus',
+        'passengerDetails',
+        'seatStatuses',
+        'seatStatuses.seat',
+        'payments',
+      ],
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    return {
+      success: true,
+      message: 'Booking retrieved successfully',
+      data: booking,
+    };
+  }
+
+  async updateBookingStatus(
+    bookingId: string,
+    status: string,
+    actorId?: string,
+    reason?: string,
+  ) {
+    const booking = await this.bookingsRepository.findOne({
+      where: { id: bookingId },
+      relations: ['trip', 'seatStatuses'],
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const oldStatus = booking.status;
+    booking.status = status as BookingStatus;
+
+    if (status === BookingStatus.CANCELLED && !booking.cancelledAt) {
+      booking.cancelledAt = new Date();
+
+      // Release seats
+      for (const seatStatus of booking.seatStatuses) {
+        seatStatus.state = SeatState.AVAILABLE;
+        seatStatus.bookingId = null;
+        await this.seatStatusRepository.save(seatStatus);
+      }
+    }
+
+    await this.bookingsRepository.save(booking);
+
+    // Log the action
+    await this.auditRepository.save({
+      actorId,
+      action: 'UPDATE_BOOKING_STATUS',
+      details: `Booking ${booking.bookingReference}: ${oldStatus} -> ${status}`,
+      metadata: {
+        bookingId: booking.id,
+        oldStatus,
+        newStatus: status,
+        reason,
+        by: actorId,
+        at: new Date().toISOString(),
+      },
+    });
+
+    // Clear cache
+    await this.invalidateAnalyticsCache();
+
+    return {
+      success: true,
+      message: 'Booking status updated successfully',
+      data: booking,
+    };
+  }
+
+  async processRefund(
+    bookingId: string,
+    amount: number,
+    reason: string,
+    actorId?: string,
+  ) {
+    const booking = await this.bookingsRepository.findOne({
+      where: { id: bookingId },
+      relations: ['payments', 'seatStatuses'],
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.status !== BookingStatus.PAID) {
+      throw new ConflictException(
+        'Only paid bookings can be refunded',
+      );
+    }
+
+    // Update booking status
+    booking.status = BookingStatus.CANCELLED;
+    booking.cancelledAt = new Date();
+
+    // Release seats
+    for (const seatStatus of booking.seatStatuses) {
+      seatStatus.state = SeatState.AVAILABLE;
+      seatStatus.bookingId = null;
+      await this.seatStatusRepository.save(seatStatus);
+    }
+
+    await this.bookingsRepository.save(booking);
+
+    // Log the refund
+    await this.auditRepository.save({
+      actorId,
+      action: 'PROCESS_REFUND',
+      details: `Refund processed for booking ${booking.bookingReference}`,
+      metadata: {
+        bookingId: booking.id,
+        amount,
+        reason,
+        by: actorId,
+        at: new Date().toISOString(),
+      },
+    });
+
+    // Clear cache
+    await this.invalidateAnalyticsCache();
+
+    return {
+      success: true,
+      message: 'Refund processed successfully',
+      data: {
+        bookingId: booking.id,
+        amount,
+        status: booking.status,
+      },
+    };
+  }
+
+  @CacheAnalytics(10 * 60 * 1000) // 10 minutes cache
+  async getPaymentMethodAnalytics(query: AnalyticsQueryDto): Promise<PaymentMethodAnalyticsDto> {
+    const { startDate, endDate } = this.getDateRange(query);
+
+    // Optimized SQL aggregation query
+    const paymentStats = await this.paymentsRepository
+      .createQueryBuilder('payment')
+      .select([
+        'payment.provider as "provider"',
+        'COUNT(*) as "count"',
+        'SUM(payment.amount) as "totalAmount"'
+      ])
+      .where('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .andWhere('payment.processedAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .groupBy('payment.provider')
+      .orderBy('"totalAmount"', 'DESC')
+      .getRawMany();
+
+    const totalRevenue = paymentStats.reduce((sum, stat) => sum + parseFloat(stat.totalAmount), 0);
+    const totalTransactions = paymentStats.reduce((sum, stat) => sum + parseInt(stat.count), 0);
+
+    // Map provider names to display names
+    const providerDisplayNames: Record<string, string> = {
+      'payos': 'PayOS',
+      'momo': 'MoMo',
+      'zalopay': 'ZaloPay',
+      'vnpay': 'VNPay',
+      'banking': 'Bank Transfer',
+      'cash': 'Cash'
+    };
+
+    const methods: PaymentMethodStats[] = paymentStats.map(stat => ({
+      provider: providerDisplayNames[stat.provider.toLowerCase()] || stat.provider,
+      count: parseInt(stat.count),
+      totalAmount: parseFloat(stat.totalAmount),
+      percentage: totalRevenue > 0 ? (parseFloat(stat.totalAmount) / totalRevenue) * 100 : 0,
+    }));
+
+    return {
+      methods,
+      totalTransactions,
+      totalRevenue,
+      period: {
+        startDate: format(startDate, 'yyyy-MM-dd'),
+        endDate: format(endDate, 'yyyy-MM-dd'),
+      },
+    };
   }
 }

@@ -12,6 +12,7 @@ import { Bus } from './bus.entity';
 import { Booking } from './booking.entity';
 import { SeatStatus } from './seat-status.entity';
 import { Feedback } from './feedback.entity';
+import { Review } from './review.entity';
 
 export enum TripStatus {
   SCHEDULED = 'scheduled',
@@ -56,6 +57,16 @@ export class Trip {
   @Index('idx_trips_status')
   status: TripStatus;
 
+  @Column({ name: 'average_rating', type: 'decimal', precision: 3, scale: 2, default: 0 })
+  averageRating: number;
+
+  @Column({ name: 'review_count', type: 'int', default: 0 })
+  reviewCount: number;
+
+  @Index('idx_trips_deleted')
+  @Column({ name: 'deleted', type: 'boolean', default: false })
+  deleted: boolean;
+
   // Relations
   @ManyToOne(() => Route, (route) => route.trips)
   @JoinColumn({ name: 'route_id' })
@@ -73,4 +84,7 @@ export class Trip {
 
   @OneToMany(() => Feedback, (feedback) => feedback.trip)
   feedbacks: Feedback[];
+
+  @OneToMany(() => Review, (review) => review.trip)
+  reviews: Review[];
 }

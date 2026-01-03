@@ -7,6 +7,7 @@ import {
   Body,
   Req,
   Query,
+  Post,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AdminService } from './admin.service';
@@ -14,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles/roles.decorator';
 import { RolesGuard } from '../auth/roles/roles.guard';
 import { ChangeRoleDto } from './dto/change-role.dto';
+import { AdminCreateAccountDto } from './dto/create-account.dto';
 import { AnalyticsQueryDto } from './dto/analytics.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -45,6 +47,21 @@ export class AdminController {
       actorId,
     );
     return { ok: true, updated };
+  }
+
+  @Roles('admin')
+  @Post('account')
+  async createAccount(
+    @Body() body: AdminCreateAccountDto,
+    @Req() req: Request & { user?: { sub?: string } },
+  ) {
+    const actorId = req.user?.sub;
+    const user = await this.adminService.createAccount(body, actorId);
+    return {
+      success: true,
+      message: 'Account created successfully',
+      data: user,
+    };
   }
 
   // Analytics Endpoints
@@ -101,5 +118,68 @@ export class AdminController {
   @Get('analytics/metrics/conversion-detailed')
   async getDetailedConversionRate(@Query() query: AnalyticsQueryDto) {
     return await this.adminService.getDetailedConversionRate(query);
+  }
+
+  @Roles('admin')
+  @Get('analytics/metrics/payment-methods')
+  async getPaymentMethodAnalytics(@Query() query: AnalyticsQueryDto) {
+    return await this.adminService.getPaymentMethodAnalytics(query);
+  }
+
+  // Booking Management Endpoints
+  @Roles('admin')
+  @Get('bookings')
+  async getAllBookings(
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return await this.adminService.getAllBookings({
+      status,
+      startDate,
+      endDate,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  @Roles('admin')
+  @Get('bookings/:bookingId')
+  async getBookingById(@Param('bookingId') bookingId: string) {
+    return await this.adminService.getBookingById(bookingId);
+  }
+
+  @Roles('admin')
+  @Patch('bookings/:bookingId/status')
+  async updateBookingStatus(
+    @Param('bookingId') bookingId: string,
+    @Body() body: { status: string; reason?: string },
+    @Req() req: Request & { user?: { sub?: string } },
+  ) {
+    const actorId = req.user?.sub;
+    return await this.adminService.updateBookingStatus(
+      bookingId,
+      body.status,
+      actorId,
+      body.reason,
+    );
+  }
+
+  @Roles('admin')
+  @Post('bookings/:bookingId/refund')
+  async processRefund(
+    @Param('bookingId') bookingId: string,
+    @Body() body: { amount: number; reason: string },
+    @Req() req: Request & { user?: { sub?: string } },
+  ) {
+    const actorId = req.user?.sub;
+    return await this.adminService.processRefund(
+      bookingId,
+      body.amount,
+      body.reason,
+      actorId,
+    );
   }
 }

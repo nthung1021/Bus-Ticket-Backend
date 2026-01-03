@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PayosService } from '../payos/payos.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { Booking, BookingStatus } from '../entities/booking.entity';
@@ -8,8 +9,10 @@ import { SeatStatus, SeatState } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
 import { Seat } from '../entities/seat.entity';
 import { AuditLog } from '../entities/audit-log.entity';
+import { Payment, PaymentStatus } from '../entities/payment.entity';
 import { BookingModificationHistory, ModificationType } from '../entities/booking-modification-history.entity';
 import { SeatLayout } from '../entities/seat-layout.entity';
+import { RoutePoint } from '../entities/route-point.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { GetGuestBookingDto } from './dto/get-guest-booking.dto';
@@ -24,6 +27,8 @@ import { BOOKING_EXPIRATION_MINUTES } from '../constants/booking.constants';
 import PDFDocument from 'pdfkit';
 import * as QRCode from 'qrcode';
 import { getBookingConfirmationTemplate } from './email.templates';
+import { ConfigService } from '@nestjs/config';
+import { normalizeSeatCode, isSeatCodeValid } from '../common/seat-utils';
 
 @Injectable()
 export class BookingService {
@@ -51,6 +56,8 @@ export class BookingService {
     private readonly modificationPermissionService: BookingModificationPermissionService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    private readonly payosService: PayosService,
+    private readonly configService: ConfigService,
   ) { }
 
   private async generateBookingReference(): Promise<string> {
@@ -88,13 +95,44 @@ export class BookingService {
     return `${prefix}${datePart}-${randomPart()}`;
   }
 
+  /**
+   * Calculate total price for a booking.
+   * Pricing model:
+   *  - `tripBasePrice` (if provided) is treated as the base fare per seat.
+   *  - Each `seat.price` is treated as a supplement (can be 0).
+   *  - subtotal = sum((tripBasePrice || 0) + (seat.price || 0)) for each seat
+   *  - serviceFee: flat fee applied once
+   *  - taxPercent: percentage applied to subtotal (before serviceFee)
+   *  - discount: flat discount applied at the end
+   */
+  async calculateTotalPrice(
+    seats: Array<{ price: number }>,
+    options?: { tripBasePrice?: number; serviceFee?: number; taxPercent?: number; discount?: number },
+  ): Promise<number> {
+    const tripBase = options?.tripBasePrice ?? 0;
+
+    const subtotal = (seats || []).reduce((s, seat) => {
+      const seatPrice = seat?.price ?? 0;
+      return s + seatPrice;
+    }, 0);
+
+    const serviceFee = options?.serviceFee ?? 0;
+    const tax = ((options?.taxPercent ?? 0) / 100) * subtotal;
+    const discount = options?.discount ?? 0;
+
+    const total = subtotal + tripBase + serviceFee + tax - discount;
+
+    // Ensure non-negative and round to nearest integer (VND)
+    return Math.max(0, Math.round(total));
+  }
+
   async createBooking(userId: string | null, createBookingDto: CreateBookingDto): Promise<BookingResponseDto> {
-    const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone } = createBookingDto;
+    const { tripId, seats, passengers, totalPrice, isGuestCheckout, contactEmail, contactPhone, pickupPointId, dropoffPointId } = createBookingDto;
 
     // Start transaction
-    return await this.dataSource.transaction(async manager => {
+    const result = await this.dataSource.transaction(async manager => {
       // 1. Validate trip exists
-      const trip = await manager.findOne(Trip, { where: { id: tripId } });
+      const trip = await manager.findOne(Trip, { where: { id: tripId, deleted: false } });
       if (!trip) {
         throw new NotFoundException('Trip not found');
       }
@@ -104,9 +142,9 @@ export class BookingService {
         throw new BadRequestException('Number of seats must match number of passengers');
       }
 
-      // 3. Validate seat codes match between seats and passengers
-      const seatCodes = seats.map(seat => seat.code).sort();
-      const passengerSeatCodes = passengers.map(passenger => passenger.seatCode).sort();
+      // 3. Validate seat codes match between seats and passengers (normalize both formats)
+      const seatCodes = seats.map(seat => normalizeSeatCode(seat.code)).sort();
+      const passengerSeatCodes = passengers.map(passenger => normalizeSeatCode(passenger.seatCode)).sort();
       if (JSON.stringify(seatCodes) !== JSON.stringify(passengerSeatCodes)) {
         throw new BadRequestException('Seat codes in seats and passengers must match');
       }
@@ -114,15 +152,55 @@ export class BookingService {
       // 4. Find seat IDs and validate they exist on the bus
       const seatIds: string[] = [];
       for (const seatDto of seats) {
-        const seat = await manager.findOne(Seat, {
+        const normalizedCode = normalizeSeatCode(seatDto.code);
+        // Try to find seat with normalized code first
+        let seat = await manager.findOne(Seat, {
           where: {
-            seatCode: seatDto.code,
+            seatCode: normalizedCode,
             busId: trip.busId
           }
         });
 
+        // If not found, try the original code as-is
         if (!seat) {
-          throw new BadRequestException(`Seat ${seatDto.code} not found on this bus`);
+          seat = await manager.findOne(Seat, {
+            where: {
+              seatCode: seatDto.code,
+              busId: trip.busId
+            }
+          });
+        }
+
+        // If still not found, try both formats (number+letter and letter+number)
+        if (!seat) {
+          const originalCode = seatDto.code.trim().toUpperCase();
+          const match = originalCode.match(/^(\d+)([A-Z]+)$/i);
+          if (match) {
+            // Try letter+number format (e.g., 2C -> C2)
+            const alternativeCode = `${match[2]}${match[1]}`;
+            seat = await manager.findOne(Seat, {
+              where: {
+                seatCode: alternativeCode,
+                busId: trip.busId
+              }
+            });
+          } else {
+            // Try number+letter format (e.g., C2 -> 2C)
+            const letterMatch = originalCode.match(/^([A-Z]+)(\d+)$/i);
+            if (letterMatch) {
+              const alternativeCode = `${letterMatch[2]}${letterMatch[1]}`;
+              seat = await manager.findOne(Seat, {
+                where: {
+                  seatCode: alternativeCode,
+                  busId: trip.busId
+                }
+              });
+            }
+          }
+        }
+
+        if (!seat) {
+          throw new BadRequestException(`Seat ${seatDto.code} not found on this bus (tried formats: ${normalizedCode}, ${seatDto.code})`);
         }
         seatIds.push(seat.id);
       }
@@ -154,17 +232,59 @@ export class BookingService {
       const bookingReference = await this.generateBookingReference();
       const now = new Date();
       const expiresAt = new Date(now.getTime() + BOOKING_EXPIRATION_MINUTES * 60 * 1000);
+
+      // If client did not provide `totalPrice`, calculate it using trip.basePrice + seat supplements
+      let finalTotal = totalPrice;
+      if (finalTotal == null) {
+        finalTotal = await this.calculateTotalPrice(seats, { tripBasePrice: trip.basePrice });
+      }
+
       const bookingData: any = {
         tripId,
         bookingReference,
-        totalAmount: totalPrice,
-        status: BookingStatus.PAID, // Set to PAID since we're bypassing payment
-        expiresAt: BookingStatus.PAID ? null : expiresAt, // Only set expiration for pending bookings
+        totalAmount: finalTotal,
+        status: BookingStatus.PENDING,
+        expiresAt: expiresAt, // Set expiration for pending bookings
       };
+
+      // Validate and attach pickup/dropoff points if provided
+      if (pickupPointId) {
+        const pickupPoint = await manager.findOne(RoutePoint, { where: { id: pickupPointId } });
+        if (!pickupPoint) {
+          throw new BadRequestException('Invalid pickupPointId');
+        }
+        // Ensure it matches trip's route
+        if (pickupPoint.routeId !== trip.routeId) {
+          throw new BadRequestException('pickupPoint does not belong to trip route');
+        }
+        bookingData.pickupPointId = pickupPointId;
+      }
+
+      if (dropoffPointId) {
+        const dropoffPoint = await manager.findOne(RoutePoint, { where: { id: dropoffPointId } });
+        if (!dropoffPoint) {
+          throw new BadRequestException('Invalid dropoffPointId');
+        }
+        if (dropoffPoint.routeId !== trip.routeId) {
+          throw new BadRequestException('dropoffPoint does not belong to trip route');
+        }
+        bookingData.dropoffPointId = dropoffPointId;
+      }
       // Notification for auto-paid booking
-      if (bookingData.status === BookingStatus.PAID && (userId || !isGuestCheckout)) {
-         // We'll handle notification after save to get ID, or here if we have enough info. 
-         // Actually better to do it after save to ensure FK constraints if any, though userId is available.
+      if (bookingData.status === BookingStatus.PAID && userId) {
+        try {
+          this.logger.log(`Sending auto-paid notification for booking ${bookingData.bookingReference}`);
+          await this.notificationsService.createInAppNotification(
+            userId,
+            'Booking Successful',
+            `Your booking ${bookingData.bookingReference} has been successfully confirmed. We have sent an email to your email address. Please check your email for the e-ticket.`,
+            { bookingId: bookingData.id, reference: bookingData.bookingReference },
+            bookingData.id
+          );
+        } catch (error) {
+          this.logger.error(`Failed to create in-app notification for booking ${bookingData.id}`, error.stack);
+          // Suppress error so booking doesn't fail
+        }
       }
 
       if (!isGuestCheckout && userId) {
@@ -178,12 +298,12 @@ export class BookingService {
 
       const savedBooking = await manager.save(booking);
 
-      // 7. Create passenger details
+      // 7. Create passenger details (store null when no document provided)
       const passengerDetails = passengers.map(passenger =>
         manager.create(PassengerDetail, {
           bookingId: savedBooking.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId ?? undefined,
           seatCode: passenger.seatCode,
         })
       );
@@ -212,12 +332,19 @@ export class BookingService {
         }
       }
 
-      // 9. Set expiration time (null for PAID bookings, they don't expire)
-      const expirationTimestamp = null; // PAID bookings don't need expiration
+      // 9. Set expiration time: pending bookings expire after 15 minutes
+      let expirationTimestamp: Date | null = null;
+      if (savedBooking.status === BookingStatus.PENDING && savedBooking.bookedAt) {
+        expirationTimestamp = new Date(savedBooking.bookedAt.getTime() + 15 * 60 * 1000);
+      }
 
-      // Send notification for auto-paid booking if user is logged in
+      // paymentUrl is generated after transaction commit to avoid FK issues
+      let paymentUrl: string | null = null;
+
+      // Send notification for auto-paid booking
       if (savedBooking.status === BookingStatus.PAID && userId) {
         try {
+          this.logger.log(`Sending saved auto-paid notification for booking ${savedBooking.bookingReference}`);
           await this.notificationsService.createInAppNotification(
             userId,
             'Booking Successful',
@@ -240,10 +367,11 @@ export class BookingService {
         status: savedBooking.status,
         bookedAt: savedBooking.bookedAt,
         expirationTimestamp,
+        paymentUrl,
         passengers: savedPassengers.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId || null,
           seatCode: passenger.seatCode,
         })),
         seats: seatIds.map((seatId, index) => ({
@@ -251,8 +379,46 @@ export class BookingService {
           seatCode: seats[index].code,
           status: SeatState.BOOKED,
         })),
+        pickupPointId: bookingData.pickupPointId || null,
+        dropoffPointId: bookingData.dropoffPointId || null,
       };
     });
+
+    // After transaction commit, create payment link if booking is pending
+    try {
+      if (result.status === BookingStatus.PENDING) {
+        // 1. Lấy giá trị từ ConfigService (An toàn hơn process.env)
+        const forceTest = this.configService.get<string>('FORCE_TEST_PAYMENT');
+        
+        // 2. Logic so sánh mạnh mẽ (bất chấp hoa thường, khoảng trắng)
+        const isTestMode = forceTest?.trim().toLowerCase() === 'true';
+
+        // 3. LOG DEBUG QUAN TRỌNG: In ra để xem server thực sự nhận được gì
+        this.logger.log(`[PAYMENT DEBUG] Env: ${forceTest} | IsTest: ${isTestMode} | RealPrice: ${result.totalAmount}`);
+
+        // 4. LƯU Ý: PayOS yêu cầu tối thiểu 2000 VND. Nếu để 1 VND có thể bị lỗi.
+        const paymentAmount = isTestMode ? 2000 : result.totalAmount;
+
+        const frontendBase = this.configService.get('FRONTEND_URL') || 'http://localhost:8000';
+        const returnUrl = `${frontendBase.replace(/\/$/, '')}/payment/success?bookingId=${result.id}`;
+        const cancelUrl = `${frontendBase.replace(/\/$/, '')}/payment/failure?bookingId=${result.id}`;
+
+        const payRes = await this.payosService.createPaymentLink({
+          amount: paymentAmount, // Truyền số 2000 vào đây
+          bookingId: result.id,
+          description: `Booking ${result.bookingReference}`, // Thêm ref để dễ tra soát
+          returnUrl,
+          cancelUrl,
+        });
+        
+        (result as any).paymentUrl = payRes?.checkoutUrl || null;
+      }
+    } catch (err) {
+      this.logger.error('Failed to generate payment URL: ' + String(err));
+      // Không throw error để booking vẫn thành công dù chưa có link thanh toán
+    }
+
+    return result;
   }
 
   async findBookingById(bookingId: string): Promise<Booking> {
@@ -265,7 +431,9 @@ export class BookingService {
         'trip.bus',
         'passengerDetails',
         'seatStatuses',
-        'seatStatuses.seat'
+        'seatStatuses.seat',
+        'pickupPoint',
+        'dropoffPoint'
       ],
     });
 
@@ -328,6 +496,7 @@ export class BookingService {
       .leftJoinAndSelect('booking.passengerDetails', 'passenger')
       .leftJoinAndSelect('booking.user', 'user')
       .where('booking.status = :status', { status: BookingStatus.PAID })
+      .andWhere('trip.deleted = false')
       .andWhere('trip.departureTime BETWEEN :now AND :futureDate', { now, futureDate })
       .getMany();
   }
@@ -342,6 +511,7 @@ export class BookingService {
       .leftJoinAndSelect('booking.passengerDetails', 'passengerDetails')
       .leftJoinAndSelect('booking.seatStatuses', 'seatStatuses')
       .leftJoinAndSelect('seatStatuses.seat', 'seat')
+      .leftJoinAndSelect('booking.review', 'review')
       .where('booking.userId = :userId', { userId })
       .orderBy('booking.bookedAt', 'DESC');
 
@@ -393,7 +563,7 @@ export class BookingService {
       passengers: booking.passengerDetails?.map(passenger => ({
         id: passenger.id,
         fullName: passenger.fullName,
-        documentId: passenger.documentId,
+        documentId: passenger.documentId || null,
         seatCode: passenger.seatCode,
       })) || [],
 
@@ -410,6 +580,14 @@ export class BookingService {
           isActive: seatStatus.seat.isActive,
         } : null,
       })) || [],
+
+      // Review details (if exists)
+      review: booking.review ? {
+        id: booking.review.id,
+        rating: booking.review.rating,
+        comment: booking.review.comment,
+        createdAt: booking.review.createdAt,
+      } : null,
     }));
   }
 
@@ -427,6 +605,32 @@ export class BookingService {
 
       // 2. Validate booking status
       if (booking.status !== BookingStatus.PENDING) {
+        // If booking already marked as PAID, treat as idempotent and return current booking
+        if (booking.status === BookingStatus.PAID) {
+          const seatStatuses = booking.seatStatuses || [];
+
+          return {
+            id: booking.id,
+            bookingReference: booking.bookingReference,
+            tripId: booking.tripId,
+            totalAmount: booking.totalAmount,
+            status: booking.status,
+            bookedAt: booking.bookedAt,
+            expirationTimestamp: null,
+            passengers: booking.passengerDetails?.map(passenger => ({
+              id: passenger.id,
+              fullName: passenger.fullName,
+              documentId: passenger.documentId || null,
+              seatCode: passenger.seatCode,
+            })) || [],
+            seats: seatStatuses.map(status => ({
+              seatId: status.seatId,
+              seatCode: '',
+              status: status.state,
+            })),
+          } as BookingResponseDto;
+        }
+
         throw new BadRequestException(
           `Cannot confirm payment for booking with status: ${booking.status}`,
         );
@@ -462,6 +666,7 @@ export class BookingService {
 
       const response = {
         id: updatedBooking.id,
+        bookingReference: updatedBooking.bookingReference,
         tripId: updatedBooking.tripId,
         totalAmount: updatedBooking.totalAmount,
         status: updatedBooking.status,
@@ -470,7 +675,7 @@ export class BookingService {
         passengers: updatedBooking.passengerDetails.map(passenger => ({
           id: passenger.id,
           fullName: passenger.fullName,
-          documentId: passenger.documentId,
+          documentId: passenger.documentId || null,
           seatCode: passenger.seatCode,
         })),
         seats: seatStatuses.map(status => ({
@@ -482,13 +687,22 @@ export class BookingService {
 
       // 7. Send notification
       if (updatedBooking.userId) {
-        await this.notificationsService.createInAppNotification(
-          updatedBooking.userId,
-          'Booking Successful',
-          `Your booking ${updatedBooking.bookingReference} has been successfully confirmed and payment was completed.  We have sent an email to your email address. Please check your email for the e-ticket.`,
-           { bookingId: updatedBooking.id, reference: updatedBooking.bookingReference },
-           updatedBooking.id
-        );
+        this.logger.log(`Sending success notification for confirmed booking ${updatedBooking.bookingReference} to user ${updatedBooking.userId}`);
+        try {
+          await this.notificationsService.createInAppNotification(
+            updatedBooking.userId,
+            'Booking Successful',
+            `Your booking ${updatedBooking.bookingReference} has been successfully confirmed and payment was completed. We have sent an email to your email address. Please check your email for the e-ticket.`,
+             { bookingId: updatedBooking.id, reference: updatedBooking.bookingReference },
+             updatedBooking.id
+          );
+          this.logger.log(`Successfully sent in-app notification for booking ${updatedBooking.id}`);
+        } catch (error) {
+          this.logger.error(`Failed to send in-app notification for booking ${updatedBooking.id}: ${error.message}`);
+          // Don't throw here to avoid rolling back payment confirmation
+        }
+      } else {
+        this.logger.log(`No userId for booking ${updatedBooking.id}, skipping in-app notification`);
       }
       
       return response;
@@ -509,7 +723,11 @@ export class BookingService {
 
       // 2. Validate booking status
       if (booking.status === BookingStatus.CANCELLED) {
-        throw new BadRequestException('Booking is already cancelled');
+        // Idempotent: if already cancelled, return success without error
+        return {
+          success: true,
+          message: 'Booking is already cancelled',
+        };
       }
 
       if (booking.status === BookingStatus.PAID) {
@@ -591,7 +809,7 @@ export class BookingService {
 
   async updatePassengerInfo(
     bookingId: string,
-    updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId: string; seatCode: string; }> },
+    updatePassengerDto: { passengers: Array<{ id: string; fullName: string; documentId?: string; seatCode: string; }> },
     userId: string,
   ): Promise<any> {
     return await this.dataSource.transaction(async (manager) => {
@@ -665,7 +883,7 @@ export class BookingService {
         passengers: updatedBooking.passengerDetails?.map(p => ({
           id: p.id,
           fullName: p.fullName,
-          documentId: p.documentId,
+          documentId: p.documentId || null,
           seatCode: p.seatCode,
         })) || [],
         seats: updatedBooking.seatStatuses?.map(s => ({
@@ -691,16 +909,7 @@ export class BookingService {
         throw new NotFoundException('Booking not found');
       }
 
-      console.log(`Cancel booking debug:`, {
-        bookingId,
-        userId,
-        booking: {
-          id: booking.id,
-          userId: booking.userId,
-          status: booking.status,
-          departureTime: booking.trip?.departureTime
-        }
-      });
+      this.logger.debug(`Processing cancellation for booking ${bookingId}`);
 
       if (booking.userId !== userId) {
         throw new BadRequestException('Access denied');
@@ -717,11 +926,7 @@ export class BookingService {
         const timeDifference = departureTime.getTime() - currentTime.getTime();
         const hoursUntilDeparture = timeDifference / (1000 * 60 * 60); // Convert to hours
 
-        console.log(`Time check:`, {
-          departureTime: departureTime.toISOString(),
-          currentTime: currentTime.toISOString(),
-          hoursUntilDeparture
-        });
+        this.logger.debug(`Cancellation time check: ${hoursUntilDeparture.toFixed(2)} hours until departure`);
 
         if (hoursUntilDeparture < 6) {
           throw new BadRequestException(`Cannot cancel booking less than 6 hours before departure. Hours until departure: ${hoursUntilDeparture.toFixed(2)}`);
@@ -931,7 +1136,7 @@ export class BookingService {
         doc
           .fontSize(12)
           .text(
-            `${index + 1}. ${p.fullName} - Doc: ${p.documentId} - Seat: ${p.seatCode}`,
+            `${index + 1}. ${p.fullName} - Doc: ${p.documentId || ''} - Seat: ${p.seatCode}`,
           );
       });
 
@@ -1230,7 +1435,7 @@ export class BookingService {
 
       if (modification.documentId && modification.documentId !== passenger.documentId) {
         changes.documentId = modification.documentId;
-        changeDescription.push(`document ID from "${passenger.documentId}" to "${modification.documentId}"`);
+        changeDescription.push(`document ID from "${passenger.documentId || ''}" to "${modification.documentId || ''}"`);
       }
 
       if (Object.keys(changes).length > 0) {
@@ -1281,10 +1486,45 @@ export class BookingService {
       }
 
       // Check if new seat exists and is available
-      const newSeat = await manager.findOne(Seat, {
+      // Try multiple seat code formats
+      let newSeat = await manager.findOne(Seat, {
         where: { seatCode: seatChange.newSeatCode },
         relations: ['bus'],
       });
+
+      // If not found, try normalized version
+      if (!newSeat) {
+        const normalizedCode = normalizeSeatCode(seatChange.newSeatCode);
+        newSeat = await manager.findOne(Seat, {
+          where: { seatCode: normalizedCode },
+          relations: ['bus'],
+        });
+      }
+
+      // If not found, try alternative format (number+letter <-> letter+number)
+      if (!newSeat) {
+        const originalCode = seatChange.newSeatCode.trim().toUpperCase();
+        let alternativeCode = '';
+        
+        const match = originalCode.match(/^(\d+)([A-Z]+)$/i);
+        if (match) {
+          // Convert number+letter to letter+number (e.g., 2C -> C2)
+          alternativeCode = `${match[2]}${match[1]}`;
+        } else {
+          const letterMatch = originalCode.match(/^([A-Z]+)(\d+)$/i);
+          if (letterMatch) {
+            // Convert letter+number to number+letter (e.g., C2 -> 2C)
+            alternativeCode = `${letterMatch[2]}${letterMatch[1]}`;
+          }
+        }
+        
+        if (alternativeCode) {
+          newSeat = await manager.findOne(Seat, {
+            where: { seatCode: alternativeCode },
+            relations: ['bus'],
+          });
+        }
+      }
 
       if (!newSeat) {
         throw new BadRequestException(`Seat ${seatChange.newSeatCode} does not exist`);
@@ -1559,7 +1799,7 @@ export class BookingService {
             id: updatedPassenger.id,
             bookingId: updatedPassenger.bookingId,
             fullName: updatedPassenger.fullName,
-            documentId: updatedPassenger.documentId,
+            documentId: updatedPassenger.documentId || null,
             seatCode: updatedPassenger.seatCode,
             modifiedAt: new Date(),
           });
@@ -1608,7 +1848,7 @@ export class BookingService {
     }
 
     if (changes.documentId) {
-      descriptions.push(`document ID from '${previousValues.documentId}' to '${changes.documentId}'`);
+      descriptions.push(`document ID from '${previousValues.documentId || ''}' to '${changes.documentId || ''}'`);
     }
 
     if (changes.seatCode) {
@@ -1671,9 +1911,42 @@ export class BookingService {
         }
 
         // Step 4: Check seat availability
-        const newSeat = await manager.findOne(Seat, {
+        // Try multiple seat code formats
+        let newSeat = await manager.findOne(Seat, {
           where: { seatCode: seatChange.newSeatCode, busId: booking.trip.busId },
         });
+
+        // If not found, try normalized version
+        if (!newSeat) {
+          const normalizedCode = normalizeSeatCode(seatChange.newSeatCode);
+          newSeat = await manager.findOne(Seat, {
+            where: { seatCode: normalizedCode, busId: booking.trip.busId },
+          });
+        }
+
+        // If not found, try alternative format (number+letter <-> letter+number)
+        if (!newSeat) {
+          const originalCode = seatChange.newSeatCode.trim().toUpperCase();
+          let alternativeCode = '';
+          
+          const match = originalCode.match(/^(\d+)([A-Z]+)$/i);
+          if (match) {
+            // Convert number+letter to letter+number (e.g., 2C -> C2)
+            alternativeCode = `${match[2]}${match[1]}`;
+          } else {
+            const letterMatch = originalCode.match(/^([A-Z]+)(\d+)$/i);
+            if (letterMatch) {
+              // Convert letter+number to number+letter (e.g., C2 -> 2C)
+              alternativeCode = `${letterMatch[2]}${letterMatch[1]}`;
+            }
+          }
+          
+          if (alternativeCode) {
+            newSeat = await manager.findOne(Seat, {
+              where: { seatCode: alternativeCode, busId: booking.trip.busId },
+            });
+          }
+        }
 
         if (!newSeat) {
           throw new NotFoundException(`Seat ${seatChange.newSeatCode} not found on this bus`);
@@ -1968,7 +2241,6 @@ export class BookingService {
             SeatStatus, 
             { 
               bookingId: booking.id, 
-              state: SeatState.LOCKED // Only release locked seats
             }, 
             { 
               state: SeatState.AVAILABLE,
@@ -1995,7 +2267,7 @@ export class BookingService {
             },
           );
 
-          expiredBookingIds.push(booking.bookingReference);
+          expiredBookingIds.push(booking.id);
           processedBookingIds.add(booking.id);
         });
 
@@ -2058,5 +2330,273 @@ export class BookingService {
 
     const remainingMs = booking.expiresAt.getTime() - new Date().getTime();
     return Math.max(0, Math.ceil(remainingMs / (1000 * 60))); // Convert to minutes
+  }
+
+  /**
+   * Cancel booking with refund (user-initiated)
+   * Sets status to PENDING for admin approval
+   */
+  async cancelBookingWithRefund(bookingId: string, userId?: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const booking = await queryRunner.manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'trip.route', 'seatStatuses', 'user', 'passengerDetails'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.status !== BookingStatus.PAID) {
+        throw new BadRequestException('Only paid bookings can be cancelled');
+      }
+
+      // Check if trip allows cancellation (e.g., not within 24 hours)
+      const now = new Date();
+      const tripDate = new Date(booking.trip.departureTime);
+      const hoursUntilTrip = (tripDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+      if (hoursUntilTrip < 24) {
+        throw new BadRequestException('Cannot cancel booking within 24 hours of departure');
+      }
+
+      // Update booking status to PENDING (waiting for admin approval)
+      await queryRunner.manager.update(Booking, 
+        { id: bookingId }, 
+        { 
+          status: BookingStatus.PENDING,
+          lastModifiedAt: new Date()
+        }
+      );
+
+      // Create audit log
+      await queryRunner.manager.save(AuditLog, {
+        action: 'CANCELLATION_REQUESTED',
+        actorId: userId || null,
+        metadata: {
+          bookingId,
+          originalStatus: BookingStatus.PAID,
+          reason: 'User-initiated cancellation request'
+        },
+      });
+
+      // Get passenger name for notification
+      const customerName = booking.passengerDetails?.[0]?.fullName || booking.user?.name || 'Unknown';
+      const customerEmail = booking.contactEmail || booking.user?.email || '';
+
+      // Notify admins about the cancellation request
+      await this.notificationsService.notifyAdminsAboutCancellationRequest(
+        booking.bookingReference,
+        customerName,
+        customerEmail,
+        booking.totalAmount,
+        booking.totalAmount,
+        bookingId,
+        {
+          origin: booking.trip.route?.origin || 'Unknown',
+          destination: booking.trip.route?.destination || 'Unknown',
+          departureTime: booking.trip.departureTime
+        }
+      );
+
+      await queryRunner.commitTransaction();
+
+      return {
+        success: true,
+        message: 'Cancellation request submitted successfully. An admin will review your request.',
+        booking: await this.findBookingById(bookingId),
+        bookingId: bookingId,
+        bookingStatus: BookingStatus.PENDING,
+        refund: {
+          amount: booking.totalAmount,
+          status: 'PENDING' as const
+        }
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('Error requesting booking cancellation:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Approve cancellation request (admin only)
+   */
+  async approveCancellationRequest(bookingId: string, adminId: string, reason?: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const booking = await queryRunner.manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'seatStatuses', 'user', 'payments'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException('Booking must be in pending status to approve cancellation');
+      }
+
+      // Check if there was a cancellation request (look in audit logs)
+      const cancellationRequest = await queryRunner.manager
+        .createQueryBuilder(AuditLog, 'audit')
+        .where('audit.action = :action', { action: 'CANCELLATION_REQUESTED' })
+        .andWhere('audit.metadata ->> \'bookingId\' = :bookingId', { bookingId })
+        .orderBy('audit.createdAt', 'DESC')
+        .getOne();
+
+      if (!cancellationRequest) {
+        throw new BadRequestException('No cancellation request found for this booking');
+      }
+
+      // Process refund through payment
+      let refundResult: any = null;
+      let refundAmount = 0;
+      
+      if (booking.payments && booking.payments.length > 0) {
+        const lastPayment = booking.payments.find(p => p.status === PaymentStatus.COMPLETED);
+        if (lastPayment && lastPayment.payosOrderCode) {
+          try {
+            refundResult = await this.payosService.cancelPayment(lastPayment.payosOrderCode);
+            refundAmount = booking.totalAmount;
+          } catch (error) {
+            this.logger.warn(`Refund processing failed for booking ${bookingId}:`, error.message);
+            // Continue with cancellation even if refund fails
+          }
+        }
+      }
+
+      // Free up the seats
+      for (const seatStatus of booking.seatStatuses) {
+        await queryRunner.manager.update(SeatStatus, 
+          { id: seatStatus.id },
+          { state: SeatState.AVAILABLE }
+        );
+      }
+
+      // Update booking status to CANCELLED
+      await queryRunner.manager.update(Booking, 
+        { id: bookingId }, 
+        { 
+          status: BookingStatus.CANCELLED,
+          cancelledAt: new Date(),
+          lastModifiedAt: new Date()
+        }
+      );
+
+      // Create audit log
+      await queryRunner.manager.save(AuditLog, {
+        action: 'CANCELLATION_APPROVED',
+        actorId: adminId,
+        metadata: {
+          bookingId,
+          refundResult,
+          refundAmount,
+          reason: reason || 'Admin approved cancellation request'
+        },
+      });
+
+      await queryRunner.commitTransaction();
+
+      return {
+        success: true,
+        message: 'Cancellation request approved successfully',
+        refundProcessed: !!refundResult,
+        booking: await this.findBookingById(bookingId),
+        refund: {
+          amount: refundAmount,
+          status: refundResult ? 'SUCCESS' : 'FAILED'
+        }
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('Error approving cancellation request:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Reject cancellation request (admin only)
+   */
+  async rejectCancellationRequest(bookingId: string, adminId: string, reason?: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const booking = await queryRunner.manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['trip', 'user'],
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException('Booking must be in pending status to reject cancellation');
+      }
+
+      // Check if there was a cancellation request (look in audit logs)
+      const cancellationRequest = await queryRunner.manager
+        .createQueryBuilder(AuditLog, 'audit')
+        .where('audit.action = :action', { action: 'CANCELLATION_REQUESTED' })
+        .andWhere('audit.metadata ->> \'bookingId\' = :bookingId', { bookingId })
+        .orderBy('audit.createdAt', 'DESC')
+        .getOne();
+
+      if (!cancellationRequest) {
+        throw new BadRequestException('No cancellation request found for this booking');
+      }
+
+      // Restore original booking status (should be PAID)
+      await queryRunner.manager.update(Booking, 
+        { id: bookingId }, 
+        { 
+          status: BookingStatus.PAID,
+          lastModifiedAt: new Date()
+        }
+      );
+
+      // Create audit log
+      await queryRunner.manager.save(AuditLog, {
+        action: 'CANCELLATION_REJECTED',
+        actorId: adminId,
+        metadata: {
+          bookingId,
+          restoredStatus: BookingStatus.PAID,
+          reason: reason || 'Admin rejected cancellation request'
+        },
+      });
+
+      await queryRunner.commitTransaction();
+
+      return {
+        success: true,
+        message: 'Cancellation request rejected successfully',
+        booking: await this.findBookingById(bookingId)
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('Error rejecting cancellation request:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }

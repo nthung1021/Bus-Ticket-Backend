@@ -26,6 +26,7 @@ export class AnalyticsQueryDto {
 export interface BookingSummaryDto {
   totalBookings: number;
   paidBookings: number;
+  completedBookings: number;
   pendingBookings: number;
   cancelledBookings: number;
   expiredBookings: number;
@@ -177,6 +178,23 @@ export interface SeatOccupancyDto {
     occupiedSeats: number;
     occupancyRate: number;
   }[];
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+}
+
+export interface PaymentMethodStats {
+  provider: string;
+  count: number;
+  totalAmount: number;
+  percentage: number;
+}
+
+export interface PaymentMethodAnalyticsDto {
+  methods: PaymentMethodStats[];
+  totalTransactions: number;
+  totalRevenue: number;
   period: {
     startDate: string;
     endDate: string;

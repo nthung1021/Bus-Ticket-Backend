@@ -18,11 +18,14 @@ export class PassengerDetail {
   @Column({ name: 'full_name' })
   fullName: string;
 
-  @Column({ name: 'document_id' })
-  documentId: string;
+  @Column('varchar', { name: 'document_id', nullable: true })
+  documentId?: string;
 
   @Column({ name: 'seat_code' })
   seatCode: string;
+
+  @Column({ name: 'boarded', type: 'boolean', default: false })
+  boarded: boolean;
 
   // Relations
   @ManyToOne(() => Booking, (booking) => booking.passengerDetails)

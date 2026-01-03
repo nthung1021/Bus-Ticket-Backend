@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -21,11 +21,13 @@ import { Booking, BookingStatus } from '../entities/booking.entity';
 import { SeatStatus, SeatState } from '../entities/seat-status.entity';
 import { SeatStatusGateway } from '../gateways/seat-status.gateway';
 import { BookingGateway } from '../gateways/booking.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PayosService {
   private readonly logger = new Logger(PayosService.name);
   private readonly payos: PayOS;
+  private readonly payosPayout: PayOS;
 
   constructor(
     private configService: ConfigService,
@@ -37,6 +39,8 @@ export class PayosService {
     private seatStatusRepository: Repository<SeatStatus>,
     private seatStatusGateway: SeatStatusGateway,
     private bookingGateway: BookingGateway,
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService: NotificationsService,
   ) {
     const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
@@ -52,6 +56,21 @@ export class PayosService {
       clientId,
       apiKey,
       checksumKey,
+    });
+
+    // Initialize PayOS instance for Payouts
+    const payoutClientId = this.configService.get<string>('PAYOS_PAYOUT_CLIENT_ID');
+    const payoutApiKey = this.configService.get<string>('PAYOS_PAYOUT_API_KEY');
+    const payoutChecksumKey = this.configService.get<string>('PAYOS_PAYOUT_CHECKSUM_KEY');
+    if (!payoutClientId || !payoutApiKey || !payoutChecksumKey) {
+      throw new Error(
+        'PayOS Payout configuration is missing. Please check environment variables.',
+      );
+    }
+    this.payosPayout = new PayOS({
+      clientId: payoutClientId,
+      apiKey: payoutApiKey,
+      checksumKey: payoutChecksumKey,
     });
   }
 
@@ -242,11 +261,22 @@ export class PayosService {
   }
 
   async verifyWebhookData(webhookData: any): Promise<WebhookData> {
+    // Allow disabling verification for local/dev testing using env var
+    const skipVerify =
+      (this.configService.get('PAYOS_SKIP_WEBHOOK_VERIFY') || '')
+        .toString()
+        .trim()
+        .toLowerCase() === 'true';
+
+    if (skipVerify) {
+      this.logger.log('Bypassing PayOS webhook verification (PAYOS_SKIP_WEBHOOK_VERIFY=true)');
+      return webhookData as WebhookData;
+    }
+
     try {
       // Verify webhook signature using PayOS method
       const verifiedData = await this.payos.webhooks.verify(webhookData);
-      this.logger.log('Verified data:', verifiedData);
-      this.logger.log('Webhook data verified successfully');
+      this.logger.debug('Webhook data verified successfully');
       return verifiedData;
     } catch (error) {
       this.logger.error('Error verifying webhook data', error);
@@ -283,10 +313,30 @@ export class PayosService {
         ? PaymentStatus.COMPLETED
         : PaymentStatus.FAILED;
 
+      // Extract bank info from webhook (prefer counterAccountNumber, then virtualAccountNumber, then accountNumber)
+      const bankId = webhookData.counterAccountBankId ?? null;
+      const bankNumber =
+        webhookData.counterAccountNumber ??
+        null;
+
+      const updatePayload: any = { status: paymentStatus };
+      if (bankId) updatePayload.bankId = bankId;
+      if (bankNumber) updatePayload.bankNumber = bankNumber;
+
       await this.paymentRepository.update(
         { payosOrderCode: orderCode },
-        { status: paymentStatus },
+        updatePayload,
       );
+
+      this.logger.log(
+        `Payment status updated to ${paymentStatus} in database for order ${orderCode}`,
+      );
+
+      if (bankId || bankNumber) {
+        this.logger.log(
+          `Stored bank info for order ${orderCode}: bankId=${bankId}, bankNumber=${bankNumber}`,
+        );
+      }
 
       this.logger.log(
         `Payment status updated to ${paymentStatus} in database for order ${orderCode}`,
@@ -353,6 +403,23 @@ export class PayosService {
             this.logger.log(
               `Real-time notification sent for ${seatIds.length} seats now booked for trip ${tripId}`,
             );
+          }
+
+          // Send In-App Notification if user is logged in
+          if (booking && booking.userId) {
+            try {
+              this.logger.log(`Sending success notification via webhook for booking ${booking.bookingReference} to user ${booking.userId}`);
+              await this.notificationsService.createInAppNotification(
+                booking.userId,
+                'Booking Successful',
+                `Your booking ${booking.bookingReference} has been successfully confirmed and payment was completed. We have sent an email to your email address. Please check your email for the e-ticket.`,
+                { bookingId: booking.id, reference: booking.bookingReference },
+                booking.id,
+              );
+              this.logger.log(`Successfully sent in-app notification for booking ${booking.id} (webhook)`);
+            } catch (error) {
+              this.logger.error(`Failed to send in-app notification for booking ${booking.id} (webhook): ${error.message}`);
+            }
           }
         } else {
           // Payment failed - release seats back to AVAILABLE
@@ -437,4 +504,183 @@ export class PayosService {
     // Ensure it's within integer range
     return Math.min(orderCode, 2147483647);
   }
+
+  /**
+   * Refund completed payments for a given trip by creating payouts when
+   * the PayOS payout account has sufficient balance.
+   * Returns a summary of refunded and skipped payments.
+   */
+  async refundPaymentsByTrip(tripId: string): Promise<{
+    refunded: string[];
+    skipped: Array<{ paymentId: string; reason: string }>;
+  }> {
+    this.logger.log(`Starting refund process for trip ${tripId}`);
+
+    // Find all completed payments associated with bookings that belong to the trip
+    const payments = await this.paymentRepository
+      .createQueryBuilder('payment')
+      .innerJoin('payment.booking', 'booking')
+      .where('booking.trip_id = :tripId', { tripId })
+      .andWhere('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .getMany();
+
+    const result = { refunded: [] as string[], skipped: [] as Array<{ paymentId: string; reason: string }> };
+
+    if (payments.length === 0) {
+      this.logger.log(`No completed payments found for trip ${tripId}`);
+      return result;
+    }
+
+    // Get current payout account balance
+    let accountInfo;
+    try {
+      accountInfo = await this.payosPayout.payoutsAccount.balance();
+      this.logger.log(`Payout account balance: ${accountInfo.balance} ${accountInfo.currency}`);
+    } catch (err) {
+      this.logger.error('Failed to fetch payout account balance', err);
+      // If we cannot fetch balance, skip processing to avoid accidental overdraft
+      payments.forEach((p) => result.skipped.push({ paymentId: p.id, reason: 'failed_to_fetch_balance' }));
+      return result;
+    }
+
+    let availableBalance = parseFloat(accountInfo.balance || '0');
+
+    for (const payment of payments) {
+      try {
+        if (!payment.bankId || !payment.bankNumber) {
+          result.skipped.push({ paymentId: payment.id, reason: 'missing_bank_info' });
+          this.logger.warn(`Skipping refund for payment ${payment.id}: missing bank info`);
+          continue;
+        }
+
+        // If available balance is insufficient for this refund amount, skip it
+        if (availableBalance < payment.amount) {
+          result.skipped.push({ paymentId: payment.id, reason: 'insufficient_balance' });
+          this.logger.warn(`Insufficient payout balance for payment ${payment.id}: need ${payment.amount}, have ${availableBalance}`);
+          continue;
+        }
+
+        // Create payout
+        const payoutRequest = {
+          referenceId: `refund-${payment.id}`,
+          amount: payment.amount,
+          description: `Refund for payment ${payment.id}`,
+          toBin: payment.bankId,
+          toAccountNumber: payment.bankNumber,
+        } as any;
+
+        const payout = await this.payosPayout.payouts.create(payoutRequest, payment.id);
+
+        this.logger.log(`Payout created for payment ${payment.id}, payoutId=${payout.id}`);
+
+        // Update payment status to REFUNDED
+        await this.paymentRepository.update({ id: payment.id }, { status: PaymentStatus.REFUNDED });
+
+        result.refunded.push(payment.id);
+
+        // Decrease local available balance so subsequent refunds account for it
+        availableBalance -= payment.amount;
+      } catch (err) {
+        this.logger.error(`Failed to refund payment ${payment.id}`, err);
+        result.skipped.push({ paymentId: payment.id, reason: 'payout_failed' });
+      }
+    }
+
+    this.logger.log(`Refund process finished for trip ${tripId}: refunded=${result.refunded.length}, skipped=${result.skipped.length}`);
+    return result;
+  }
+
+  /**
+   * Process refund for a specific payment
+   * Used for user-initiated booking cancellations
+   */
+  async refundPayment(
+    transactionRef: string, 
+    refundAmount: number
+  ): Promise<{ success: boolean; status: 'SUCCESS' | 'FAILED' | 'PENDING'; message: string }> {
+    try {
+      this.logger.log(`Processing refund for transaction ${transactionRef}, amount: ${refundAmount}`);
+
+      // Find payment record
+      const payment = await this.paymentRepository.findOne({
+        where: { transactionRef },
+        relations: ['booking']
+      });
+
+      if (!payment) {
+        this.logger.error(`Payment not found for transaction ${transactionRef}`);
+        return { success: false, status: 'FAILED', message: 'Payment not found' };
+      }
+
+      if (payment.status !== PaymentStatus.COMPLETED) {
+        this.logger.error(`Payment ${payment.id} is not completed (current status: ${payment.status})`);
+        return { success: false, status: 'FAILED', message: 'Payment is not completed' };
+      }
+
+      if (!payment.bankId || !payment.bankNumber) {
+        this.logger.error(`Missing bank information for payment ${payment.id}`);
+        return { success: false, status: 'FAILED', message: 'Missing bank information for refund' };
+      }
+
+      if (refundAmount <= 0) {
+        this.logger.error(`Invalid refund amount: ${refundAmount}`);
+        return { success: false, status: 'FAILED', message: 'Invalid refund amount' };
+      }
+
+      // Check payout account balance
+      let accountInfo;
+      try {
+        accountInfo = await this.payosPayout.payoutsAccount.balance();
+        const availableBalance = parseFloat(accountInfo.balance || '0');
+        
+        if (availableBalance < refundAmount) {
+          this.logger.error(`Insufficient payout balance: need ${refundAmount}, have ${availableBalance}`);
+          return { success: false, status: 'FAILED', message: 'Insufficient balance for refund' };
+        }
+      } catch (err) {
+        this.logger.error('Failed to fetch payout account balance for refund', err);
+        return { success: false, status: 'FAILED', message: 'Failed to verify account balance' };
+      }
+
+      // Create payout for refund
+      const payoutRequest = {
+        referenceId: `refund-${payment.id}-${Date.now()}`,
+        amount: refundAmount,
+        description: `Booking cancellation refund for ${payment.booking?.bookingReference || payment.bookingId}`,
+        toBin: payment.bankId,
+        toAccountNumber: payment.bankNumber,
+      } as any;
+
+      const payout = await this.payosPayout.payouts.create(payoutRequest, payment.id);
+
+      this.logger.log(`Payout created for refund: payoutId=${payout.id}, amount=${refundAmount}`);
+
+      return { success: true, status: 'SUCCESS', message: 'Refund processed successfully' };
+
+    } catch (error) {
+      this.logger.error(`Failed to process refund for transaction ${transactionRef}`, error);
+      return { success: false, status: 'FAILED', message: 'Refund processing failed' };
+    }
+  }
+
+  // Get payments associated with a trip (for admin UI)
+  async getPaymentsByTrip(tripId: string) {
+    const payments = await this.paymentRepository
+      .createQueryBuilder('payment')
+      .leftJoinAndSelect('payment.booking', 'booking')
+      .where('booking.trip_id = :tripId', { tripId })
+      .orderBy('payment.created_at', 'ASC')
+      .getMany();
+
+    return payments.map((p) => ({
+      id: p.id,
+      bookingId: p.bookingId,
+      amount: p.amount,
+      status: p.status,
+      bankId: p.bankId,
+      bankNumber: p.bankNumber || (p as any).bank_number || null,
+      createdAt: p.processedAt,
+    }));
+  }
 }
+

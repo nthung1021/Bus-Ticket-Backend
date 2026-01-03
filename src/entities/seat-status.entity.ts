@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Unique,
 } from 'typeorm';
 import { Trip } from './trip.entity';
 import { Seat } from './seat.entity';
@@ -17,6 +18,7 @@ export enum SeatState {
 }
 
 @Entity('seat_status')
+@Unique(['tripId', 'seatId'])
 export class SeatStatus {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -52,7 +54,7 @@ export class SeatStatus {
   @JoinColumn({ name: 'trip_id' })
   trip: Trip;
 
-  @ManyToOne(() => Seat, (seat) => seat.seatStatuses)
+  @ManyToOne(() => Seat, (seat) => seat.seatStatuses, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'seat_id' })
   seat: Seat;
 

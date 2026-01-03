@@ -2,25 +2,28 @@ import { IsString, IsOptional, IsIn, IsInt, Min, Max, IsISO8601 } from 'class-va
 import { Transform } from 'class-transformer';
 
 export class SearchTripsDto {
+  @IsOptional()
   @IsString()
-  origin: string;
+  origin?: string;
 
+  @IsOptional()
   @IsString()
-  destination: string;
+  destination?: string;
 
+  @IsOptional()
   @IsOptional()
   @IsISO8601()
   @Transform(({ value }) => value ? new Date(value).toISOString() : undefined)
   date?: string; // ISO 8601 format (e.g., 2025-12-05T17:00:00.000Z) - Optional
 
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
   @IsInt()
   @Min(1)
-  passengers?: number = 1;
+  passengers?: number;
 
   @IsOptional()
-  @IsIn(['standard', 'limousine', 'sleeper'])
+  @IsIn(['standard', 'limousine', 'sleeper', 'seater', 'vip', 'business'])
   busType?: string;
 
   @IsOptional()
@@ -28,11 +31,16 @@ export class SearchTripsDto {
   departureTime?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value ? Number(value) : undefined))
+  @IsString()
+  // exact time in HH:MM format
+  departureTimeExact?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? Number(value) : undefined)
   minPrice?: number;
 
   @IsOptional()
-  @Transform(({ value }) => (value ? Number(value) : undefined))
+  @Transform(({ value }) => value ? Number(value) : undefined)
   maxPrice?: number;
 
   @IsOptional()
@@ -40,15 +48,23 @@ export class SearchTripsDto {
   operatorId?: string;
 
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
   @IsInt()
   @Min(1)
-  page?: number = 1;
+  page?: number;
 
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
   @IsInt()
   @Min(1)
   @Max(100)
-  limit?: number = 20;
+  limit?: number;
+
+  @IsOptional()
+  @IsIn(['price', 'departureTime', 'duration', 'rating'])
+  sortBy?: string;
+
+  @IsOptional() 
+  @IsIn(['ASC', 'DESC', 'asc', 'desc'])
+  sortOrder?: string;
 }

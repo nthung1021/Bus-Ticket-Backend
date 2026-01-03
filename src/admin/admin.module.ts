@@ -9,10 +9,11 @@ import { Booking } from '../entities/booking.entity';
 import { Trip } from '../entities/trip.entity';
 import { Route } from '../entities/route.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
+import { Payment } from '../entities/payment.entity';
 import { CacheService } from '../common/cache.service';
 
 @Module({
-  imports: [AuthModule, TypeOrmModule.forFeature([User, AuditLog, Booking, Trip, Route, SeatStatus])],
+  imports: [AuthModule, TypeOrmModule.forFeature([User, AuditLog, Booking, Trip, Route, SeatStatus, Payment])],
   controllers: [AdminController],
   providers: [AdminService, CacheService],
 })

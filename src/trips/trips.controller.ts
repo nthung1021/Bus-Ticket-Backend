@@ -16,6 +16,7 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { Trip } from '../entities/trip.entity';
 import { TripsService } from './trips.service';
+import { PayosService } from '../payos/payos.service';
 import { SearchTripsDto } from './dto/search-trips.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -23,7 +24,10 @@ import { AssignBusDto, CheckAvailabilityDto, ScheduleQueryDto } from './dto/assi
 
 @Controller('trips')
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) { }
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly payosService: PayosService,
+  ) { }
 
   // User - Searching trips and get detail trip info
 
@@ -72,13 +76,37 @@ export class TripsController {
   // Admin - internal CRUD & scheduling endpoints (merged from TripController) =====
 
   @Post()
-  create(@Body() createTripDto: CreateTripDto): Promise<Trip> {
-    return this.tripsService.create(createTripDto);
+  async create(@Body() createTripDto: CreateTripDto): Promise<Trip> {
+    try {
+      return await this.tripsService.create(createTripDto);
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to create trip' });
+    }
   }
 
   @Get()
-  findAll(): Promise<Trip[]> {
-    return this.tripsService.findAll();
+  findAll(@Query('deleted') deleted?: string): Promise<Trip[]> {
+    const includeDeleted = deleted === 'true';
+    return this.tripsService.findAll(includeDeleted);
+  }
+
+  // Refund payments for a trip and mark it deleted (admin)
+  @Post(':id/refund')
+  async refundAndDelete(@Param('id') id: string) {
+    try {
+      const refunds = await this.payosService.refundPaymentsByTrip(id);
+      await this.tripsService.softDelete(id);
+
+      return { success: true, refunds };
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to refund and delete trip' });
+    }
   }
 
   @Get('admin/:id')
@@ -87,15 +115,28 @@ export class TripsController {
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() updateTripDto: UpdateTripDto): Promise<Trip> {
-    // console.log(updateTripDto);
-    return this.tripsService.update(id, updateTripDto);
+  async update(@Param('id') id: string, @Body() updateTripDto: UpdateTripDto): Promise<Trip> {
+    try {
+      return await this.tripsService.update(id, updateTripDto);
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to update trip' });
+    }
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string): Promise<void> {
-    return this.tripsService.remove(id);
+    try {
+      return await this.tripsService.remove(id);
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to remove trip' });
+    }
   }
 
   // Get available buses for a specific time slot
@@ -175,38 +216,37 @@ export class TripsController {
     return this.tripsService.getRouteSchedule(routeId, start, end);
   }
 
-  // Check if a bus is available for a specific time slot
-  @Get('check-availability/:busId')
-  async checkBusAvailability(
-    @Param('busId') busId: string,
-    @Query() query: CheckAvailabilityDto,
-  ): Promise<{ available: boolean; message?: string }> {
-    const { departureTime, arrivalTime } = query;
-
-    if (!departureTime || !arrivalTime) {
-      throw new BadRequestException('Both departureTime and arrivalTime are required');
+  // Admin: list payments for a trip
+  @Get(':id/payments')
+  async getPayments(@Param('id') id: string) {
+    try {
+      const payments = await this.payosService.getPaymentsByTrip(id);
+      return { success: true, data: payments };
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to fetch payments' });
     }
+  }
 
-    const departure = new Date(departureTime);
-    const arrival = new Date(arrivalTime);
-
-    if (isNaN(departure.getTime()) || isNaN(arrival.getTime())) {
-      throw new BadRequestException('Invalid date format. Use ISO 8601 format');
+  // Mark passenger as boarded for a trip (admin)
+  @Post(':tripId/passengers/:passengerId/board')
+  async markPassengerBoarded(
+    @Param('tripId') tripId: string,
+    @Param('passengerId') passengerId: string,
+    @Body() body: { boarded?: boolean },
+  ) {
+    try {
+      const boarded = body?.boarded ?? true;
+      const updated = await this.tripsService.markPassengerBoarded(tripId, passengerId, boarded);
+      return { success: true, data: updated };
+    } catch (err: any) {
+      if (err && err.getStatus && typeof err.getStatus === 'function') {
+        throw err;
+      }
+      throw new (require('@nestjs/common').InternalServerErrorException)({ message: err?.message || 'Failed to mark passenger boarded' });
     }
-
-    if (departure >= arrival) {
-      throw new BadRequestException('Departure time must be before arrival time');
-    }
-
-    const availableBuses = await this.tripsService.getAvailableBuses(departure, arrival);
-    const isAvailable = !availableBuses.includes(busId);
-
-    return {
-      available: isAvailable,
-      message: isAvailable
-        ? 'Bus is available for the selected time slot'
-        : 'Bus is already scheduled during this time period',
-    };
   }
 
   // Assign a bus to a route with conflict checking

@@ -1,4 +1,4 @@
-import { IsArray, IsNotEmpty, ValidateNested } from 'class-validator';
+import { IsArray, IsNotEmpty, ValidateNested, IsOptional, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class PassengerUpdateDto {
@@ -8,8 +8,9 @@ export class PassengerUpdateDto {
   @IsNotEmpty()
   fullName: string;
 
-  @IsNotEmpty()
-  documentId: string;
+  @IsOptional()
+  @IsString()
+  documentId?: string;
 
   @IsNotEmpty()
   seatCode: string;

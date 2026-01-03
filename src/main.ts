@@ -1,11 +1,18 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Create a custom logger for application messages only
+  const logger = new Logger('Bootstrap');
+  
+  // Completely suppress NestJS framework logs during startup
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'], // Enable debug logs for development
+  });
+  
   const configService = app.get(ConfigService);
 
   // Enable cookie parser
@@ -23,16 +30,37 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS
-  app.enableCors({
-    origin: configService.get('FRONTEND_URL', 'http://localhost:8000'),
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-    allowedHeaders: 'Content-Type, Accept, Authorization',
-  });
+  // Enable CORS: allow frontend origin in production; during development allow any origin
+  const frontendUrl = configService.get('FRONTEND_URL', 'http://localhost:8000');
+  const nodeEnv = configService.get('NODE_ENV', 'development');
 
-  await app.listen(configService.get('PORT', 3000));
-  console.log(`Application is running on: ${await app.getUrl()}`);
+  if (nodeEnv !== 'production') {
+    app.enableCors({
+      origin: true, // reflect request origin — allow all during dev
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+      credentials: true,
+      allowedHeaders: 'Content-Type, Accept, Authorization',
+    });
+  } else {
+    app.enableCors({
+      origin: frontendUrl,
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+      credentials: true,
+      allowedHeaders: 'Content-Type, Accept, Authorization',
+    });
+  }
+
+  const port = configService.get('PORT', 3000);
+  await app.listen(port);
+  
+  // Re-enable application logging after startup (for runtime logs)
+  app.useLogger(['error', 'warn', 'log']);
+  
+  // Single consolidated startup summary
+  logger.log(`🚀 Bus Ticket Backend started successfully`);
+  logger.log(`📍 Server: http://localhost:${port}`);
+  logger.log(`🌐 Frontend: ${configService.get('FRONTEND_URL', 'http://localhost:8000')}`);
+  logger.log(`🔌 Database: Connected to ${configService.get('DB_NAME', 'bus_booking')}`);
 }
 
 bootstrap();

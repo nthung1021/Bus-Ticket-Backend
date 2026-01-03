@@ -8,6 +8,7 @@ import { BookingExpirationScheduler } from './booking-expiration-scheduler.servi
 import { BookingMigrationService } from './booking-migration.service';
 import { BookingModificationPermissionService } from './booking-modification-permission.service';
 import { Booking } from '../entities/booking.entity';
+import { Payment } from '../entities/payment.entity';
 import { PassengerDetail } from '../entities/passenger-detail.entity';
 import { SeatStatus } from '../entities/seat-status.entity';
 import { Trip } from '../entities/trip.entity';
@@ -17,11 +18,13 @@ import { BookingModificationHistory } from '../entities/booking-modification-his
 import { SeatLayout } from '../entities/seat-layout.entity';
 import { EmailService } from './email.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PayosModule } from '../payos/payos.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Booking,
+      Payment,
       PassengerDetail,
       SeatStatus,
       Trip,
@@ -32,6 +35,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ]),
     ScheduleModule.forRoot(),
     forwardRef(() => NotificationsModule),
+    PayosModule,
   ],
   controllers: [BookingController],
   providers: [
