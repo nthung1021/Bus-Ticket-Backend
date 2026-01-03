@@ -526,6 +526,8 @@ export class TripsService {
 
     const qb = this.tripRepo
       .createQueryBuilder('trip')
+      // exclude soft-deleted trips from public search results
+      .where('trip.deleted = false')
       // join route, bus, operator — adapt relation names to your entities
       .leftJoinAndSelect('trip.route', 'route')
       .leftJoinAndSelect('trip.bus', 'bus')
