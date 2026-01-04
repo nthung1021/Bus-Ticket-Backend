@@ -93,6 +93,7 @@ export class TripsService {
         {
           busId,
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           departureTime: And(
             LessThan(arrivalTime),
             MoreThanOrEqual(departureTime),
@@ -102,6 +103,7 @@ export class TripsService {
         {
           busId,
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           arrivalTime: And(
             LessThanOrEqual(arrivalTime),
             MoreThan(departureTime),
@@ -111,6 +113,7 @@ export class TripsService {
         {
           busId,
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           departureTime: LessThanOrEqual(departureTime),
           arrivalTime: MoreThanOrEqual(arrivalTime),
         },
@@ -118,6 +121,7 @@ export class TripsService {
         {
           busId,
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           departureTime: MoreThanOrEqual(departureTime),
           arrivalTime: LessThanOrEqual(arrivalTime),
         },
@@ -298,6 +302,7 @@ export class TripsService {
       .leftJoinAndSelect('trip.seatStatuses', 'seatStatuses')
       .leftJoinAndSelect('trip.feedbacks', 'feedbacks')
       .where('trip.id = :id', { id })
+      .andWhere('trip.deleted = false')
       .getOne();
 
     if (!trip) {
@@ -402,14 +407,17 @@ export class TripsService {
       where: [
         {
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           departureTime: And(LessThan(arrivalTime), MoreThan(departureTime)),
         },
         {
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           arrivalTime: And(LessThan(arrivalTime), MoreThan(departureTime)),
         },
         {
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           departureTime: LessThan(departureTime),
           arrivalTime: MoreThan(arrivalTime),
         },
@@ -431,6 +439,7 @@ export class TripsService {
         busId,
         departureTime: And(LessThan(endDate), MoreThan(startDate)),
         status: Not(TripStatus.CANCELLED),
+        deleted: false,
       },
       relations: ['route'],
       order: { departureTime: 'ASC' },
@@ -448,6 +457,7 @@ export class TripsService {
         routeId,
         departureTime: And(LessThan(endDate), MoreThan(startDate)),
         status: Not(TripStatus.CANCELLED),
+        deleted: false,
       },
       relations: ['bus'],
       order: { departureTime: 'ASC' },
@@ -497,16 +507,19 @@ export class TripsService {
         {
           busId,
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           departureTime: And(LessThan(arrivalTime), MoreThan(departureTime)),
         },
         {
           busId,
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           arrivalTime: And(LessThan(arrivalTime), MoreThan(departureTime)),
         },
         {
           busId,
           status: Not(TripStatus.CANCELLED),
+          deleted: false,
           departureTime: LessThan(departureTime),
           arrivalTime: MoreThan(arrivalTime),
         },
@@ -745,7 +758,7 @@ export class TripsService {
   // GET /trips/{:tripId}
   async getTripById(tripId: string) {
     const trip = await this.tripRepo.findOne({
-      where: { id: tripId },
+      where: { id: tripId, deleted: false },
       relations: {
         route: true,
         bus: {

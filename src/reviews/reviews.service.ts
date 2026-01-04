@@ -228,7 +228,7 @@ export class ReviewsService {
    */
   async getTripReviews(tripId: string, query: GetReviewsQueryDto): Promise<ReviewsListResponseDto> {
     // Verify trip exists
-    const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+    const trip = await this.tripRepository.findOne({ where: { id: tripId, deleted: false } });
     if (!trip) {
       throw new NotFoundException('Trip not found');
     }
