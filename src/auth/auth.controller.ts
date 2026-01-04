@@ -120,6 +120,7 @@ export class AuthController {
         userId: req.user.userId,
         email: req.user.email,
         role: req.user.role,
+        avatarUrl: req.user.avatarUrl,
       },
     };
   }

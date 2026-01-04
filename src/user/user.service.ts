@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BookingService } from '../booking/booking.service';
@@ -20,23 +25,25 @@ export class UserService {
 
   async uploadAvatar(userId: string, file: Express.Multer.File) {
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: { id: userId },
     });
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    const result = await this.cloudinaryService.uploadImage(file, 'Bus-Ticket/Avatars').catch(() => {
-     throw new BadRequestException('Invalid file type or upload failed.');
-    });
+    const result = await this.cloudinaryService
+      .uploadImage(file, 'Bus-Ticket/Avatars')
+      .catch(() => {
+        throw new BadRequestException('Invalid file type or upload failed.');
+      });
 
     if ('secure_url' in result) {
-       user.avatarUrl = result.secure_url;
+      user.avatarUrl = result.secure_url;
     } else {
-       throw new BadRequestException('Upload failed');
+      throw new BadRequestException('Upload failed');
     }
-    
+
     const updatedUser = await this.userRepository.save(user);
 
     return {
@@ -44,14 +51,16 @@ export class UserService {
       message: 'Avatar updated successfully',
       data: {
         avatarUrl: updatedUser.avatarUrl,
-      }
+      },
     };
   }
 
-
   async getUserBookings(userId: string, status?: BookingStatus) {
-    const bookings = await this.bookingService.findBookingsByUserWithDetails(userId, status);
-    
+    const bookings = await this.bookingService.findBookingsByUserWithDetails(
+      userId,
+      status,
+    );
+
     return {
       success: true,
       message: 'User bookings retrieved successfully',
@@ -61,7 +70,7 @@ export class UserService {
 
   async getProfile(userId: string) {
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: { id: userId },
     });
 
     if (!user) {
@@ -87,13 +96,14 @@ export class UserService {
         role: user.role,
         createdAt: user.createdAt,
         authProvider,
-      }
+        avatarUrl: user.avatarUrl,
+      },
     };
   }
 
   async updateProfile(userId: string, updateProfileDto: UpdateProfileDto) {
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: { id: userId },
     });
 
     if (!user) {
@@ -121,13 +131,14 @@ export class UserService {
         email: updatedUser.email,
         role: updatedUser.role,
         createdAt: updatedUser.createdAt,
-      }
+        avatarUrl: updatedUser.avatarUrl,
+      },
     };
   }
 
   async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: { id: userId },
     });
 
     if (!user) {
@@ -138,14 +149,16 @@ export class UserService {
     if (user.googleId) {
       throw new BadRequestException({
         success: false,
-        message: 'Password change is not available for Google accounts. Your account is linked to Google authentication.',
+        message:
+          'Password change is not available for Google accounts. Your account is linked to Google authentication.',
       });
     }
 
     if (user.facebookId) {
       throw new BadRequestException({
         success: false,
-        message: 'Password change is not available for Facebook accounts. Your account is linked to Facebook authentication.',
+        message:
+          'Password change is not available for Facebook accounts. Your account is linked to Facebook authentication.',
       });
     }
 
@@ -153,7 +166,8 @@ export class UserService {
     if (!user.passwordHash) {
       throw new BadRequestException({
         success: false,
-        message: 'Password change is not available for your account. You signed up using phone number authentication.',
+        message:
+          'Password change is not available for your account. You signed up using phone number authentication.',
       });
     }
 
@@ -193,7 +207,10 @@ export class UserService {
 
     // Hash new password
     const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, saltRounds);
+    const hashedPassword = await bcrypt.hash(
+      changePasswordDto.newPassword,
+      saltRounds,
+    );
 
     // Update password
     user.passwordHash = hashedPassword;
