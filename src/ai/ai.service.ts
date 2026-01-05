@@ -14,8 +14,18 @@ import { FaqService } from 'src/faq/faq.service';
 
 @Injectable()
 export class AiService {
+  // Service-level LLM client instance (LangChain wrapper around Google Gemini)
   private llm: any;
+  // Message history used to build context for each LLM invocation.
+  // Messages are stored as LangChain message objects (SystemMessage, HumanMessage, AIMessage)
   private msgs: any[] = [];
+  /*
+   * systemPrompt: core instruction given to the LLM. This prompt defines the
+   * expected JSON output schema, available tools, required behaviors (e.g.,
+   * always use get_faqs for FAQ questions, always save booking data after
+   * successful booking), and examples. It is prepended to the message
+   * history so the LLM always obeys these rules during conversation.
+   */
   private systemPrompt = `
     You are an AI assistant for a bus ticket booking service.
       You MUST ALWAYS respond to the user queries as a JSON object with the following schema:
@@ -210,6 +220,10 @@ export class AiService {
     this.msgRepo
       .find({ order: { createdAt: 'ASC' } })
       .then(messages => {
+        // Convert persisted Message entities into LangChain message objects
+        // preserving role (human/system/ai) and textual content. These
+        // messages are appended after the system instruction so the model
+        // receives both the global instructions and conversation history.
         this.msgs = messages.map((m: any) => {
           const contentStr = typeof m.content === 'string' ? m.content : String(m.content);
           if (m.role === 'human') return new HumanMessage({ content: contentStr });
@@ -227,6 +241,12 @@ export class AiService {
   }
 
   private robustParseJson(raw: string) {
+    // Attempt to safely parse free-form LLM output into JSON.
+    // LLM output can be noisy (code fences, stray backticks, comments,
+    // trailing commas, single quotes, control characters). This helper
+    // applies multiple progressively looser strategies to recover a
+    // JSON object, returning a fallback object { content: raw } when all
+    // strategies fail so the caller can handle unparsable outputs.
     const sanitize = (s: string) => {
       if (!s) return '';
       let r = String(s).trim();
@@ -291,9 +311,20 @@ export class AiService {
   }
 
   async invoke(messages: any[], metadata?: { userId?: string }) {
+    // Main entrypoint: take an array of incoming messages (LangChain
+    // message objects or plain objects), append them to the internal
+    // history, then iteratively call the LLM. If the LLM requests tool
+    // calls (via the tool_calls array in the returned JSON), execute
+    // those tools (search_trips, search_seats, calculate_total_price,
+    // book_ticket, get_faqs) and re-invoke the model with the tool
+    // results so it can continue the conversation. The loop stops when
+    // the model returns a response that does not request further tools
+    // or when MAX_ITERATIONS is reached.
     const userId = metadata?.userId;
     
-    // Build messages for this invocation and ensure system instruction is first
+    // Append incoming messages to the conversation history for this
+    // invocation. The system instruction was already injected during
+    // construction and remains at msgs[0].
     this.msgs.push(...messages);
     
     // Loop: invoke LLM, handle any tool_calls it returns, and repeat until no tool_calls remain.
@@ -305,6 +336,9 @@ export class AiService {
     this.logger.debug(`Starting AI processing for ${userId ? `user ${userId}` : 'anonymous user'}`);
 
     while (iteration < MAX_ITERATIONS) {
+      // Call LLM with the current message history and capture the raw
+      // response. The response can be a string or an object with a
+      // content property depending on LLM wrapper behavior.
       const response = await this.llm.invoke(this.msgs);
       lastResponse = response;
 
@@ -320,6 +354,9 @@ export class AiService {
         rawContent = JSON.stringify(response);
       }
 
+      // Try to parse LLM output into JSON according to the system
+      // instruction schema. robustParseJson will attempt strict parse
+      // first, then progressively more permissive strategies.
       const parsed: any = this.robustParseJson(rawContent);
       this.logger.debug(`LLM response parsed as JSON:\n${JSON.stringify(parsed, null, 2)}`);
       if (parsed && typeof parsed === 'object' && parsed.content === rawContent) {
@@ -354,12 +391,20 @@ export class AiService {
         this.logger.debug(`Processing ${parsed.tool_calls.length} tool calls`);
         for (const toolCall of parsed.tool_calls) {
           if (toolCall.tool_name === 'search_trips') {
+            // Tool: search_trips - query tripsService with provided parameters
+            // and inject the results back into the conversation so the LLM
+            // can use them in the next turn.
             this.logger.debug(`Executing search_trips tool`);
             const toolResult = await this.tripsService.search(toolCall.parameters);
             this.logger.debug(`search_trips returned\n${JSON.stringify(toolResult, null, 2)}`);
             const aiMsg = new HumanMessage(JSON.stringify({ content: `Here are the search results: ${JSON.stringify(toolResult, null, 2)}` }));
             this.msgs.push(aiMsg);
           } else if (toolCall.tool_name === 'book_ticket') {
+            // Tool: book_ticket - attempt to create a booking using
+            // bookingService. On success, include booking details and a
+            // payment URL (if present) in the conversation so the model
+            // can present it to the user. On failure, inject an error
+            // message so the model can ask for corrective action.
             this.logger.debug(`Executing book_ticket tool`);
             const bookingParams = toolCall.parameters;
             const bookingUserId = userId || bookingParams.userId || null;
@@ -370,6 +415,8 @@ export class AiService {
                 content: `Booking successful! Details: ${JSON.stringify(bookingResult, null, 2)}`,
               };
               if ((bookingResult as any).paymentUrl) {
+                // Expose payment URL both inside content and as a
+                // dedicated payment_url field to satisfy frontend needs.
                 messageObj.payment_url = (bookingResult as any).paymentUrl;
                 messageObj.content += `\n\nClick here to complete payment: ${(bookingResult as any).paymentUrl}`;
               }
@@ -387,6 +434,8 @@ export class AiService {
               this.msgs.push(aiMsg);
             } else {
               try {
+                // Tool: search_seats - get seat availability/status for a
+                // specific trip and inject it back to the model.
                 const seats = await this.seatStatusService.findByTripId(tripId);
                 this.logger.debug(`Found ${seats?.length || 0} seats for trip ${tripId}`);
                 if (seats && seats.length > 0) {
@@ -409,6 +458,8 @@ export class AiService {
               this.msgs.push(aiMsg);
             } else {
               try {
+                // Tool: calculate_total_price - delegate price computation
+                // to bookingService which centralizes pricing logic.
                 const total = await this.bookingService.calculateTotalPrice(seats, options || {});
                 const aiMsg = new HumanMessage(JSON.stringify({ content: `Calculated total price: ${total}`, totalPrice: total }));
                 this.msgs.push(aiMsg);
@@ -423,6 +474,8 @@ export class AiService {
             try {
               const faqs = await this.faqService.getAllFaqs();
               this.logger.debug(`get_faqs returned\n${JSON.stringify(faqs, null, 2)}`);
+              // Tool: get_faqs - always use this tool for FAQ questions
+              // rather than answering from model's static knowledge.
               const aiMsg = new HumanMessage(JSON.stringify({ content: `Here are the frequently asked questions and answers: \n${JSON.stringify(faqs, null, 2)}` }));
               this.msgs.push(aiMsg);
             } 
@@ -443,6 +496,9 @@ export class AiService {
       break;
     }
 
+    // If the model continually requests tool calls we cap the number of
+    // iterations to avoid infinite loops and perform a final attempt to
+    // obtain a usable response.
     if (iteration >= MAX_ITERATIONS) {
       this.logger.warn('Maximum iterations reached while processing tool calls, attempting final response');
       try {

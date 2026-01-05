@@ -19,59 +19,66 @@ export class ChatService {
   ) {}
 
   async sendMessage(dto: SendMessageDto, userId?: string) {
+    // Tạo hoặc lấy conversationId (nếu không có thì tạo mới dạng ngẫu nhiên)
     const conversationId =
       dto.conversationId ?? `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
-    const now = new Date().toISOString();
+    // const now = new Date().toISOString(); // Biến này không sử dụng, có thể bỏ
 
-    // find or create conversation
+    // Tìm kiếm hoặc tạo mới một cuộc hội thoại (conversation)
     let conversation: Conversation | null = null;
     if (dto.conversationId) {
+      // Nếu có conversationId, tìm conversation tương ứng và lấy kèm các message liên quan
       conversation = await this.convRepo.findOne({ where: { id: dto.conversationId }, relations: ['messages'] });
     }
     if (!conversation) {
+      // Nếu không tìm thấy, tạo mới conversation
       conversation = this.convRepo.create({});
       await this.convRepo.save(conversation);
     }
 
-    // save user message
+    // Lưu tin nhắn của người dùng vào database
     const userMessage = this.msgRepo.create({
-      conversation,
-      role: 'human',
-      content: dto.message,
+      conversation, // liên kết với conversation vừa tìm hoặc tạo
+      role: 'human', // phân biệt vai trò là người dùng
+      content: dto.message, // nội dung tin nhắn
     });
     await this.msgRepo.save(userMessage);
 
-
-    // Chỉ lấy tin nhắn gần nhất của user
+    // Chỉ lấy tin nhắn gần nhất của user để gửi cho AI (không gửi toàn bộ lịch sử)
     const lastUserMessage = new HumanMessage({ content: dto.message });
     const llmInput = [lastUserMessage];
 
     let aiResponseText = '';
     try {
+      // Gọi AI service để lấy phản hồi dựa trên tin nhắn cuối cùng của user
       const aiRes = await this.aiService.invoke(llmInput, { userId });
 
-      // Clean up possible code fences (e.g. ```json ... ``` ) returned by the LLM
+      // Làm sạch kết quả trả về từ AI (loại bỏ code fence như ```json ... ``` nếu có)
       let cleaned = aiRes == null ? '' : String(aiRes).trim();
       const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
       if (fenceMatch) cleaned = fenceMatch[1].trim();
       if (cleaned.startsWith('`') && cleaned.endsWith('`')) cleaned = cleaned.slice(1, -1).trim();
 
-      // Parse AI response and return cleaned content
+      // Lưu nội dung đã làm sạch vào biến kết quả
       aiResponseText = cleaned;
     } catch (err) {
+      // Nếu gọi AI thất bại, log lỗi và trả về thông báo lỗi
       this.logger.error('AI call failed', err as any);
       aiResponseText = 'Error: failed to get response from AI';
     }
 
+    // Lưu tin nhắn phản hồi của AI vào database
     const aiMessage = this.msgRepo.create({
       conversation,
-      role: 'ai',
+      role: 'ai', // phân biệt vai trò là AI
       content: aiResponseText,
     });
     await this.msgRepo.save(aiMessage);
 
+    // Lấy lại toàn bộ lịch sử tin nhắn của cuộc hội thoại sau khi đã thêm tin nhắn mới
     const updatedHistory = await this.msgRepo.find({ where: { conversation: { id: conversation.id } }, order: { createdAt: 'ASC' } });
 
+    // Trả về kết quả gồm conversationId, phản hồi của AI và lịch sử hội thoại
     return {
       conversationId: conversation.id,
       ai: { role: 'ai', content: aiResponseText, timestamp: aiMessage.createdAt?.toISOString?.() ?? new Date().toISOString() },
