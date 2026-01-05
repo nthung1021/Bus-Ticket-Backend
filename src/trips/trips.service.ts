@@ -87,51 +87,60 @@ export class TripsService {
     arrivalTime: Date,
     excludeTripId?: string,
   ): Promise<boolean> {
+
+    // Tìm các chuyến đi bị xung đột với thời gian đề xuất cho xe buýt này
+    // Các trường hợp xung đột gồm:
+    // 1. Chuyến đi bắt đầu trong khoảng thời gian đề xuất
+    // 2. Chuyến đi kết thúc trong khoảng thời gian đề xuất
+    // 3. Chuyến đi bao trùm toàn bộ khoảng thời gian đề xuất
+    // 4. Khoảng thời gian đề xuất bao trùm toàn bộ chuyến đi
     const conflictingTrips = await this.tripRepo.find({
       where: [
-        // Trip that starts during our proposed time
+        // 1. Chuyến đi bắt đầu trong khoảng thời gian đề xuất
         {
           busId,
-          status: Not(TripStatus.CANCELLED),
-          deleted: false,
+          status: Not(TripStatus.CANCELLED), // Loại bỏ chuyến đã huỷ
+          deleted: false, // Loại bỏ chuyến đã xoá mềm
           departureTime: And(
-            LessThan(arrivalTime),
-            MoreThanOrEqual(departureTime),
+            LessThan(arrivalTime), // Bắt đầu trước khi kết thúc đề xuất
+            MoreThanOrEqual(departureTime), // Bắt đầu sau hoặc bằng thời gian bắt đầu đề xuất
           ),
         },
-        // Trip that ends during our proposed time
+        // 2. Chuyến đi kết thúc trong khoảng thời gian đề xuất
         {
           busId,
           status: Not(TripStatus.CANCELLED),
           deleted: false,
           arrivalTime: And(
-            LessThanOrEqual(arrivalTime),
-            MoreThan(departureTime),
+            LessThanOrEqual(arrivalTime), // Kết thúc trước hoặc bằng thời gian kết thúc đề xuất
+            MoreThan(departureTime), // Kết thúc sau thời gian bắt đầu đề xuất
           ),
         },
-        // Trip that completely encompasses our proposed time
+        // 3. Chuyến đi bao trùm toàn bộ khoảng thời gian đề xuất
         {
           busId,
           status: Not(TripStatus.CANCELLED),
           deleted: false,
-          departureTime: LessThanOrEqual(departureTime),
-          arrivalTime: MoreThanOrEqual(arrivalTime),
+          departureTime: LessThanOrEqual(departureTime), // Bắt đầu trước hoặc bằng thời gian bắt đầu đề xuất
+          arrivalTime: MoreThanOrEqual(arrivalTime), // Kết thúc sau hoặc bằng thời gian kết thúc đề xuất
         },
-        // Our proposed time completely encompasses the trip
+        // 4. Khoảng thời gian đề xuất bao trùm toàn bộ chuyến đi
         {
           busId,
           status: Not(TripStatus.CANCELLED),
           deleted: false,
-          departureTime: MoreThanOrEqual(departureTime),
-          arrivalTime: LessThanOrEqual(arrivalTime),
+          departureTime: MoreThanOrEqual(departureTime), // Bắt đầu sau hoặc bằng thời gian bắt đầu đề xuất
+          arrivalTime: LessThanOrEqual(arrivalTime), // Kết thúc trước hoặc bằng thời gian kết thúc đề xuất
         },
       ],
     });
 
+    // Nếu truyền excludeTripId (ví dụ khi cập nhật chuyến đi), loại trừ chính chuyến đó khỏi danh sách xung đột
     if (excludeTripId) {
       return conflictingTrips.every((trip) => trip.id !== excludeTripId);
     }
 
+    // Nếu không có chuyến nào xung đột, xe buýt khả dụng
     return conflictingTrips.length === 0;
   }
 
@@ -140,24 +149,30 @@ export class TripsService {
     routeId: string,
     busId: string,
   ): Promise<void> {
+    // Tìm tuyến đường theo id, chỉ lấy trường operatorId
     const route = await this.routeRepository.findOne({
       where: { id: routeId },
       select: ['operatorId'],
     });
 
+    // Nếu không tìm thấy tuyến đường, báo lỗi
     if (!route) {
       throw new NotFoundException(`Route with ID ${routeId} not found`);
     }
 
+    // Tìm xe buýt theo id, chỉ lấy trường operatorId
     const bus = await this.busRepository.findOne({
       where: { id: busId },
       select: ['operatorId'],
     });
 
+    // Nếu không tìm thấy xe buýt, báo lỗi
     if (!bus) {
       throw new NotFoundException(`Bus with ID ${busId} not found`);
     }
 
+    // So sánh operatorId của tuyến đường và xe buýt
+    // Nếu khác nhau thì báo lỗi không cùng nhà vận hành
     if (route.operatorId !== bus.operatorId) {
       throw new BadRequestException(
         `Bus and route must belong to the same operator. ` +
@@ -166,25 +181,30 @@ export class TripsService {
     }
   }
 
-  // Validate time logic (departure must be before arrival, reasonable times)
+  // Validate the timing of a trip: ensures logical and business constraints
   private validateTripTiming(departureTime: Date, arrivalTime: Date): void {
+    // Check that departure is before arrival
     if (departureTime >= arrivalTime) {
       throw new BadRequestException(
         'Departure time must be before arrival time',
       );
     }
 
+    // Ensure departure time is not in the past
     const now = new Date();
     if (departureTime < now) {
       throw new BadRequestException('Departure time cannot be in the past');
     }
 
+    // Calculate trip duration in hours
     const durationHours =
       (arrivalTime.getTime() - departureTime.getTime()) / (1000 * 60 * 60);
+    // Check that duration does not exceed 48 hours
     if (durationHours > 48) {
       throw new BadRequestException('Trip duration cannot exceed 48 hours');
     }
 
+    // Check that duration is at least 15 minutes
     if (durationHours < 0.25) {
       throw new BadRequestException(
         'Trip duration must be at least 15 minutes',
