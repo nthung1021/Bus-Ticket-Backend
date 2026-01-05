@@ -58,21 +58,33 @@ export class AuthService {
   /**
    * Google login handler — typed profile instead of `any`
    */
+  // Xử lý đăng nhập bằng Google (Google OAuth)
+  // profile: thông tin người dùng lấy từ Google sau khi xác thực thành công
   async googleLogin(profile?: GoogleProfile | null) {
+    // Nếu không có profile hoặc thiếu googleId thì trả về null (không đăng nhập được)
     if (!profile || !profile.googleId) return null;
 
+    // Tìm user đã tồn tại trong database theo googleId
     let existingUser = await this.usersRepository.findOne({
       where: { googleId: profile.googleId },
     });
 
+    // Nếu chưa có user với googleId này thì tạo mới user
     if (!existingUser) {
+      // Sinh salt ngẫu nhiên để hash password tạm (Google login không dùng password này)
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash(Math.random().toString(), salt);
 
-      // Determine role based on email
+      // Xác định vai trò (role) của user dựa vào email (ví dụ: auto-assign admin cho email cụ thể)
       const userRole = this.determineUserRole(profile.email || '');
 
-      // create expects a Partial<User>; cast to User for TypeORM API
+      // Tạo entity User mới với thông tin từ Google
+      // - googleId: id từ Google
+      // - email: email từ Google
+      // - name: tên từ Google
+      // - passwordHash: mật khẩu tạm (không dùng, chỉ để thỏa mãn schema)
+      // - role: vai trò xác định ở trên
+      // Sử dụng Partial<User> để phù hợp với API của TypeORM
       existingUser = this.usersRepository.create({
         googleId: profile.googleId,
         email: profile.email,
@@ -81,12 +93,15 @@ export class AuthService {
         role: userRole,
       } as Partial<User> as User);
 
+      // Lưu user mới vào database
       await this.usersRepository.save(existingUser);
     }
 
+    // Sinh accessToken và refreshToken cho user (dù là user mới hay đã có)
     const { accessToken, refreshToken } =
       await this.generateAndStoreTokens(existingUser);
 
+    // Trả về object chứa token và thông tin user (không trả về password)
     return {
       success: true,
       data: {
@@ -97,26 +112,34 @@ export class AuthService {
           email: existingUser.email,
           fullName: existingUser.name,
           role: existingUser.role,
+          avatarUrl: existingUser.avatarUrl,
         },
       },
     };
   }
 
   async signUp(signUpDto: SignUpDto) {
+    // 1) Kiểm tra xem email đã tồn tại trong DB hay chưa.
+    // Nếu tồn tại, ném ConflictException để báo lỗi trùng email.
     const existingUser = await this.usersRepository.findOne({
       where: { email: signUpDto.email },
     });
 
     if (existingUser) {
+      // Email đã có người dùng đăng ký trước đó -> báo lỗi
       throw new ConflictException('Email already in use');
     }
 
+    // 2) Băm mật khẩu bằng bcrypt trước khi lưu vào DB.
+    //    Tạo salt ngẫu nhiên và hash password để bảo mật.
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(signUpDto.password, salt);
 
-    // Determine role based on email
+    // 3) Xác định role của user dựa trên email (ví dụ auto-assign admin cho email cụ thể).
     const userRole = this.determineUserRole(signUpDto.email);
 
+    // 4) Tạo entity User mới (sử dụng repository.create để gán các trường cần thiết).
+    //    Chú ý: sử dụng Partial<User> để phù hợp với create API của TypeORM.
     const user = this.usersRepository.create({
       email: signUpDto.email,
       passwordHash: hashedPassword,
@@ -125,18 +148,23 @@ export class AuthService {
       role: userRole,
     } as Partial<User> as User);
 
+    // 5) Lưu user mới vào DB và nhận lại object đã có id, timestamps...
     const savedUser = await this.usersRepository.save(user);
 
-    // Generate a 6-digit verification code and set expiry (15 minutes)
+    // 6) Sinh mã xác thực email dạng 6 chữ số và thiết lập thời hạn (15 phút).
+    //    - Lý do dùng 6 chữ số: dễ nhập bởi người dùng, vẫn đủ lớn để tránh đoán trúng thường xuyên.
+    //    - Thời hạn 15 phút là khoảng thời gian hợp lý cho verification.
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 15);
 
+    // 7) Gán code và expiry vào bản ghi user và lưu lại.
     savedUser.emailVerificationCode = code;
     savedUser.emailVerificationExpiresAt = expiresAt;
     await this.usersRepository.save(savedUser);
 
-    // Send verification email (failure to send shouldn't block registration)
+    // 8) Gửi email chứa mã xác thực. Nếu gửi thất bại, không rollback đăng ký
+    //    mà chỉ ghi log cảnh báo — mục tiêu là không làm trải nghiệm đăng ký bị ngắt.
     try {
       await this.emailService.sendEmail({
         to: savedUser.email,
@@ -145,9 +173,11 @@ export class AuthService {
       });
       this.logger.log(`Verification email sent to ${savedUser.email}`);
     } catch (err: any) {
+      // Ghi log cảnh báo, nhưng không ném lỗi để không block flow đăng ký.
       this.logger.warn(`Failed to send verification email to ${savedUser.email}: ${err?.message || err}`);
     }
 
+    // 9) Trả về object mô tả kết quả đăng ký (không chứa mật khẩu).
     return {
       success: true,
       data: {
@@ -163,21 +193,28 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
+    // 1) Lấy email và password từ DTO truyền vào
     const { email, password } = loginDto;
 
+    // 2) Tìm user theo email trong database
     const user = await this.usersRepository.findOne({ where: { email } });
     if (!user) {
+      // Nếu không tìm thấy user, báo lỗi đăng nhập sai thông tin
       throw new BadRequestException('Invalid credentials');
     }
 
+    // 3) So sánh password nhập vào với password đã hash trong DB
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
+      // Nếu mật khẩu không đúng, báo lỗi đăng nhập sai thông tin
       throw new BadRequestException('Invalid credentials');
     }
 
+    // 4) Nếu đăng nhập thành công, sinh accessToken và refreshToken mới cho user
     const { accessToken, refreshToken } =
       await this.generateAndStoreTokens(user);
 
+    // 5) Trả về object chứa token và thông tin user (không trả về password)
     return {
       success: true,
       data: {
@@ -188,6 +225,7 @@ export class AuthService {
           email: user.email,
           fullName: user.name,
           role: user.role,
+          avatarUrl: user.avatarUrl,
         },
       },
     };
@@ -468,6 +506,7 @@ export class AuthService {
             email: user.email,
             fullName: user.name,
             role: user.role,
+            avatarUrl: user.avatarUrl,
           },
         },
       };
@@ -497,47 +536,67 @@ export class AuthService {
   }
 
   private async generateAndStoreTokens(user: User) {
+    // Tạo một jti (JWT ID) duy nhất cho cặp token này
     const jti = uuidv4(); // Unique identifier for this token pair
 
+    // Sinh accessToken chứa thông tin người dùng và jti
+    // - sub: id người dùng
+    // - email, fullName, role: thông tin cơ bản
+    // - jti: định danh duy nhất cho token
     const accessToken = this.jwtService.sign(
       {
         sub: user.id,
         email: user.email,
         fullName: user.name,
         role: user.role,
+        avatarUrl: user.avatarUrl,
         jti,
       },
       {
+        // Khóa bí mật cho access token
         secret: this.jwtConfigService.accessTokenSecret,
+        // Thời hạn token (giây), lấy từ config
         expiresIn: this.jwtConfigService.getExpirationInSeconds(
           this.jwtConfigService.accessTokenExpiration,
         ),
       },
     );
 
+    // Sinh refreshToken chỉ chứa sub (id) và jti
+    // Refresh token dùng để lấy access token mới khi hết hạn
     const refreshToken = this.jwtService.sign(
       { sub: user.id, jti },
       {
+        // Khóa bí mật cho refresh token
         secret: this.jwtConfigService.refreshTokenSecret,
+        // Thời hạn token (giây), lấy từ config
         expiresIn: this.jwtConfigService.getExpirationInSeconds(
           this.jwtConfigService.refreshTokenExpiration,
         ),
       },
     );
 
+    // Tính toán thời điểm hết hạn của refresh token
+    // Lấy số giây hết hạn từ config và cộng vào thời điểm hiện tại
     const expirationInSeconds = this.jwtConfigService.getExpirationInSeconds(
       this.jwtConfigService.refreshTokenExpiration,
     );
     const expiresAt = new Date();
     expiresAt.setSeconds(expiresAt.getSeconds() + expirationInSeconds);
 
+    // Tạo entity RefreshToken để lưu vào database
+    // - token: chuỗi refresh token
+    // - userId: id người dùng
+    // - expiresAt: thời điểm hết hạn
     const tokenEntity = this.refreshTokenRepository.create({
       token: refreshToken,
       userId: user.id,
       expiresAt,
     } as Partial<RefreshToken> as RefreshToken);
+    // Lưu refresh token vào database
     await this.refreshTokenRepository.save(tokenEntity);
 
+    // Trả về accessToken và refreshToken cho client
     return { accessToken, refreshToken };
   }
 }

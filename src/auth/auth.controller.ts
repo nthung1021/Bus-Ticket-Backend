@@ -42,29 +42,44 @@ export class AuthController {
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
-  async googleAuth(@Req() req) {}
+  // Bắt đầu quá trình xác thực Google OAuth2. Khi người dùng truy cập endpoint này,
+  // AuthGuard('google') sẽ chuyển hướng họ đến trang đăng nhập Google.
+  // Hàm này không cần xử lý gì thêm vì quá trình xác thực sẽ được guard đảm nhận.
+  async googleAuth(@Req() req: Request) {}
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  async googleAuthRedirect(@Req() req, @Res() res: Response) {
+  // Xử lý callback sau khi người dùng đăng nhập bằng Google OAuth2
+  // 1. Nhận thông tin người dùng từ Google thông qua AuthGuard
+  // 2. Gọi authService.googleLogin để xử lý đăng nhập hoặc đăng ký tài khoản Google
+  // 3. Nếu không có response (người dùng chưa đăng ký hoặc có lỗi), chuyển hướng về trang chủ frontend
+  // 4. Nếu đăng nhập thành công, đặt access_token và refresh_token vào cookie (HTTP-only)
+  // 5. Chuyển hướng về trang chủ frontend sau khi đăng nhập thành công
+  async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
+    // Gọi service để xử lý đăng nhập Google, truyền thông tin người dùng từ request
     const response = await this.authService.googleLogin(req.user);
 
+    // Nếu không có response (có thể do lỗi hoặc tài khoản chưa được xử lý), chuyển hướng về trang chủ frontend
     if (!response) {
       const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
       return res.redirect(`${frontendUrl}/`);
     }
 
+    // Lấy cấu hình cookie phù hợp với môi trường (production hoặc development)
     const cookieOptions = this.getCookieOptions();
 
+    // Đặt access_token vào cookie với thời gian sống 1 giờ
     res.cookie('access_token', response.data.accessToken, {
       ...cookieOptions,
       maxAge: 60 * 60 * 1000, // 1 hour
     });
+    // Đặt refresh_token vào cookie với thời gian sống 7 ngày
     res.cookie('refresh_token', response.data.refreshToken, {
       ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
+    // Chuyển hướng về trang chủ frontend sau khi đăng nhập thành công
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://example.com';
     res.redirect(`${frontendUrl}/`);
   }
@@ -120,6 +135,7 @@ export class AuthController {
         userId: req.user.userId,
         email: req.user.email,
         role: req.user.role,
+        avatarUrl: req.user.avatarUrl,
       },
     };
   }
