@@ -112,6 +112,7 @@ export class AuthService {
           email: existingUser.email,
           fullName: existingUser.name,
           role: existingUser.role,
+          avatarUrl: existingUser.avatarUrl,
         },
       },
     };
@@ -224,6 +225,7 @@ export class AuthService {
           email: user.email,
           fullName: user.name,
           role: user.role,
+          avatarUrl: user.avatarUrl,
         },
       },
     };
@@ -504,6 +506,7 @@ export class AuthService {
             email: user.email,
             fullName: user.name,
             role: user.role,
+            avatarUrl: user.avatarUrl,
           },
         },
       };
@@ -546,6 +549,7 @@ export class AuthService {
         email: user.email,
         fullName: user.name,
         role: user.role,
+        avatarUrl: user.avatarUrl,
         jti,
       },
       {
